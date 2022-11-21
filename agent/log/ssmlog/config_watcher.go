@@ -86,7 +86,7 @@ func (fileWatcher *FileWatcher) fileEventHandler() {
 	// Waiting on signals from OS
 	for event := range fileWatcher.watcher.Events {
 		// Event signalled by OS on file
-		fileWatcher.log.Debugf("Event on file %v : %v", event.Name, event)
+		// fileWatcher.log.Debugf("Event on file %v : %v", event.Name, event)
 		if event.Name == fileWatcher.configFilePath {
 			// Event on the file being watched
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Rename == fsnotify.Rename {

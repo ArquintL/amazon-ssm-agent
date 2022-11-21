@@ -353,6 +353,8 @@ const (
 	KMSEncryption ActionType = "KMSEncryption"
 	// Can be used to perform session type specific actions.
 	SessionType ActionType = "SessionType"
+	// SecureSession is used to initiate a "zero trust" secure session.
+	SecureSession ActionType = "SecureSession"
 )
 
 type ActionStatus int
@@ -377,6 +379,34 @@ type KMSEncryptionResponse struct {
 type SessionTypeRequest struct {
 	SessionType string      `json:"SessionType"`
 	Properties  interface{} `json:"Properties"`
+}
+
+// SecureSessionRequest is sent by the agent to the client to initiate a secure session.
+type SecureSessionRequest struct {
+	// Version is the version of the protocol we are using.
+	Version int `json:"Version"`
+	// ShareAlgorithm is the share method for the handshake.
+	// If the agent doesn't support this, it will send a "share algorithm not supported" error in response.
+	ShareAlgorithm string `json:"ShareAlgorithm"`
+	// AgentShare is the public portion of the agent's secret share.
+	AgentShare string `json:"AgentShare"`
+	// Signature is the signature for the AgentShare. This field is only required when signing a request via KMS.
+	Signature string `json:"Signature"`
+	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
+	AgentLTKeyARN string `json:"AgentLTKeyARN"`
+}
+
+// SecureSessionResponse is received by the agent from the client to set up a secure session.
+type SecureSessionResponse struct {
+	// ClientShare is the public portion of the client's secret share.
+	ClientShare string `json:"ClientShare"`
+	// SessionID is the session ID. The client can compute this independently to ensure that a secret has been successfully shared.
+	SessionID              string `json:"SessionID"`
+	Signature              string `json:"Signature"`
+	ClientLTKeyARN         string `json:"ClientLTKeyARN"`
+	LogLTKeyARN            string `json:"LogLTKeyARN"`
+	EncryptedLogKey        string `json:"EncryptedLogKey"`
+	EncryptedClientReadKey string `json:"EncryptedClientReadKey"`
 }
 
 // Handshake payload sent by the agent to the session manager plugin

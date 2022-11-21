@@ -17,10 +17,16 @@ package datachannel
 import (
 	"bytes"
 	"container/list"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/elliptic"
 	cryptoRand "crypto/rand"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"runtime/debug"
@@ -41,6 +47,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/gorilla/websocket"
 	"github.com/twinj/uuid"
+	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -48,7 +55,7 @@ const (
 	sequenceNumber = 0
 	messageFlags   = 3
 	// Timeout period before a handshake operation expires on the agent.
-	handshakeTimeout                        = 15 * time.Second
+	handshakeTimeout                        = 1500 * time.Second
 	clientVersionWithoutOutputSeparation    = "1.2.295"
 	firstVersionWithOutputSeparationFeature = "1.2.312.0"
 )
@@ -120,6 +127,24 @@ type DataChannel struct {
 	// Indicates whether encryption was enabled
 	encryptionEnabled     bool
 	separateOutputPayload bool
+	state                 agentHandshakeState
+
+	// kmsService is the KMS service used to sign and verify the handshake keyshare
+	kmsService *crypto.KMSService
+	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
+	agentLTKeyARN          string
+	logLTKeyARN            string
+	encryptedClientReadKey string
+	encryptedAgentReadKey  string
+}
+
+// agentHandshakeState represents the state of the handshake.
+type agentHandshakeState struct {
+	agentSecret   []byte
+	sharedSecret  []byte
+	sessionID     []byte
+	agentWriteKey []byte
+	agentReadKey  []byte
 }
 
 type ListMessageBuffer struct {
@@ -168,6 +193,9 @@ func NewDataChannel(context context.T,
 	cancelFlag task.CancelFlag) (*DataChannel, error) {
 
 	log := context.Log()
+	log.Debug("HANDSHAKE SLEEPING")
+	time.Sleep(10 * time.Second)
+
 	identity := context.Identity()
 	appConfig := context.AppConfig()
 
@@ -862,6 +890,89 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 				action.ActionType, action.ActionStatus, action.Error)
 		} else {
 			switch action.ActionType {
+			case mgsContracts.SecureSession:
+				var resp mgsContracts.SecureSessionResponse
+				if err = json.Unmarshal(action.ActionResult, &resp); err != nil {
+					err = fmt.Errorf("failed to unmarshal action to SecureSessionResponse: %v", err)
+					break
+				}
+
+				// decode the client share
+				var clientShareBytes []byte
+				clientShareBytes, err = base64.StdEncoding.DecodeString(resp.ClientShare)
+				if err != nil {
+					err = fmt.Errorf("failed to decode server share: %v", err)
+					log.Error(err)
+					break
+				}
+
+				clientx, clienty := elliptic.UnmarshalCompressed(elliptic.P384(), clientShareBytes)
+
+				// check that the client share is on the curve
+				if !elliptic.P384().IsOnCurve(clientx, clienty) {
+					err = fmt.Errorf("client share is not on the curve")
+					log.Error(err)
+					break
+				}
+
+				// generate and store the shared secret
+				ss, _ := elliptic.P384().ScalarMult(clientx, clienty, dataChannel.state.agentSecret) // TODO: Double check it's fine to just use x
+				dataChannel.state.sharedSecret = ss.Bytes()
+
+				// hash the shared secret to obtain the session identifier
+				hash := sha512.New384()
+				hash.Write(dataChannel.state.sharedSecret)
+				dataChannel.state.sessionID = hash.Sum(nil)
+
+				log.Debugf("agent computed session ID: %v", base64.StdEncoding.EncodeToString(dataChannel.state.sessionID))
+				// decode the session ID
+				var sessionIDBytes []byte
+				sessionIDBytes, err = base64.StdEncoding.DecodeString(resp.SessionID)
+				if err != nil {
+					err = fmt.Errorf("failed to decode server session id: %v", err)
+					log.Error(err)
+					break
+				}
+
+				if !bytes.Equal(dataChannel.state.sessionID, sessionIDBytes) {
+					err = fmt.Errorf("session ID mismatch: session ID %s does not match client session ID %s", sessionIDBytes, dataChannel.state.sessionID)
+					log.Error(err)
+					break
+				}
+
+				// use the shared secret to generate read and write keys
+				hash512 := sha512.New
+				hkPRK := hkdf.Extract(hash512, dataChannel.state.sharedSecret, nil) //it's pretty complicated what using a salt with HKDF means, we should double check this
+
+				const keySize = 32
+				dataChannel.state.agentReadKey = make([]byte, keySize)
+				dataChannel.state.agentWriteKey = make([]byte, keySize)
+
+				hkdf.Expand(hash512, hkPRK, []byte("C")).Read(dataChannel.state.agentReadKey)
+				hkdf.Expand(hash512, hkPRK, []byte("S")).Read(dataChannel.state.agentWriteKey)
+				agentReadKey := dataChannel.state.agentReadKey
+				encodedAgentReadKey := base64.RawStdEncoding.EncodeToString(agentReadKey)
+				log.Debugf("agent read key: %s", encodedAgentReadKey)
+
+				var encryptionContext map[string]*string
+				encryptedReadKey, err := dataChannel.kmsService.Encrypt(resp.LogLTKeyARN, dataChannel.state.agentReadKey, encryptionContext)
+				if err != nil {
+					panic(fmt.Errorf("failed to encrypt agent read key via KMS: %v", err))
+				}
+				encodedReadKey := base64.StdEncoding.EncodeToString(encryptedReadKey)
+				log.Infof("encrypted base-64-encoded agent read key: %s", encodedReadKey)
+
+				dataChannel.encryptedAgentReadKey = encodedReadKey
+				dataChannel.encryptedClientReadKey = resp.EncryptedClientReadKey
+				dataChannel.logLTKeyARN = resp.LogLTKeyARN
+
+				dataChannel.encryptionEnabled = true
+
+				if err := dataChannel.blockCipher.UpdateEncryptionKey(log, append(dataChannel.state.agentReadKey, dataChannel.state.agentWriteKey...), "", ""); err != nil {
+					err = fmt.Errorf("failed to update block cipher: %v", err)
+					log.Error(err)
+					break
+				}
 			case mgsContracts.KMSEncryption:
 				err = dataChannel.finalizeKMSEncryption(log, action.ActionResult)
 				break
@@ -934,9 +1045,100 @@ func (dataChannel *DataChannel) finalizeKMSEncryption(log log.T, actionResult js
 	return nil
 }
 
-var newBlockCipher = func(context context.T, kmsKeyId string) (blockCipher crypto.IBlockCipher, err error) {
-	return crypto.NewBlockCipher(context, kmsKeyId)
+type blockCipher struct {
+	cipherTextKey    []byte
+	encryptionKey    []byte
+	decryptionKey    []byte
+	encryptionCipher cipher.AEAD
+	decryptionCipher cipher.AEAD
 }
+
+var _ crypto.IBlockCipher = (*blockCipher)(nil)
+
+func (bc *blockCipher) UpdateEncryptionKey(log log.T, cipherTextBlob []byte, _, _ string) error {
+	const keyLen = 32 // key length in bytes
+	bc.cipherTextKey = cipherTextBlob
+	bc.decryptionKey = cipherTextBlob[:keyLen]
+	bc.encryptionKey = cipherTextBlob[keyLen:]
+	log.Debugf("ENCRYPTION KEY: %x", bc.encryptionKey)
+	log.Debugf("DECRYPTION KEY: %x", bc.decryptionKey)
+	enc, err := getAEAD(bc.encryptionKey)
+	bc.encryptionCipher = enc
+	if err != nil {
+		return fmt.Errorf("failed to get encryption cipher: %v", err)
+	}
+	dec, err := getAEAD(bc.decryptionKey)
+	bc.decryptionCipher = dec
+	if err != nil {
+		return fmt.Errorf("failed to get decryption cipher: %v", err)
+	}
+
+	return nil
+}
+
+const nonceSize = 12
+
+// EncryptWithGCM encrypts plain text using AES block cipher GCM mode
+func (blockCipher *blockCipher) EncryptWithAESGCM(plainText []byte) (cipherText []byte, err error) {
+	var aesgcm = blockCipher.encryptionCipher
+
+	cipherText = make([]byte, nonceSize+len(plainText))
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(cryptoRand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce for encryption: %v", err)
+	}
+
+	// Encrypt plain text using given key and newly generated nonce
+	cipherTextWithoutNonce := aesgcm.Seal(nil, nonce, plainText, nil)
+
+	// Append nonce to the beginning of the cipher text to be used while decrypting
+	cipherText = append(cipherText[:nonceSize], nonce...)
+	cipherText = append(cipherText[nonceSize:], cipherTextWithoutNonce...)
+	return cipherText, nil
+}
+
+// DecryptWithGCM decrypts cipher text using AES block cipher GCM mode
+func (blockCipher *blockCipher) DecryptWithAESGCM(cipherText []byte) (plainText []byte, err error) {
+	var aesgcm = blockCipher.decryptionCipher
+
+	// Pull the nonce out of the cipherText
+	nonce := cipherText[:nonceSize]
+	cipherTextWithoutNonce := cipherText[nonceSize:]
+
+	// Decrypt just the actual cipherText using nonce extracted above
+	if plainText, err = aesgcm.Open(nil, nonce, cipherTextWithoutNonce, nil); err != nil {
+		return nil, fmt.Errorf("failed to decrypt encrypted text: %v", err)
+	}
+	return plainText, nil
+}
+
+// GetCipherTextKey returns cipherTextKey from BlockCipher
+func (blockCipher *blockCipher) GetCipherTextKey() []byte {
+	return blockCipher.cipherTextKey
+}
+
+// GetKMSKeyId returns kmsKeyId from BlockCipher
+func (blockCipher *blockCipher) GetKMSKeyId() string {
+	return ""
+}
+
+// getAEAD gets AEAD which is a GCM cipher mode providing authenticated encryption with associated data
+func getAEAD(plainTextKey []byte) (aesgcm cipher.AEAD, err error) {
+	var block cipher.Block
+	if block, err = aes.NewCipher(plainTextKey); err != nil {
+		return nil, fmt.Errorf("error creating NewCipher, %v", err)
+	}
+
+	if aesgcm, err = cipher.NewGCM(block); err != nil {
+		return nil, fmt.Errorf("error creating NewGCM, %v", err)
+	}
+
+	return aesgcm, nil
+}
+
+// var newBlockCipher = func(context context.T, kmsKeyId string) (blockCipher crypto.IBlockCipher, err error) {
+// 	return crypto.NewBlockCipher(context, kmsKeyId)
+// }
 
 // PerformHandshake performs handshake to share version string and encryption information with clients like cli/console
 func (dataChannel *DataChannel) PerformHandshake(log log.T,
@@ -945,9 +1147,11 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
 
 	if encryptionEnabled {
-		if dataChannel.blockCipher, err = newBlockCipher(dataChannel.context, kmsKeyId); err != nil {
-			return fmt.Errorf("Initializing BlockCipher failed: %s", err)
-		}
+		// if dataChannel.blockCipher, err = newBlockCipher(dataChannel.context, kmsKeyId); err != nil {
+		// 	return fmt.Errorf("Initializing BlockCipher failed: %s", err)
+		// }
+		log.Info("Encryption enabled: initializing block cipher")
+		dataChannel.blockCipher = &blockCipher{}
 	}
 
 	dataChannel.handshake.handshakeStartTime = time.Now()
@@ -1016,12 +1220,70 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log log.T,
 			ActionParameters: request,
 		}}
 	if encryptionRequested {
-		handshakeRequest.RequestedClientActions = append(handshakeRequest.RequestedClientActions,
-			mgsContracts.RequestedClientAction{
-				ActionType: mgsContracts.KMSEncryption,
-				ActionParameters: mgsContracts.KMSEncryptionRequest{
-					KMSKeyID: dataChannel.blockCipher.GetKMSKeyId(),
-				}})
+		// Generate the secret using secure randomness from rand
+		agentSecret, x, y, err := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader)
+		if err != nil {
+			log.Errorf("failed to generate client secret: %v", err)
+			panic(err)
+		}
+
+		dataChannel.state.agentSecret = agentSecret
+
+		// Base64 encode the public part and put it in the message
+		agentShare := elliptic.MarshalCompressed(elliptic.P384(), x, y)
+		compressedPublic := base64.StdEncoding.EncodeToString(agentShare)
+
+		dataChannel.kmsService, err = crypto.NewKMSService(dataChannel.context)
+		if err != nil {
+			err := fmt.Errorf("failed to initialize KMS service: %v", err)
+			log.Error(err)
+			panic(err)
+		}
+
+		metadata, err := dataChannel.kmsService.CreateKeyAssymetric()
+		if err != nil {
+			err := fmt.Errorf("failed to create agent LTK: %v", err)
+			log.Error(err)
+			panic(err)
+		}
+
+		if metadata.Arn == nil {
+			err := fmt.Errorf("asymmetric key ARN is nil, metadata: %+v", metadata)
+			log.Error(err)
+			panic(err)
+		}
+
+		dataChannel.agentLTKeyARN = *metadata.Arn
+
+		sig, err := dataChannel.kmsService.Sign(dataChannel.agentLTKeyARN, agentShare)
+		if err != nil {
+			err := fmt.Errorf("failed to sign agent share: %v", err)
+			log.Error(err)
+			panic(err)
+		}
+
+		log.Debugf("agent signed keyshare: %x", sig)
+
+		req := mgsContracts.SecureSessionRequest{
+			Version:        1,
+			ShareAlgorithm: "P384",
+			AgentShare:     compressedPublic,
+			Signature:      base64.StdEncoding.EncodeToString(sig),
+			AgentLTKeyARN:  dataChannel.agentLTKeyARN,
+		}
+
+		log.Debugf("client generated SecureSessionRequest: %+v", req)
+
+		handshakeRequest.RequestedClientActions = append(handshakeRequest.RequestedClientActions, mgsContracts.RequestedClientAction{
+			ActionType:       mgsContracts.SecureSession,
+			ActionParameters: req,
+		})
+		// handshakeRequest.RequestedClientActions = append(handshakeRequest.RequestedClientActions,
+		// 	mgsContracts.RequestedClientAction{
+		// 		ActionType: mgsContracts.KMSEncryption,
+		// 		ActionParameters: mgsContracts.KMSEncryptionRequest{
+		// 			KMSKeyID: dataChannel.blockCipher.GetKMSKeyId(),
+		// 		}})
 	}
 
 	return handshakeRequest
@@ -1040,8 +1302,13 @@ func (dataChannel *DataChannel) buildHandshakeCompletePayload(log log.T) mgsCont
 			") for fully support of separate StdOut/StdErr output.\r\n"
 	}
 
-	if dataChannel.encryptionEnabled == true {
-		handshakeComplete.CustomerMessage += "This session is encrypted using AWS KMS."
+	if dataChannel.encryptionEnabled {
+		handshakeComplete.CustomerMessage += fmt.Sprintf(
+			"This session is encrypted using AWS KMS.\nlog LTK ARN: %s\nbase-64 encoded client read key: %s\nbase-64 encoded agent read key: %s",
+			dataChannel.logLTKeyARN,
+			dataChannel.encryptedClientReadKey,
+			dataChannel.encryptedAgentReadKey,
+		)
 	}
 
 	return handshakeComplete

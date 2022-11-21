@@ -67,6 +67,17 @@ func NewKMSService(context context.T) (kmsService *KMSService, err error) {
 
 	return kmsService, nil
 }
+func (kmsService *KMSService) Encrypt(keyId string, plaintext []byte, encryptionContext map[string]*string) (ciphertextBlob []byte, err error) {
+	output, err := kmsService.client.Encrypt(&kms.EncryptInput{
+		KeyId:               aws.String(keyId),
+		EncryptionAlgorithm: aws.String("RSAES_OAEP_SHA_256"),
+		Plaintext:           plaintext,
+		EncryptionContext:   encryptionContext})
+	if err != nil {
+		return nil, err
+	}
+	return output.CiphertextBlob, nil
+}
 
 // Decrypt will get the plaintext key from KMS service
 func (kmsService *KMSService) Decrypt(cipherTextBlob []byte, encryptionContext map[string]*string) (plainText []byte, err error) {
@@ -77,4 +88,43 @@ func (kmsService *KMSService) Decrypt(cipherTextBlob []byte, encryptionContext m
 		return nil, fmt.Errorf("Error when decrypting data key %s", err)
 	}
 	return output.Plaintext, nil
+}
+
+func (kmsService *KMSService) Sign(keyID string, message []byte) ([]byte, error) {
+	res, err := kmsService.client.Sign(&kms.SignInput{
+		KeyId:            aws.String(keyID),
+		Message:          message,
+		SigningAlgorithm: aws.String("RSASSA_PSS_SHA_384"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign message: %v", err)
+	}
+
+	return res.Signature, nil
+}
+
+func (kmsService *KMSService) Verify(kmsKeyId string, message []byte, signature []byte) (bool, error) {
+	out, err := kmsService.client.Verify(&kms.VerifyInput{
+		KeyId:            aws.String(kmsKeyId),
+		Message:          message,
+		Signature:        signature,
+		SigningAlgorithm: aws.String("RSASSA_PSS_SHA_384"),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return *out.SignatureValid, nil
+}
+
+func (kmsService *KMSService) CreateKeyAssymetric() (*kms.KeyMetadata, error) {
+	out, err := kmsService.client.CreateKey(&kms.CreateKeyInput{
+		KeySpec:  aws.String("ECC_NIST_P384"),
+		KeyUsage: aws.String("SIGN_VERIFY"),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return out.KeyMetadata, nil
 }

@@ -28,6 +28,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/nightlyone/lockfile v0.0.0
 	github.com/pborman/ansi v1.0.0
+	github.com/smartystreets/goconvey v1.7.2 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/twinj/uuid v0.0.0-20151029044442-89173bcdda19 // Don't update -- breaks
 	github.com/xtaci/smux v1.5.15
