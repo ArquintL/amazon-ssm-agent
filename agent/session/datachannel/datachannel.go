@@ -915,6 +915,17 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 					break
 				}
 
+				// verify client signature
+				sig, err := base64.StdEncoding.DecodeString(resp.Signature)
+				if err != nil {
+					panic(fmt.Errorf("failed to decode signature"))
+				}
+
+				ok, err := dataChannel.kmsService.Verify(resp.ClientLTKeyARN, clientShareBytes, sig)
+				if !ok || err != nil {
+					panic(fmt.Errorf("failed to verify signature: %v", err))
+				}
+
 				// generate and store the shared secret
 				ss, _ := elliptic.P384().ScalarMult(clientx, clienty, dataChannel.state.agentSecret) // TODO: Double check it's fine to just use x
 				dataChannel.state.sharedSecret = ss.Bytes()
