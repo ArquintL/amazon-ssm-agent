@@ -193,8 +193,8 @@ func NewDataChannel(context context.T,
 	cancelFlag task.CancelFlag) (*DataChannel, error) {
 
 	log := context.Log()
-	log.Debug("HANDSHAKE SLEEPING")
-	time.Sleep(10 * time.Second)
+	// log.Debug("HANDSHAKE SLEEPING")
+	// time.Sleep(10 * time.Second)
 
 	identity := context.Identity()
 	appConfig := context.AppConfig()
