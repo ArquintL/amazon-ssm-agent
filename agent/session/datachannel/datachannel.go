@@ -21,12 +21,14 @@ import (
 	"crypto/cipher"
 	"crypto/elliptic"
 	cryptoRand "crypto/rand"
+	"crypto/rsa"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	stdLog "log"
 	"math"
 	"math/rand"
 	"runtime/debug"
@@ -132,8 +134,11 @@ type DataChannel struct {
 	// kmsService is the KMS service used to sign and verify the handshake keyshare
 	kmsService *crypto.KMSService
 	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
-	agentLTKeyARN          string
-	logLTKeyARN            string
+	agentLTKeyARN string
+	logReaderId   string
+	logLTPk       *rsa.PublicKey
+	// logLTKeyARN is the logReaderId's ARN for the long-term public key to decrypt session keys
+	// logLTKeyARN            string
 	encryptedClientReadKey string
 	encryptedAgentReadKey  string
 }
@@ -438,7 +443,7 @@ func (dataChannel *DataChannel) SendStreamDataMessage(log log.T, payloadType mgs
 	}
 
 	// If encryption has been enabled, encrypt the payload
-	if dataChannel.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode) {
+	if dataChannel.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
 		if inputData, err = dataChannel.blockCipher.EncryptWithAESGCM(inputData); err != nil {
 			return fmt.Errorf("error encrypting stream data message sequence %d, err: %v", dataChannel.StreamDataSequenceNumber, err)
 		}
@@ -462,7 +467,7 @@ func (dataChannel *DataChannel) SendStreamDataMessage(log log.T, payloadType mgs
 		SequenceNumber: dataChannel.StreamDataSequenceNumber,
 		Flags:          flag,
 		MessageId:      messageId,
-		PayloadType:    uint32(payloadType),
+		PayloadType:    uint32(payloadType), // TODO: treat this message symbolically as being a 2-tuple of payloadType and inputData
 		Payload:        inputData,
 	}
 	msg, err := agentMessage.Serialize(log)
@@ -897,6 +902,29 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 					break
 				}
 
+				// verify client signature
+				sig, err := base64.StdEncoding.DecodeString(resp.Signature)
+				if err != nil {
+					panic(fmt.Errorf("failed to decode signature"))
+				}
+
+				clientSignPayload := mgsContracts.SignClientSharePayload{
+					ClientShare: resp.ClientShare,
+					AgentId:     dataChannel.InstanceId,
+				}
+
+				clientSignPayloadBytes, err := json.Marshal(clientSignPayload)
+				if err != nil {
+					err := fmt.Errorf("failed to encode client sign payload: %v", err)
+					log.Error(err)
+					panic(err)
+				}
+
+				ok, err := dataChannel.kmsService.Verify(resp.ClientLTKeyARN, clientSignPayloadBytes, sig)
+				if !ok || err != nil {
+					panic(fmt.Errorf("failed to verify signature: %v", err))
+				}
+
 				// decode the client share
 				var clientShareBytes []byte
 				clientShareBytes, err = base64.StdEncoding.DecodeString(resp.ClientShare)
@@ -913,17 +941,6 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 					err = fmt.Errorf("client share is not on the curve")
 					log.Error(err)
 					break
-				}
-
-				// verify client signature
-				sig, err := base64.StdEncoding.DecodeString(resp.Signature)
-				if err != nil {
-					panic(fmt.Errorf("failed to decode signature"))
-				}
-
-				ok, err := dataChannel.kmsService.Verify(resp.ClientLTKeyARN, clientShareBytes, sig)
-				if !ok || err != nil {
-					panic(fmt.Errorf("failed to verify signature: %v", err))
 				}
 
 				// generate and store the shared secret
@@ -963,19 +980,75 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 				hkdf.Expand(hash512, hkPRK, []byte("S")).Read(dataChannel.state.agentWriteKey)
 				agentReadKey := dataChannel.state.agentReadKey
 				encodedAgentReadKey := base64.RawStdEncoding.EncodeToString(agentReadKey)
+				agentWriteKey := dataChannel.state.agentWriteKey
+				encodedAgentWriteKey := base64.RawStdEncoding.EncodeToString(agentWriteKey)
 				log.Debugf("agent read key: %s", encodedAgentReadKey)
+				log.Debugf("agent write key: %s", encodedAgentWriteKey)
 
-				var encryptionContext map[string]*string
-				encryptedReadKey, err := dataChannel.kmsService.Encrypt(resp.LogLTKeyARN, dataChannel.state.agentReadKey, encryptionContext)
-				if err != nil {
-					panic(fmt.Errorf("failed to encrypt agent read key via KMS: %v", err))
+				// create ciphertext containing session keys:
+				sessionKeys := mgsContracts.SessionKeys{
+					AgentReadKey:  encodedAgentReadKey,
+					AgentWriteKey: encodedAgentWriteKey,
 				}
-				encodedReadKey := base64.StdEncoding.EncodeToString(encryptedReadKey)
-				log.Infof("encrypted base-64-encoded agent read key: %s", encodedReadKey)
+				sessionKeysBytes, err := json.Marshal(sessionKeys)
+				if err != nil {
+					err := fmt.Errorf("failed to encode session keys: %v", err)
+					log.Error(err)
+					panic(err)
+				}
 
-				dataChannel.encryptedAgentReadKey = encodedReadKey
-				dataChannel.encryptedClientReadKey = resp.EncryptedClientReadKey
-				dataChannel.logLTKeyARN = resp.LogLTKeyARN
+				// var encryptionContext map[string]*string
+				// encryptedSessionKeys, err := dataChannel.kmsService.Encrypt(resp.LogLTKeyARN, sessionKeysBytes, encryptionContext)
+				encryptedSessionKeys, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, dataChannel.logLTPk, sessionKeysBytes)
+				if err != nil {
+					panic(fmt.Errorf("failed to encrypt session keys: %v", err))
+				}
+				encodedEncryptedSessionKeys := base64.StdEncoding.EncodeToString(encryptedSessionKeys)
+				log.Infof("encrypted base-64-encoded session keys: %s", encodedEncryptedSessionKeys)
+
+				// sign ciphertext containing session keys using KMS:
+				signSessionKeysPayload := mgsContracts.SignSessionKeysPayload{
+					EncryptedSessionKeys: encodedEncryptedSessionKeys,
+					ClientId:             dataChannel.ClientId,
+				}
+
+				signSessionKeysPayloadBytes, err := json.Marshal(signSessionKeysPayload)
+				if err != nil {
+					err := fmt.Errorf("failed to encode sign session keys payload: %v", err)
+					log.Error(err)
+					panic(err)
+				}
+
+				sigSessionKeys, err := dataChannel.kmsService.Sign(dataChannel.agentLTKeyARN, signSessionKeysPayloadBytes)
+				if err != nil {
+					err := fmt.Errorf("failed to sign session keys payload: %v", err)
+					log.Error(err)
+					panic(err)
+				}
+
+				encodedSigSessionKeys := base64.StdEncoding.EncodeToString(sigSessionKeys)
+
+				// send ciphertext containing session keys and the corresponding signature to the log server:
+				encryptedSessionKeysPayload := mgsContracts.EncryptedSessionKeysPayload{
+					AgentLTKeyARN:        dataChannel.agentLTKeyARN,
+					ClientId:             dataChannel.ClientId,
+					EncryptedSessionKeys: encodedEncryptedSessionKeys,
+					Signature:            encodedSigSessionKeys,
+				}
+				encryptedSessionKeysPayloadBytes, err := json.Marshal(encryptedSessionKeysPayload)
+				if err != nil {
+					err := fmt.Errorf("failed to encode encrypted session keys payload: %v", err)
+					log.Error(err)
+					panic(err)
+				}
+				encodedEncryptedSessionKeysPayloadBytes := base64.StdEncoding.EncodeToString(encryptedSessionKeysPayloadBytes)
+				log.Infof("encrypted session keys payload that should be sent to log server: %s", encodedEncryptedSessionKeysPayloadBytes)
+
+				// TODO: actually send `encodedEncryptedSessionKeysPayloadBytes` to the log server!
+
+				// dataChannel.encryptedAgentReadKey = encodedReadKey
+				// dataChannel.encryptedClientReadKey = resp.EncryptedClientReadKey
+				// dataChannel.logLTKeyARN = resp.LogLTKeyARN
 
 				dataChannel.encryptionEnabled = true
 
@@ -1156,6 +1229,7 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
+	stdLog.Printf("PerformHandshake")
 
 	if encryptionEnabled {
 		// if dataChannel.blockCipher, err = newBlockCipher(dataChannel.context, kmsKeyId); err != nil {
@@ -1169,6 +1243,7 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 	dataChannel.encryptionEnabled = encryptionEnabled
 
 	log.Info("Initiating Handshake")
+	stdLog.Printf("Initiating Handshake")
 	handshakeRequestPayload :=
 		dataChannel.buildHandshakeRequestPayload(log, dataChannel.encryptionEnabled, sessionTypeRequest)
 	if err := dataChannel.sendHandshakeRequest(log, handshakeRequestPayload); err != nil {
@@ -1190,8 +1265,10 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 			return errors.New("Handshake timed out. Please ensure that you have the latest version of the session manager plugin.")
 		}
 	}
+	stdLog.Printf("Handshake response received")
 
 	// If encryption was enabled send encryption challenge and block until challenge is received
+	// TODO: don't do this if secure sessions are used. It's useless!
 	if dataChannel.encryptionEnabled {
 		dataChannel.sendEncryptionChallenge(log)
 		select {
@@ -1215,6 +1292,7 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 	}
 	dataChannel.handshake.complete = true
 	log.Info("Handshake successfully completed.")
+	stdLog.Printf("Handshake successfully completed.")
 	return
 }
 
@@ -1251,29 +1329,48 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log log.T,
 			panic(err)
 		}
 
+		// TODO: do this beforehand and set `dataChannel.agentLTKeyARN` and `dataChannel.logLTPk`
 		metadata, err := dataChannel.kmsService.CreateKeyAssymetric()
 		if err != nil {
 			err := fmt.Errorf("failed to create agent LTK: %v", err)
 			log.Error(err)
 			panic(err)
 		}
-
 		if metadata.Arn == nil {
 			err := fmt.Errorf("asymmetric key ARN is nil, metadata: %+v", metadata)
 			log.Error(err)
 			panic(err)
 		}
-
 		dataChannel.agentLTKeyARN = *metadata.Arn
-
-		sig, err := dataChannel.kmsService.Sign(dataChannel.agentLTKeyARN, agentShare)
+		sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096)
 		if err != nil {
-			err := fmt.Errorf("failed to sign agent share: %v", err)
+			err := fmt.Errorf("failed to create log secret key: %v", err)
+			log.Error(err)
+			panic(err)
+		}
+		dataChannel.logLTPk = &sk.PublicKey
+
+		signPayload := mgsContracts.SignAgentSharePayload{
+			AgentShare:  compressedPublic,
+			ClientId:    dataChannel.ClientId,
+			LogReaderId: dataChannel.logReaderId,
+		}
+
+		signPayloadBytes, err := json.Marshal(signPayload)
+		if err != nil {
+			err := fmt.Errorf("failed to encode sign payload: %v", err)
 			log.Error(err)
 			panic(err)
 		}
 
-		log.Debugf("agent signed keyshare: %x", sig)
+		sig, err := dataChannel.kmsService.Sign(dataChannel.agentLTKeyARN, signPayloadBytes)
+		if err != nil {
+			err := fmt.Errorf("failed to sign agent sign payload: %v", err)
+			log.Error(err)
+			panic(err)
+		}
+
+		log.Debugf("agent signed sign payload: %x", sig)
 
 		req := mgsContracts.SecureSessionRequest{
 			Version:        1,
@@ -1281,6 +1378,7 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log log.T,
 			AgentShare:     compressedPublic,
 			Signature:      base64.StdEncoding.EncodeToString(sig),
 			AgentLTKeyARN:  dataChannel.agentLTKeyARN,
+			LogReaderId:    dataChannel.logReaderId,
 		}
 
 		log.Debugf("client generated SecureSessionRequest: %+v", req)
@@ -1315,10 +1413,11 @@ func (dataChannel *DataChannel) buildHandshakeCompletePayload(log log.T) mgsCont
 
 	if dataChannel.encryptionEnabled {
 		handshakeComplete.CustomerMessage += fmt.Sprintf(
-			"This session is encrypted using AWS KMS.\nlog LTK ARN: %s\nbase-64 encoded client read key: %s\nbase-64 encoded agent read key: %s",
-			dataChannel.logLTKeyARN,
-			dataChannel.encryptedClientReadKey,
-			dataChannel.encryptedAgentReadKey,
+			// "This session is encrypted using AWS KMS.\nlog LTK ARN: %s\nbase-64 encoded client read key: %s\nbase-64 encoded agent read key: %s",
+			"This session is encrypted using AWS KMS.",
+			// dataChannel.logLTKeyARN,
+			// dataChannel.encryptedClientReadKey,
+			// dataChannel.encryptedAgentReadKey,
 		)
 	}
 

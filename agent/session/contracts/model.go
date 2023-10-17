@@ -381,6 +381,16 @@ type SessionTypeRequest struct {
 	Properties  interface{} `json:"Properties"`
 }
 
+// SignAgentSharePayload is the payload sent by the agent to KMS for signing
+type SignAgentSharePayload struct {
+	// AgentShare is the public portion of the agent's secret share.
+	AgentShare string `json:"AgentShare"`
+	// ID of the client to which the agent intends to talk
+	ClientId string `json:"ClientId"`
+	// ID of the log reader
+	LogReaderId string `json:"LogReaderId"`
+}
+
 // SecureSessionRequest is sent by the agent to the client to initiate a secure session.
 type SecureSessionRequest struct {
 	// Version is the version of the protocol we are using.
@@ -394,6 +404,16 @@ type SecureSessionRequest struct {
 	Signature string `json:"Signature"`
 	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
 	AgentLTKeyARN string `json:"AgentLTKeyARN"`
+	// ID of the log reader
+	LogReaderId string `json:"LogReaderId"`
+}
+
+// SignClientSharePayload is the payload sent by the client to KMS for signing
+type SignClientSharePayload struct {
+	// ClientShare is the public portion of the client's secret share.
+	ClientShare string `json:"AgentShare"`
+	// ID of the agent to which the agent intends to talk
+	AgentId string `json:"AgentId"`
 }
 
 // SecureSessionResponse is received by the agent from the client to set up a secure session.
@@ -401,12 +421,12 @@ type SecureSessionResponse struct {
 	// ClientShare is the public portion of the client's secret share.
 	ClientShare string `json:"ClientShare"`
 	// SessionID is the session ID. The client can compute this independently to ensure that a secret has been successfully shared.
-	SessionID              string `json:"SessionID"`
-	Signature              string `json:"Signature"`
-	ClientLTKeyARN         string `json:"ClientLTKeyARN"`
-	LogLTKeyARN            string `json:"LogLTKeyARN"`
-	EncryptedLogKey        string `json:"EncryptedLogKey"`
-	EncryptedClientReadKey string `json:"EncryptedClientReadKey"`
+	SessionID      string `json:"SessionID"`
+	Signature      string `json:"Signature"`
+	ClientLTKeyARN string `json:"ClientLTKeyARN"`
+	LogLTKeyARN    string `json:"LogLTKeyARN"`
+	// EncryptedLogKey        string `json:"EncryptedLogKey"`
+	// EncryptedClientReadKey string `json:"EncryptedClientReadKey"`
 }
 
 // Handshake payload sent by the agent to the session manager plugin
@@ -434,6 +454,24 @@ type HandshakeResponsePayload struct {
 	ClientVersion          string                  `json:"ClientVersion"`
 	ProcessedClientActions []ProcessedClientAction `json:"ProcessedClientActions"`
 	Errors                 []string                `json:"Errors"`
+}
+
+type SessionKeys struct {
+	AgentReadKey  string `json:"AgentReadKey"`
+	AgentWriteKey string `json:"AgentWriteKey"`
+}
+
+type SignSessionKeysPayload struct {
+	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
+	ClientId             string `json:"ClientId"`
+}
+
+type EncryptedSessionKeysPayload struct {
+	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
+	AgentLTKeyARN        string `json:"AgentLTKeyARN"`
+	ClientId             string `json:"ClientId"`
+	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
+	Signature            string `json:"Signature"`
 }
 
 // This is sent by the agent as a challenge to the client. The challenge field
