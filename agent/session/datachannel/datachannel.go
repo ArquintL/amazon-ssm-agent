@@ -115,35 +115,21 @@ type AgentHandshakeState struct {
 
 type InputStreamMessageHandler func(log log.T, streamDataMessage mgsContracts.AgentMessage) error
 
-type MessageReceptionChannelStatus struct {
-	status MessageReceptionStatus
-	// dataChannel *DataChannel
-}
-
 type MessageReceptionStatus int
 
 const (
-	ReceiveHandshakeRespone    MessageReceptionStatus = 1
-	ReceiveEncryptionChallenge MessageReceptionStatus = 2
-	ReceiveOtherResponse       MessageReceptionStatus = 3
+	ReceiveHandshakeRespone MessageReceptionStatus = 1
+	ReceiveOtherResponse    MessageReceptionStatus = 2
 )
-
-// type MessageReceptionChannelStatus struct{}
 
 type Handshake struct {
 	// Version of the client
 	clientVersion string
 	// Channel used to signal that a message is to be expected
-	startReceivingChan chan MessageReceptionChannelStatus
-	// Channel used to signal that a message has been received and successfully processed
-	// receptionConfirmedChan chan MessageReceptionChannelStatus
+	startReceivingChan chan MessageReceptionStatus
 	// Channel used to signal when handshake response is received
 	responseChan chan bool
-	// Random byte string used to verify encryption
-	encryptionChallenge []byte
-	// This indicates encryption was validated using encryption challenge exchange
-	encryptionConfirmedChan chan bool
-	error                   error
+	error        error
 	// Indicates handshake is complete (Handshake Complete message sent to client)
 	complete bool
 	// Indiciates if handshake has been skipped
@@ -184,15 +170,13 @@ func (dataChannel *DataChannel) Initialize(dataStream *datastream.DataStream,
 	dataChannel.dataStream = dataStream
 	dataChannel.inputStreamMessageHandler = inputStreamMessageHandler
 	dataChannel.handshake = Handshake{
-		startReceivingChan: make(chan MessageReceptionChannelStatus),
-		// receptionConfirmedChan:  make(chan MessageReceptionChannelStatus),
-		responseChan:            make(chan bool),
-		encryptionConfirmedChan: make(chan bool),
-		error:                   nil,
-		complete:                false,
-		skipped:                 false,
-		handshakeEndTime:        time.Now(),
-		handshakeStartTime:      time.Now(),
+		startReceivingChan: make(chan MessageReceptionStatus),
+		responseChan:       make(chan bool),
+		error:              nil,
+		complete:           false,
+		skipped:            false,
+		handshakeEndTime:   time.Now(),
+		handshakeStartTime: time.Now(),
 	}
 }
 
@@ -239,7 +223,7 @@ func (dataChannel *DataChannel) SendAgentSessionStateMessage(log log.T, sessionS
 	return nil
 }
 
-func tryReceive(channel chan MessageReceptionChannelStatus, timeout time.Duration) (res MessageReceptionChannelStatus, err error) {
+func tryReceive(channel chan MessageReceptionStatus, timeout time.Duration) (res MessageReceptionStatus, err error) {
 	select {
 	case res = <-channel:
 	case <-time.After(timeout):
@@ -257,7 +241,7 @@ func (dataChannel *DataChannel) processStreamDataMessage(log log.T, streamDataMe
 		return err
 	}
 
-	switch MessageReceptionStatus(channelStatus.status) {
+	switch channelStatus {
 	case ReceiveHandshakeRespone:
 		switch mgsContracts.PayloadType(streamDataMessage.PayloadType) {
 		case mgsContracts.HandshakeResponse:
@@ -270,26 +254,12 @@ func (dataChannel *DataChannel) processStreamDataMessage(log log.T, streamDataMe
 		default:
 			return fmt.Errorf("received message with unexpected payload type")
 		}
-	case ReceiveEncryptionChallenge:
-		switch mgsContracts.PayloadType(streamDataMessage.PayloadType) {
-		case mgsContracts.EncChallengeResponse:
-			{
-				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
-				if err = dataChannel.handleEncryptionChallengeResponse(log, streamDataMessage); err != nil {
-					return fmt.Errorf("processing of EncryptionChallengeReponse message failed, %v", err)
-				}
-			}
-		default:
-			return fmt.Errorf("received message with unexpected payload type")
-		}
 	case ReceiveOtherResponse:
 
 		if dataChannel.encryptionEnabled && streamDataMessage.PayloadType == uint32(mgsContracts.Output) {
 			if streamDataMessage.Payload, err = dataChannel.blockCipher.DecryptWithAESGCM(streamDataMessage.Payload); err != nil {
 				// send a message to the channel to prepare for next message reception:
-				dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-					status: ReceiveOtherResponse,
-				}
+				dataChannel.handshake.startReceivingChan <- ReceiveOtherResponse
 				return fmt.Errorf("Error decrypting stream data message sequence %d, err: %v", streamDataMessage.SequenceNumber, err)
 			}
 		}
@@ -301,21 +271,15 @@ func (dataChannel *DataChannel) processStreamDataMessage(log log.T, streamDataMe
 			// is supposed to be sent on the `startReceivingChan` channel AFTER the
 			// handshake has completed.
 			// send a message to the channel to prepare for next message reception:
-			dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-				status: ReceiveOtherResponse,
-			}
+			dataChannel.handshake.startReceivingChan <- ReceiveOtherResponse
 			return nil
 		}
 
 		if err = dataChannel.inputStreamMessageHandler(log, streamDataMessage); err != nil {
-			dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-				status: ReceiveOtherResponse,
-			}
+			dataChannel.handshake.startReceivingChan <- ReceiveOtherResponse
 			return err
 		}
-		dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-			status: ReceiveOtherResponse,
-		}
+		dataChannel.handshake.startReceivingChan <- ReceiveOtherResponse
 	}
 
 	return nil
@@ -521,33 +485,6 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log log.T, streamDataMes
 	return nil
 }
 
-// handleEncryptionChallengeResponse is the handler for payload type EncryptionChallengeRequest
-func (dataChannel *DataChannel) handleEncryptionChallengeResponse(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	log.Debug("Received Encryption Challenge Response.")
-	var encChallengeResponse mgsContracts.EncryptionChallengeResponse
-	if err := json.Unmarshal(streamDataMessage.Payload, &encChallengeResponse); err != nil {
-		return fmt.Errorf("Unmarshalling of EncryptionChallengeResponse message failed, %s AND %v", streamDataMessage.Payload, err)
-	}
-
-	log.Info("Verifying encryption challenge..")
-	responseChallenge, err := dataChannel.blockCipher.DecryptWithAESGCM(encChallengeResponse.Challenge)
-	if err != nil {
-		dataChannel.handshake.error = err
-		return err
-	}
-	if !bytes.Equal(responseChallenge, dataChannel.handshake.encryptionChallenge) {
-		err = fmt.Errorf("Encryption challenge does not match!")
-		dataChannel.handshake.error = err
-		return err
-	}
-	if err != nil {
-		dataChannel.handshake.encryptionConfirmedChan <- false
-	} else {
-		dataChannel.handshake.encryptionConfirmedChan <- true
-	}
-	return nil
-}
-
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
 func (dataChannel *DataChannel) SkipHandshake(log log.T) {
 	log.Info("Skipping handshake.")
@@ -692,9 +629,7 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 	}
 
 	// notify Go routing handling received messages that it can process a message:
-	dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-		status: ReceiveHandshakeRespone,
-	}
+	dataChannel.handshake.startReceivingChan <- ReceiveHandshakeRespone
 
 	// Block until handshake response is received or handshake times out
 	select {
@@ -712,27 +647,6 @@ func (dataChannel *DataChannel) PerformHandshake(log log.T,
 		}
 	}
 	stdLog.Printf("Handshake response received")
-
-	// If encryption was enabled send encryption challenge and block until challenge is received
-	if dataChannel.encryptionEnabled {
-		dataChannel.sendEncryptionChallenge(log)
-		// notify Go routing handling received messages that it can process a message:
-		dataChannel.handshake.startReceivingChan <- MessageReceptionChannelStatus{
-			status: ReceiveEncryptionChallenge,
-		}
-		select {
-		case <-dataChannel.handshake.encryptionConfirmedChan:
-			if dataChannel.handshake.error != nil {
-				return dataChannel.handshake.error
-			}
-			log.Info("Encryption challenge confirmed.")
-		case <-time.After(handshakeTimeout):
-			{
-				// If handshake times out here this means the cli is too old and does not understand handshake protocol.
-				return errors.New("Timed out waiting for encryption challenge.")
-			}
-		}
-	}
 
 	dataChannel.handshake.handshakeEndTime = time.Now()
 	handshakeCompletePayload := dataChannel.buildHandshakeCompletePayload(log)
@@ -901,28 +815,6 @@ func (dataChannel *DataChannel) sendHandshakeComplete(log log.T, handshakeComple
 		return err
 	}
 	return nil
-}
-
-// sendEncryptionChallenge sends encryption challenge
-func (dataChannel *DataChannel) sendEncryptionChallenge(log log.T) (err error) {
-	// Build the request
-	encChallengeRequest := mgsContracts.EncryptionChallengeRequest{}
-	randBytes := make([]byte, 64)
-	cryptoRand.Read(randBytes)
-	dataChannel.handshake.encryptionChallenge = randBytes
-	randBytes, err = dataChannel.blockCipher.EncryptWithAESGCM(randBytes)
-	if err != nil {
-		return err
-	}
-	encChallengeRequest.Challenge = randBytes
-
-	// Send it
-	log.Debug("Sending EncryptionChallengeRequest.")
-	err = dataChannel.sendStreamDataMessageJson(log, mgsContracts.EncChallengeRequest, encChallengeRequest)
-	if err != nil {
-		return err
-	}
-	return
 }
 
 // sendStreamDataMessageJson is utility method that serializes a struct into json and sends with the given payload type
