@@ -22,6 +22,7 @@ import (
 
 	"github.com/aws/amazon-ssm-agent/agent/contracts"
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
+	//@ "bytes"
 )
 
 const (
@@ -72,7 +73,7 @@ type ShellConfig struct {
 }
 
 type IMessage interface {
-	Deserialize(log logger.T, agentMessage AgentMessage) (err error)
+	Deserialize(log logger.T, agentMessage *AgentMessage) (err error)
 	Serialize(log logger.T) (result []byte, err error)
 }
 
@@ -164,8 +165,14 @@ type AgentSessionStateContent struct {
 	SessionId     string `json:"SessionId"`
 }
 
+/*@
+pred (agentSessionStateContent *AgentSessionStateContent) Mem() {
+	acc(agentSessionStateContent)
+}
+@*/
+
 // Deserialize parses AcknowledgeContent message from payload of AgentMessage.
-func (dataStreamAcknowledge *AcknowledgeContent) Deserialize(log logger.T, agentMessage AgentMessage) (err error) {
+func (dataStreamAcknowledge *AcknowledgeContent) Deserialize(log logger.T, agentMessage *AgentMessage) (err error) {
 	if agentMessage.MessageType != AcknowledgeMessage {
 		err = fmt.Errorf("AgentMessage is not of type AcknowledgeMessage. Found message type: %s", agentMessage.MessageType)
 		return
@@ -203,7 +210,7 @@ type ChannelClosed struct {
 }
 
 // Deserialize parses channelClosed message from payload of AgentMessage.
-func (channelClose *ChannelClosed) Deserialize(log logger.T, agentMessage AgentMessage) (err error) {
+func (channelClose *ChannelClosed) Deserialize(log logger.T, agentMessage *AgentMessage) (err error) {
 	if agentMessage.MessageType != ChannelClosedMessage {
 		err = fmt.Errorf("AgentMessage is not of type ChannelClosed. Found message type: %s", agentMessage.MessageType)
 		return
@@ -248,7 +255,7 @@ type AgentJobReplyAckContent struct {
 }
 
 // Deserialize parses taskAcknowledge message from payload of AgentMessage.
-func (replyAck *AgentJobReplyAckContent) Deserialize(log logger.T, agentMessage AgentMessage) (err error) {
+func (replyAck *AgentJobReplyAckContent) Deserialize(log logger.T, agentMessage *AgentMessage) (err error) {
 	if agentMessage.MessageType != AgentJobReplyAck {
 		err = fmt.Errorf("AgentMessage is not of type AgentJobReplyAck. Found message type: %s", agentMessage.MessageType)
 		return
@@ -278,7 +285,7 @@ type AcknowledgeTaskContent struct {
 }
 
 // Deserialize parses taskAcknowledge message from payload of AgentMessage.
-func (taskAcknowledge *AcknowledgeTaskContent) Deserialize(log logger.T, agentMessage AgentMessage) (err error) {
+func (taskAcknowledge *AcknowledgeTaskContent) Deserialize(log logger.T, agentMessage *AgentMessage) (err error) {
 	if agentMessage.MessageType != TaskAcknowledgeMessage {
 		err = fmt.Errorf("AgentMessage is not of type TaskAcknowledgeMessage. Found message type: %s", agentMessage.MessageType)
 		return
@@ -391,6 +398,12 @@ type SignAgentSharePayload struct {
 	LogReaderId string `json:"LogReaderId"`
 }
 
+/*@
+pred (signAgentSharePayload *SignAgentSharePayload) Mem() {
+	acc(signAgentSharePayload)
+}
+@*/
+
 // SecureSessionRequest is sent by the agent to the client to initiate a secure session.
 type SecureSessionRequest struct {
 	// Version is the version of the protocol we are using.
@@ -416,6 +429,12 @@ type SignClientSharePayload struct {
 	AgentId string `json:"AgentId"`
 }
 
+/*@
+pred (signClientSharePayload *SignClientSharePayload) Mem() {
+	acc(signClientSharePayload)
+}
+@*/
+
 // SecureSessionResponse is received by the agent from the client to set up a secure session.
 type SecureSessionResponse struct {
 	// ClientShare is the public portion of the client's secret share.
@@ -429,11 +448,23 @@ type SecureSessionResponse struct {
 	// EncryptedClientReadKey string `json:"EncryptedClientReadKey"`
 }
 
+/*@
+pred (secureSessionResponse *SecureSessionResponse) Mem() {
+	acc(secureSessionResponse)
+}
+@*/
+
 // Handshake payload sent by the agent to the session manager plugin
 type HandshakeRequestPayload struct {
 	AgentVersion           string                  `json:"AgentVersion"`
 	RequestedClientActions []RequestedClientAction `json:"RequestedClientActions"`
 }
+
+/*@
+pred (handshakeRequestPayload *HandshakeRequestPayload) Mem() {
+	acc(handshakeRequestPayload)
+}
+@*/
 
 // An action requested by the agent to the plugin
 type RequestedClientAction struct {
@@ -449,6 +480,13 @@ type ProcessedClientAction struct {
 	Error        string          `json:"Error"`
 }
 
+/*@
+pred (processedClientAction *ProcessedClientAction) Mem() {
+	acc(processedClientAction) &&
+	acc(bytes.SliceMem(processedClientAction.ActionResult))
+}
+@*/
+
 // Handshake Response sent by the plugin in response to the handshake request
 type HandshakeResponsePayload struct {
 	ClientVersion          string                  `json:"ClientVersion"`
@@ -456,15 +494,35 @@ type HandshakeResponsePayload struct {
 	Errors                 []string                `json:"Errors"`
 }
 
+/*@
+pred (handshakeResponsePayload *HandshakeResponsePayload) Mem() {
+	acc(handshakeResponsePayload) &&
+	(forall i int :: { handshakeResponsePayload.ProcessedClientActions[i] } 0 <= i && i < len(handshakeResponsePayload.ProcessedClientActions) ==> handshakeResponsePayload.ProcessedClientActions[i].Mem()) &&
+	acc(handshakeResponsePayload.Errors)
+}
+@*/
+
 type SessionKeys struct {
 	AgentReadKey  string `json:"AgentReadKey"`
 	AgentWriteKey string `json:"AgentWriteKey"`
 }
 
+/*@
+pred (sessionKeys *SessionKeys) Mem() {
+	acc(sessionKeys)
+}
+@*/
+
 type SignSessionKeysPayload struct {
 	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
 	ClientId             string `json:"ClientId"`
 }
+
+/*@
+pred (signSessionKeysPayload *SignSessionKeysPayload) Mem() {
+	acc(signSessionKeysPayload)
+}
+@*/
 
 type EncryptedSessionKeysPayload struct {
 	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
@@ -473,6 +531,13 @@ type EncryptedSessionKeysPayload struct {
 	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
 	Signature            string `json:"Signature"`
 }
+
+/*@
+pred (encryptedSessionKeysPayload *EncryptedSessionKeysPayload) Mem() {
+	acc(encryptedSessionKeysPayload)
+}
+*EncryptedSessionKeysPayload implements json.AnyWithMem
+@*/
 
 // This is sent by the agent as a challenge to the client. The challenge field
 // is some data that was encrypted by the agent. The client must be able to decrypt
@@ -494,6 +559,12 @@ type HandshakeCompletePayload struct {
 	HandshakeTimeToComplete time.Duration `json:"HandshakeTimeToComplete"`
 	CustomerMessage         string        `json:"CustomerMessage"`
 }
+
+/*@
+pred (handshakeCompletePayload *HandshakeCompletePayload) Mem() {
+	acc(handshakeCompletePayload)
+}
+@*/
 
 // ErrHandlerNotReady message indicates that the session plugin's incoming message handler is not ready
 var ErrHandlerNotReady = errors.New("message handler is not ready, rejecting incoming packet")

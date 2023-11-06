@@ -1,0 +1,37 @@
+package elliptic
+
+import (
+    "big"
+    "bytes"
+    "io"
+)
+
+type Curve interface {
+    pred Mem()
+
+    requires noPerm < p
+    preserves acc(Mem(), p) && acc(x.Mem(), p) && acc(y.Mem(), p)
+    IsOnCurve(x, y *big.Int, ghost p perm) bool
+    
+    requires noPerm < p
+    preserves acc(Mem(), p) && acc(x1.Mem(), p) && acc(y1.Mem(), p) && acc(bytes.SliceMem(k), p)
+    ensures x.Mem() && y.Mem()
+    ScalarMult(x1, y1 *big.Int, k []byte, ghost p perm) (x, y *big.Int)
+}
+
+ensures curve != nil && curve.Mem()
+func P384() (curve Curve)
+
+preserves curve.Mem() && rand.Mem()
+ensures err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
+func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x *big.Int, y *big.Int, err error)
+
+requires noPerm < p
+preserves curve.Mem() && acc(x.Mem(), p) && acc(y.Mem(), p)
+ensures bytes.SliceMem(res)
+func MarshalCompressed(curve Curve, x *big.Int, y *big.Int, ghost p perm) (res []byte)
+
+requires noPerm < p
+preserves curve.Mem() && bytes.SliceMem(data)
+ensures x.Mem() && y.Mem()
+func UnmarshalCompressed(curve Curve, data []byte, ghost p perm) (x *big.Int, y *big.Int)

@@ -1,0 +1,12 @@
+package rand
+
+import "io"
+
+var Reader io.Reader
+
+// since `Reader` is a global and shared instance of
+// a cryptographic random number generator, we assume
+// that the `Mem` predicate is a duplicable resource.
+ghost
+ensures Reader.Mem()
+func GetReaderMem()

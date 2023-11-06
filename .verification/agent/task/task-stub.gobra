@@ -1,0 +1,5 @@
+package task
+
+type CancelFlag interface{
+    pred Mem()
+}

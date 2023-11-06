@@ -1,0 +1,10 @@
+package kms
+
+type KeyMetadata struct {
+    Arn *string
+    additionalFields int
+}
+
+pred (meta *KeyMetadata) Mem() {
+    acc(meta) && acc(meta.Arn)
+}

@@ -1,0 +1,10 @@
+package io
+
+import "bytes"
+
+type Reader interface {
+	pred Mem()
+	
+	preserves bytes.SliceMem(p)
+	Read(p []byte) (n int, err error)
+}

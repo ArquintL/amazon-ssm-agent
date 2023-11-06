@@ -67,7 +67,7 @@ type DataStream struct {
 	//cancelFlag is used for passing cancel signal to plugin in when channel_closed message is received over data channel
 	cancelFlag task.CancelFlag
 	//streamDataHandler handles (possibly encrypted) messages received from the stream
-	streamDataHandler func(log log.T, msg mgsContracts.AgentMessage) error
+	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error
 }
 
 type ListMessageBuffer struct {
@@ -91,7 +91,7 @@ type StreamingMessage struct {
 func NewDataStream(context context.T,
 	channelId string,
 	clientId string,
-	streamDataHandler func(log log.T, msg mgsContracts.AgentMessage) error,
+	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) (*DataStream, error) {
 
 	log := context.Log()
@@ -158,7 +158,7 @@ func (dataStream *DataStream) Initialize(context context.T,
 	clientId string,
 	instanceId string,
 	role string,
-	streamDataHandler func(log log.T, msg mgsContracts.AgentMessage) error,
+	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) {
 
 	dataStream.context = context
@@ -460,7 +460,7 @@ func (dataStream *DataStream) ProcessAcknowledgedMessage(log log.T, acknowledgeM
 }
 
 // SendAcknowledgeMessage sends acknowledge message for stream data over data channel
-func (dataStream *DataStream) SendAcknowledgeMessage(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+func (dataStream *DataStream) SendAcknowledgeMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) error {
 	dataStreamAcknowledgeContent := &mgsContracts.AcknowledgeContent{
 		MessageType:         streamDataMessage.MessageType,
 		MessageId:           streamDataMessage.MessageId.String(),
@@ -561,16 +561,16 @@ func (dataStream *DataStream) dataChannelIncomingMessageHandler(log log.T, rawMe
 
 	switch streamDataMessage.MessageType {
 	case mgsContracts.InputStreamDataMessage:
-		return dataStream.handleStreamDataMessage(log, *streamDataMessage, rawMessage)
+		return dataStream.handleStreamDataMessage(log, streamDataMessage, rawMessage)
 	case mgsContracts.AcknowledgeMessage:
-		return dataStream.handleAcknowledgeMessage(log, *streamDataMessage)
+		return dataStream.handleAcknowledgeMessage(log, streamDataMessage)
 	case mgsContracts.ChannelClosedMessage:
-		return dataStream.handleChannelClosedMessage(log, *streamDataMessage)
+		return dataStream.handleChannelClosedMessage(log, streamDataMessage)
 	case mgsContracts.PausePublicationMessage:
-		dataStream.handlePausePublicationMessage(log, *streamDataMessage)
+		dataStream.handlePausePublicationMessage(log, streamDataMessage)
 		return nil
 	case mgsContracts.StartPublicationMessage:
-		dataStream.handleStartPublicationMessage(log, *streamDataMessage)
+		dataStream.handleStartPublicationMessage(log, streamDataMessage)
 		return nil
 	default:
 		log.Warnf("Invalid message type received: %s", streamDataMessage.MessageType)
@@ -607,7 +607,7 @@ func (dataStream *DataStream) calculateRetransmissionTimeout(log log.T, streamin
 
 // handleStreamDataMessage handles incoming stream data messages by processing the payload and updating expectedSequenceNumber.
 func (dataStream *DataStream) handleStreamDataMessage(log log.T,
-	streamDataMessage mgsContracts.AgentMessage,
+	streamDataMessage *mgsContracts.AgentMessage,
 	rawMessage []byte) (err error) {
 
 	dataStream.Pause = false
@@ -660,7 +660,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 }
 
 // handleAcknowledgeMessage deserialize acknowledge content and process it.
-func (dataStream *DataStream) handleAcknowledgeMessage(log log.T, streamDataMessage mgsContracts.AgentMessage) (err error) {
+func (dataStream *DataStream) handleAcknowledgeMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) (err error) {
 	dataStream.Pause = false
 	acknowledgeMessage := &mgsContracts.AcknowledgeContent{}
 	if err = acknowledgeMessage.Deserialize(log, streamDataMessage); err != nil {
@@ -673,7 +673,7 @@ func (dataStream *DataStream) handleAcknowledgeMessage(log log.T, streamDataMess
 }
 
 // handleChannelClosedMessage deserialize channel_closed message content and terminate the session.
-func (dataStream *DataStream) handleChannelClosedMessage(log log.T, streamDataMessage mgsContracts.AgentMessage) (err error) {
+func (dataStream *DataStream) handleChannelClosedMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) (err error) {
 	channelClosedMessage := &mgsContracts.ChannelClosed{}
 	if err = channelClosedMessage.Deserialize(log, streamDataMessage); err != nil {
 		log.Errorf("Cannot deserialize payload to ChannelClosed message: %s, err: %v.", string(streamDataMessage.Payload), err)
@@ -687,13 +687,13 @@ func (dataStream *DataStream) handleChannelClosedMessage(log log.T, streamDataMe
 }
 
 // handlePausePublicationMessage sets pause status of datachannel to true.
-func (dataStream *DataStream) handlePausePublicationMessage(log log.T, streamDataMessage mgsContracts.AgentMessage) {
+func (dataStream *DataStream) handlePausePublicationMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) {
 	dataStream.Pause = true
 	log.Debugf("Processed %s message. Datachannel pause status set to %s", streamDataMessage.MessageType, dataStream.Pause)
 }
 
 // handleStartPublicationMessage sets pause status of datachannel to false.
-func (dataStream *DataStream) handleStartPublicationMessage(log log.T, streamDataMessage mgsContracts.AgentMessage) {
+func (dataStream *DataStream) handleStartPublicationMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) {
 	dataStream.Pause = false
 	log.Debugf("Processed %s message. Datachannel pause status set to %s", streamDataMessage.MessageType, dataStream.Pause)
 }
@@ -714,7 +714,7 @@ func (dataStream *DataStream) processIncomingMessageBufferItems(log log.T) (err 
 				log.Errorf("Cannot deserialize raw message: %d, err: %v.", bufferedStreamMessage.SequenceNumber, err)
 				return err
 			}
-			if err = dataStream.streamDataHandler(log, *streamDataMessage); err != nil {
+			if err = dataStream.streamDataHandler(log, streamDataMessage); err != nil {
 				log.Errorf("Unable to process stream data payload, err: %v.", err)
 				return err
 			}

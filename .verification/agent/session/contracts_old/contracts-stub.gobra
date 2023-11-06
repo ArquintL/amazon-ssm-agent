@@ -1,0 +1,79 @@
+package contracts
+
+import (
+    "encoding/json"
+)
+
+type AgentSessionStateContent struct {
+    nonEmpty int
+}
+
+pred (agentSessionStateContent *AgentSessionStateContent) Mem() {
+	acc(agentSessionStateContent)
+}
+*AgentSessionStateContent implements json.AnyWithMem
+
+type HandshakeResponsePayload struct {
+    nonEmpty int
+}
+
+pred (handshakeResponsePayload *HandshakeResponsePayload) Mem() {
+	acc(handshakeResponsePayload)
+}
+*HandshakeResponsePayload implements json.AnyWithMem
+
+type SecureSessionResponse struct {
+    nonEmpty int
+}
+
+pred (secureSessionResponse *SecureSessionResponse) Mem() {
+	acc(secureSessionResponse)
+}
+
+type SignClientSharePayload struct {
+    nonEmpty int
+}
+
+pred (signClientSharePayload *SignClientSharePayload) Mem() {
+	acc(signClientSharePayload)
+}
+
+type SessionKeys struct {
+    nonEmpty int
+}
+
+pred (sessionKeys *SessionKeys) Mem() {
+	acc(sessionKeys)
+}
+
+type SignSessionKeysPayload struct {
+    nonEmpty int
+}
+
+pred (signSessionKeysPayload *SignSessionKeysPayload) Mem() {
+	acc(signSessionKeysPayload)
+}
+
+type EncryptedSessionKeysPayload struct {
+    nonEmpty int
+}
+
+pred (encryptedSessionKeysPayload *EncryptedSessionKeysPayload) Mem() {
+	acc(encryptedSessionKeysPayload)
+}
+
+type HandshakeRequestPayload struct {
+    nonEmpty int
+}
+
+pred (handshakeRequestPayload *HandshakeRequestPayload) Mem() {
+	acc(handshakeRequestPayload)
+}
+
+type HandshakeCompletePayload struct {
+    nonEmpty int
+}
+
+pred (handshakeCompletePayload *HandshakeCompletePayload) Mem() {
+	acc(handshakeCompletePayload)
+}

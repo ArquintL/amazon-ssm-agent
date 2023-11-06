@@ -60,10 +60,14 @@ func (p *SessionPlugin) Execute(
 	cancelFlag task.CancelFlag,
 	output iohandler.IOHandler) {
 
+	wrapperFn := func(log log.T, streamDataMessage *mgsContracts.AgentMessage) error {
+		return p.sessionPlugin.InputStreamMessageHandler(log, *streamDataMessage)
+	}
+
 	log := p.context.Log()
 	kmsKeyId := config.KmsKeyId
 
-	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, p.sessionPlugin.InputStreamMessageHandler)
+	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn)
 	if err != nil {
 		errorString := fmt.Errorf("Setting up data channel with id %s failed: %s", config.SessionId, err)
 		output.MarkAsFailed(errorString)

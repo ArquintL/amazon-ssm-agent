@@ -1,0 +1,18 @@
+package json
+
+import "bytes"
+
+type Number string
+type RawMessage []byte
+
+type AnyWithMem interface {
+    pred Mem()
+}
+
+requires noPerm < p
+preserves acc(v.Mem(), p)
+ensures err == nil ==> bytes.SliceMem(res)
+func Marshal(v AnyWithMem, ghost p perm) (res []byte, err error)
+
+preserves bytes.SliceMem(data) && v.Mem()
+func Unmarshal(data []byte, v AnyWithMem) error

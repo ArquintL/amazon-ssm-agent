@@ -1,0 +1,5 @@
+package context
+
+type T interface{
+    pred Mem()
+}

@@ -1,0 +1,18 @@
+{
+    "gobraSettings.moduleName": "github.com/aws/amazon-ssm-agent",
+    "gobraSettings.includeDirs": [
+        ".verification",
+        "."
+    ],
+    "gobraSettings.buildVersion": "Local",
+    "gobraDependencies.gobraToolsPaths": {
+        "gobraToolsBasePath": {
+            "mac": "$HOME/Library/Application Support/Code/User/globalStorage/viper-admin.gobra-ide/Nightly/GobraTools"
+        },
+        "serverJar": {
+            "mac": "/Users/arquintl/gobra-ide/server/target/scala-2.13/server.jar"
+        }
+    },
+    "gobraSettings.autoVerify": false,
+    "gobraSettings.verifyPackage": false,
+}

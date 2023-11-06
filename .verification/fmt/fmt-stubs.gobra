@@ -1,0 +1,4 @@
+package fmt
+
+ensures err != nil && err.ErrorMem()
+func Errorf(format string, params ...any) (err error)

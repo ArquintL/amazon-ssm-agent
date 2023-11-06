@@ -1,0 +1,73 @@
+package datastream
+
+import (
+	"bytes"
+    ctx "github.com/aws/amazon-ssm-agent/agent/context"
+    logger "github.com/aws/amazon-ssm-agent/agent/log"
+	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+    "github.com/aws/amazon-ssm-agent/agent/task"
+)
+
+type DataStream struct {
+    context    ctx.T
+	nonEmptyStruct int
+}
+
+pred (datastream *DataStream) Mem() {
+	acc(datastream) &&
+	acc(datastream.context.Mem(), _)
+}
+
+ghost
+func StreamDataHandlerFn(log logger.T, msg *mgsContracts.AgentMessage) (err error)
+
+type Calls interface {
+	pred Inv()
+}
+
+ghost
+requires cs != nil && log != nil
+preserves cs.Inv() && acc(log.Mem(), _) && msg.Mem()
+func StreamDataHandlerSpec(ghost cs Calls, log logger.T, msg *mgsContracts.AgentMessage) (err error)
+
+requires acc(context.Mem(), _) && cancelFlag.Mem()
+// the following precondition allows `NewDataStream` or a started go routine to invoke `streamDataHandler`:
+requires cs != nil && cs.Inv() && streamDataHandler implements StreamDataHandlerSpec{cs}
+ensures  err == nil ==> res.Mem()
+func NewDataStream(context ctx.T,
+	channelId string,
+	clientId string,
+	streamDataHandler func(log logger.T, msg *mgsContracts.AgentMessage) error,
+	cancelFlag task.CancelFlag,
+	ghost cs Calls) (res *DataStream, err error)
+
+// @ preserves acc(log.Mem(), _)
+// @ requires acc(bytes.SliceMem(inputData), _)
+func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) error
+
+func (datastream *DataStream) GetStreamDataSequenceNumber() int64
+
+func (datastream *DataStream) GetChannelId() string
+
+func (datastream *DataStream) GetInstanceId() string
+
+func (datastream *DataStream) GetClientId() string
+
+func (datastream *DataStream) GetRegion() string
+
+func (datastream *DataStream) IsActive() bool
+
+func (datastream *DataStream) CancelSession()
+
+func (datastream *DataStream) Close(log logger.T) error
+
+requires noPerm < p
+preserves acc(datastream.Mem(), p)
+ensures err == nil ==> service.Mem()
+func (datastream *DataStream) GetKMSService(ghost p perm) (service *crypto.KMSService, err error) {
+	unfold acc(datastream.Mem(), p)
+	service, err = crypto.NewKMSService(datastream.context)
+	fold acc(datastream.Mem(), p)
+	return
+}

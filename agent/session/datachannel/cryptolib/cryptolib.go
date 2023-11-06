@@ -1,0 +1,144 @@
+package cryptolib
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	cryptoRand "crypto/rand"
+	"fmt"
+	"io"
+
+	logger "github.com/aws/amazon-ssm-agent/agent/log"
+	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+	//@ "bytes"
+)
+
+type BlockCipherT struct {
+	cipherTextKey    []byte
+	encryptionKey    []byte
+	decryptionKey    []byte
+	encryptionCipher cipher.AEAD
+	decryptionCipher cipher.AEAD
+}
+
+/*@
+pred (bc *BlockCipherT) Mem() {
+	acc(bc) &&
+	(bc.cipherTextKey != nil ==> bytes.SliceMem(bc.cipherTextKey)) &&
+	(bc.encryptionKey != nil ==> bytes.SliceMem(bc.encryptionKey)) &&
+	(bc.decryptionKey != nil ==> bytes.SliceMem(bc.decryptionKey)) &&
+	(bc.encryptionCipher != nil ==> bc.encryptionCipher.Mem()) &&
+	(bc.decryptionCipher != nil ==> bc.decryptionCipher.Mem())
+}
+@*/
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
+func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm @*/) error {
+	newEncryptionKey := append(readKey, writeKey...)
+	return bc.UpdateEncryptionKey(log, newEncryptionKey, "", "" /*@, p @*/)
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(cipherTextBlob), p)
+func (bc *BlockCipherT) UpdateEncryptionKey(log logger.T, cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) error {
+	const keyLen = 32 // key length in bytes
+	bc.cipherTextKey = cipherTextBlob
+	bc.decryptionKey = cipherTextBlob[:keyLen]
+	bc.encryptionKey = cipherTextBlob[keyLen:]
+	log.Debugf("ENCRYPTION KEY: %x", bc.encryptionKey)
+	log.Debugf("DECRYPTION KEY: %x", bc.decryptionKey)
+	enc, err := getAEAD(bc.encryptionKey)
+	bc.encryptionCipher = enc
+	if err != nil {
+		return fmt.Errorf("failed to get encryption cipher: %v", err)
+	}
+	dec, err := getAEAD(bc.decryptionKey)
+	bc.decryptionCipher = dec
+	if err != nil {
+		return fmt.Errorf("failed to get decryption cipher: %v", err)
+	}
+
+	return nil
+}
+
+const nonceSize = 12
+
+// EncryptWithGCM encrypts plain text using AES block cipher GCM mode
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(plainText), p)
+// @ ensures err == nil ==> bytes.SliceMem(cipherText)
+func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p perm @*/) (cipherText []byte, err error) {
+	var aesgcm = blockCipher.encryptionCipher
+
+	cipherText = make([]byte, nonceSize+len(plainText))
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(cryptoRand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce for encryption: %v", err)
+	}
+
+	// Encrypt plain text using given key and newly generated nonce
+	cipherTextWithoutNonce := aesgcm.Seal(nil, nonce, plainText, nil)
+
+	// Append nonce to the beginning of the cipher text to be used while decrypting
+	cipherText = append(cipherText[:nonceSize], nonce...)
+	cipherText = append(cipherText[nonceSize:], cipherTextWithoutNonce...)
+	return cipherText, nil
+}
+
+// DecryptWithGCM decrypts cipher text using AES block cipher GCM mode
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(cipherText), p)
+// @ ensures err == nil ==> bytes.SliceMem(plainText)
+func (blockCipher *BlockCipherT) DecryptWithAESGCM(cipherText []byte /*@, ghost p perm @*/) (plainText []byte, err error) {
+	var aesgcm = blockCipher.decryptionCipher
+
+	// Pull the nonce out of the cipherText
+	nonce := cipherText[:nonceSize]
+	cipherTextWithoutNonce := cipherText[nonceSize:]
+
+	// Decrypt just the actual cipherText using nonce extracted above
+	if plainText, err = aesgcm.Open(nil, nonce, cipherTextWithoutNonce, nil); err != nil {
+		return nil, fmt.Errorf("failed to decrypt encrypted text: %v", err)
+	}
+	return plainText, nil
+}
+
+// GetCipherTextKey returns cipherTextKey from BlockCipher
+// @ requires false
+func (blockCipher *BlockCipherT) GetCipherTextKey() []byte {
+	return blockCipher.cipherTextKey
+}
+
+// GetKMSKeyId returns kmsKeyId from BlockCipher
+func (blockCipher *BlockCipherT) GetKMSKeyId() string {
+	return ""
+}
+
+// getAEAD gets AEAD which is a GCM cipher mode providing authenticated encryption with associated data
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(plainTextKey), p)
+// @ ensures err == nil ==> aesgcm.Mem()
+func getAEAD(plainTextKey []byte /*@, ghost p perm @*/) (aesgcm cipher.AEAD, err error) {
+	var block cipher.Block
+	if block, err = aes.NewCipher(plainTextKey); err != nil {
+		return nil, fmt.Errorf("error creating NewCipher, %v", err)
+	}
+
+	if aesgcm, err = cipher.NewGCM(block); err != nil {
+		return nil, fmt.Errorf("error creating NewGCM, %v", err)
+	}
+
+	return aesgcm, nil
+}
+
+// TODO what does this do?
+var _ crypto.IBlockCipher = (*BlockCipherT)(nil)
+
+// var newBlockCipher = func(context contextPkg.T, kmsKeyId string) (blockCipher crypto.IBlockCipher, err error) {
+// 	return crypto.NewBlockCipher(context, kmsKeyId)
+// }

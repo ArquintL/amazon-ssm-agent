@@ -84,7 +84,7 @@ func (rs ResultStatus) IsReboot() bool {
 }
 
 // MergeResultStatus takes two ResultStatuses (presumably from sub-tasks) and decides what the overall task status should be
-func MergeResultStatus(current ResultStatus, new ResultStatus) (merged ResultStatus) {
+func MergeResultStatus(current ResultStatus, newStatus ResultStatus) (merged ResultStatus) {
 	orderedResultStatus := [...]ResultStatus{
 		ResultStatusSkipped,
 		ResultStatusSuccess,
@@ -96,10 +96,10 @@ func MergeResultStatus(current ResultStatus, new ResultStatus) (merged ResultSta
 		ResultStatusCancelled,
 		ResultStatusTimedOut,
 	}
-	if current == "" {
-		return new
+	if current == ResultStatus("") {
+		return newStatus
 	}
-	if new == "" {
+	if newStatus == ResultStatus("") {
 		return current
 	}
 
@@ -107,13 +107,13 @@ func MergeResultStatus(current ResultStatus, new ResultStatus) (merged ResultSta
 	// We assume both exist in the array and therefore the first one found is at the lower index (so return the other one)
 	for _, ResultStatus := range orderedResultStatus {
 		if ResultStatus == current {
-			return new
+			return newStatus
 		}
-		if ResultStatus == new {
+		if ResultStatus == newStatus {
 			return current
 		}
 	}
-	return new // Default to new ResultStatus if neither is found in the array
+	return newStatus // Default to new ResultStatus if neither is found in the array
 }
 
 const (

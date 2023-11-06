@@ -1,0 +1,13 @@
+package contracts
+
+type DocumentState struct {
+    nonEmptyStruct int
+}
+
+type SessionDocumentContent struct {
+    nonEmptyStruct int
+}
+
+type DocumentInfo struct {
+    nonEmptyStruct int
+}

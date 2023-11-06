@@ -1,0 +1,22 @@
+package base64
+
+import "bytes"
+
+// we omit permissions to `encoding` because we assume
+// that the following variables are almost like constants
+// that do not get modified by calls to `EncodeToString` and
+// `DecodeString`.
+
+var StdEncoding *Encoding
+var RawStdEncoding *Encoding
+
+type Encoding struct {
+    nonEmptyStruct int
+}
+
+requires noPerm < p
+preserves acc(bytes.SliceMem(src), p)
+func (encoding *Encoding) EncodeToString(src []byte, ghost p perm) string
+
+ensures err == nil ==> bytes.SliceMem(res)
+func (encoding *Encoding) DecodeString(s string) (res []byte, err error)

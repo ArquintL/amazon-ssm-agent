@@ -365,7 +365,7 @@ func (mgs *MGSInteractor) processSessionRelatedMessages(agentMessage mgsContract
 
 func (mgs *MGSInteractor) processJobReplyAck(log log.T, agentMessage mgsContracts.AgentMessage) {
 	replyAcknowledge := &mgsContracts.AgentJobReplyAckContent{}
-	if err := replyAcknowledge.Deserialize(log, agentMessage); err != nil {
+	if err := replyAcknowledge.Deserialize(log, &agentMessage); err != nil {
 		log.Errorf("Cannot parse AgentReply message to taskAck message: %s, err: %v.", agentMessage.MessageId, err)
 	}
 	log.Infof("received ack id %v for message id %v", replyAcknowledge.AcknowledgedMessageId, agentMessage.MessageId)
@@ -486,7 +486,7 @@ func (mgs *MGSInteractor) processTaskAcknowledgeMessage(agentMessage mgsContract
 	log.Debugf("Processing Task Acknowledge message %s", agentMessage.MessageId.String())
 
 	taskAcknowledge := &mgsContracts.AcknowledgeTaskContent{}
-	if err := taskAcknowledge.Deserialize(log, agentMessage); err != nil {
+	if err := taskAcknowledge.Deserialize(log, &agentMessage); err != nil {
 		log.Errorf("Cannot parse AgentTask message to TaskAcknowledgeMessage message: %s, err: %v.", agentMessage.MessageId.String(), err)
 		return
 	}
