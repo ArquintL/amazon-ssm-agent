@@ -78,8 +78,21 @@ type IDataChannel interface {
 	SetSeparateOutputPayload(separateOutputPayload bool)
 }
 
+type DataChannelState int
+
+const (
+	Uninitialized          DataChannelState = 0
+	Initialized            DataChannelState = 1
+	HandshakeSkipped       DataChannelState = 2
+	BlockCipherInitialized DataChannelState = 3
+	AgentSecretCreated     DataChannelState = 4
+	HandshakeCompleted     DataChannelState = 5
+)
+
 // DataChannel used for session communication between the message gateway service and the agent.
 type DataChannel struct {
+	//dataChannelState keeps track of the data channel's state such that calls violating the implicit state machine transitions can be rejected
+	dataChannelState DataChannelState
 	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
 	dataStream *datastream.DataStream
 	//inputStreamMessageHandler is responsible for handling plugin specific input_stream_data message
@@ -117,8 +130,9 @@ type InputStreamMessageHandler = func(log logger.T, streamDataMessage *mgsContra
 type MessageReceptionStatus int
 
 const (
-	ReceiveHandshakeRespone MessageReceptionStatus = 1
-	ReceiveOtherResponse    MessageReceptionStatus = 2
+	ReceiveHandshakeResponeEncryptionEnabled  MessageReceptionStatus = 1
+	ReceiveHandshakeResponeEncryptionDisabled MessageReceptionStatus = 2
+	ReceiveOtherResponse                      MessageReceptionStatus = 3
 )
 
 type Handshake struct {
@@ -138,6 +152,12 @@ type Handshake struct {
 }
 
 type TestStruct struct{}
+
+// @ requires acc(dataChannel.Mem(), _)
+// @ pure
+func (dataChannel *DataChannel) GetState() DataChannelState {
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.dataChannelState
+}
 
 /*@
 pred (testStruct *TestStruct) Inv() {
@@ -210,18 +230,10 @@ pred (dataChannel *DataChannel) RecvRoutineMem() {
 // 	(dataChannel.encryptionEnabled ==> dataChannel.blockCipher != nil)
 // }
 
-type MemState int
-
-const (
-	Initialized MemState = 0
-	HandshakeSkipped MemState = 1
-	BlockCipherInitialized MemState = 2
-	AgentSecretCreated MemState = 3
-)
-
 // permissions in `RecvRoutineMem` are already subtracted:
-pred (dataChannel *DataChannel) Mem(state MemState) {
+pred (dataChannel *DataChannel) Mem() {
 	dataChannel != nil &&
+	acc(&dataChannel.dataChannelState) &&
 	acc(&dataChannel.dataStream) &&
 	// acc(&dataChannel.inputStreamMessageHandler) &&
 	acc(&dataChannel.handshake.clientVersion) &&
@@ -240,31 +252,36 @@ pred (dataChannel *DataChannel) Mem(state MemState) {
 	acc(&dataChannel.logReaderId) &&
 	acc(&dataChannel.logLTPk) &&
 	// acc(&dataChannel.msgHandlerCtx) &&
-	dataChannel.dataStream.Mem() &&
+	(dataChannel.dataChannelState >= Initialized ==>
+		dataChannel.dataStream.Mem()) &&
 	// dataChannel.msgHandlerCtx != nil && dataChannel.msgHandlerCtx.Inv() &&
 	// dataChannel.inputStreamMessageHandler implements StreamDataHandlerSpec{dataChannel.msgHandlerCtx} &&
 	// (dataChannel.encryptionEnabled ==> dataChannel.blockCipher != nil && dataChannel.blockCipher.Mem()) &&
-	acc(dataChannel.handshake.startReceivingChan.SendChannel(), _) &&
+	(dataChannel.dataChannelState <= Initialized ==>
+		dataChannel.handshake.startReceivingChan.SendChannel()) &&
+	(dataChannel.dataChannelState > Initialized ==>
+		acc(dataChannel.handshake.startReceivingChan.SendChannel(), _)) &&
 	dataChannel.handshake.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dataChannel, _!> &&
 	dataChannel.handshake.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
 	dataChannel.handshake.responseChan.RecvChannel() &&
 	dataChannel.handshake.responseChan.RecvGivenPerm() == PredTrue!<!> &&
 	dataChannel.handshake.responseChan.RecvGotPerm() == ResponseChanInv!<dataChannel, _!> &&
-	(state == Initialized ==>
+	(dataChannel.dataChannelState == Initialized ==>
 		!dataChannel.handshake.skipped) &&
-	(state == HandshakeSkipped ==>
+	(dataChannel.dataChannelState == HandshakeSkipped ==>
 		dataChannel.handshake.skipped) &&
-	(state >= BlockCipherInitialized ==>
+	(dataChannel.dataChannelState >= BlockCipherInitialized ==>
 		!dataChannel.handshake.skipped &&
 		dataChannel.blockCipher != nil && dataChannel.blockCipher.Mem()) &&
-	(state >= AgentSecretCreated ==>
+	(dataChannel.dataChannelState >= AgentSecretCreated && dataChannel.dataChannelState < HandshakeCompleted ==>
 		dataChannel.logLTPk.Mem() &&
 		dataChannel.state.kmsService.Mem() &&
 		bytes.SliceMem(dataChannel.state.agentSecret))
 }
 
-pred (dataChannel *DataChannel) MemTransfer(state MemState) {
+pred (dataChannel *DataChannel) MemTransfer() {
 	dataChannel != nil &&
+	acc(&dataChannel.dataChannelState) &&
 	acc(&dataChannel.dataStream) &&
 	// acc(&dataChannel.inputStreamMessageHandler) &&
 	acc(&dataChannel.handshake.clientVersion) &&
@@ -293,40 +310,12 @@ pred (dataChannel *DataChannel) MemTransfer(state MemState) {
 	dataChannel.handshake.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dataChannel, _!> &&
 	dataChannel.handshake.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
 	!dataChannel.handshake.skipped &&
-	(state >= BlockCipherInitialized ==>
+	(dataChannel.dataChannelState >= BlockCipherInitialized ==>
 		dataChannel.blockCipher != nil && dataChannel.blockCipher.Mem()) &&
-	(state >= AgentSecretCreated ==>
+	(dataChannel.dataChannelState >= AgentSecretCreated ==>
 		dataChannel.logLTPk.Mem() &&
 		dataChannel.state.kmsService.Mem() &&
 		bytes.SliceMem(dataChannel.state.agentSecret))
-}
-
-pred (dataChannel *DataChannel) RemMem() {
-	dataChannel != nil &&
-	acc(&dataChannel.dataStream) &&
-	// acc(&dataChannel.inputStreamMessageHandler) &&
-	acc(&dataChannel.handshake.clientVersion) &&
-	acc(&dataChannel.handshake.startReceivingChan, 1/2) &&
-	acc(&dataChannel.handshake.responseChan, 1/2) &&
-	acc(&dataChannel.handshake.error) &&
-	acc(&dataChannel.handshake.complete) &&
-	acc(&dataChannel.handshake.skipped) &&
-	acc(&dataChannel.handshake.handshakeStartTime) &&
-	acc(&dataChannel.handshake.handshakeEndTime) &&
-	acc(&dataChannel.blockCipher) &&
-	acc(&dataChannel.encryptionEnabled) &&
-	acc(&dataChannel.separateOutputPayload) &&
-	acc(&dataChannel.state) &&
-	acc(&dataChannel.agentLTKeyARN) &&
-	acc(&dataChannel.logReaderId) &&
-	acc(&dataChannel.logLTPk) &&
-	// acc(&dataChannel.msgHandlerCtx) &&
-	acc(dataChannel.handshake.startReceivingChan.SendChannel()) &&
-	dataChannel.handshake.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dataChannel, _!> &&
-	dataChannel.handshake.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
-	dataChannel.handshake.responseChan.RecvChannel() &&
-	dataChannel.handshake.responseChan.RecvGivenPerm() == PredTrue!<!> &&
-	dataChannel.handshake.responseChan.RecvGotPerm() == ResponseChanInv!<dataChannel, _!>
 }
 
 pred (dataChannel *DataChannel) Inv() {
@@ -334,24 +323,28 @@ pred (dataChannel *DataChannel) Inv() {
 }
 
 pred StartReceivingChanInv(dataChannel *DataChannel, msg MessageReceptionStatus) {
-	(msg == ReceiveHandshakeRespone ==> dataChannel.MemTransfer(AgentSecretCreated)) && // acc(dataChannel.Mem(), 1/2) && acc(&dataChannel.handshake.clientVersion, 1/2)) &&
-	(msg == ReceiveOtherResponse ==> acc(dataChannel.Mem(AgentSecretCreated), 1/2) &&
-		unfolding acc(dataChannel.Mem(AgentSecretCreated), 1/2) in dataChannel.handshake.complete)
+	(msg == ReceiveHandshakeResponeEncryptionEnabled ==> dataChannel.MemTransfer() &&
+		unfolding dataChannel.MemTransfer() in dataChannel.dataChannelState == AgentSecretCreated) && // acc(dataChannel.Mem(), 1/2) && acc(&dataChannel.handshake.clientVersion, 1/2)) &&
+	(msg == ReceiveHandshakeResponeEncryptionDisabled ==> dataChannel.MemTransfer() &&
+		unfolding dataChannel.MemTransfer() in dataChannel.dataChannelState == BlockCipherInitialized) &&
+	(msg == ReceiveOtherResponse ==> acc(dataChannel.Mem(), 1/2) &&
+		dataChannel.GetState() == AgentSecretCreated &&
+		unfolding acc(dataChannel.Mem(), 1/2) in dataChannel.handshake.complete)
 }
 
-pred ResponseChanInv(dataChannel *DataChannel, response bool) {
-	// acc(dataChannel.Mem(), 1/2) && acc(&dataChannel.handshake.clientVersion, 1/2)
-	dataChannel.MemTransfer(AgentSecretCreated)
+pred ResponseChanInv(dataChannel *DataChannel, encryptionEnabled bool) {
+	dataChannel.MemTransfer() &&
+	unfolding dataChannel.MemTransfer() in (encryptionEnabled ==> dataChannel.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dataChannel.dataChannelState == BlockCipherInitialized)
 }
 @*/
 
-// TODO: make `msgHandlerCtx` a ghost parameter as soon as Gobra supports
+// TODO: make `ctx` a ghost parameter as soon as Gobra supports
 // ghost fields
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context.Mem() && cancelFlag.Mem()
 // @ requires ctx != nil && ctx.Inv() && inputStreamMessageHandler implements StreamDataHandlerSpec{ctx}
-// @ ensures  err == nil ==> res.Mem(Initialized)
+// @ ensures  err == nil ==> res.Mem() && res.GetState() == Initialized
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
@@ -378,6 +371,7 @@ func NewDataChannel(context contextPkg.T,
 	    }
 	@*/
 
+	dataChannel.dataChannelState = Uninitialized
 	dataChannel.handshake.startReceivingChan = make(chan MessageReceptionStatus)
 	//@ dataChannel.handshake.startReceivingChan.Init(StartReceivingChanInv!<dataChannel, _!>, PredTrue!<!>)
 	dataChannel.inputStreamMessageHandler = inputStreamMessageHandler
@@ -386,7 +380,7 @@ func NewDataChannel(context contextPkg.T,
 	//@ dataChannel.handshake.responseChan.Init(ResponseChanInv!<dataChannel, _!>, PredTrue!<!>)
 
 	//@ fold dataChannel.RecvRoutineMem()
-	//@ fold dataChannel.RemMem()
+	//@ fold dataChannel.Mem()
 	//@ fold dataChannel.Inv()
 	dataStream, err := datastream.NewDataStream(context,
 		channelId,
@@ -404,13 +398,12 @@ func NewDataChannel(context contextPkg.T,
 }
 
 // initialize populates datachannel object.
-// requires acc(dataChannel) && dataStream.Mem()
-// @ requires dataChannel.RemMem() && dataStream.Mem()
-// requires msgHandlerCtx != nil && msgHandlerCtx.Inv() && inputStreamMessageHandler implements StreamDataHandlerSpec{msgHandlerCtx}
-// @ ensures  dataChannel.Mem(Initialized)
+// @ requires dataChannel.Mem() && dataChannel.GetState() == Uninitialized && dataStream.Mem()
+// @ ensures  dataChannel.Mem() && dataChannel.GetState() == Initialized
 func (dataChannel *DataChannel) Initialize(dataStream *datastream.DataStream,
 	inputStreamMessageHandler InputStreamMessageHandler /*@, msgHandlerCtx StreamDataHandlerContext @*/) {
-	// @ unfold dataChannel.RemMem()
+	// @ unfold dataChannel.Mem()
+	dataChannel.dataChannelState = Initialized
 	dataChannel.dataStream = dataStream
 	dataChannel.encryptionEnabled = false
 	/*
@@ -429,14 +422,15 @@ func (dataChannel *DataChannel) Initialize(dataStream *datastream.DataStream,
 	dataChannel.handshake.skipped = false
 	dataChannel.handshake.handshakeEndTime = time.Now()
 	dataChannel.handshake.handshakeStartTime = time.Now()
-	// @ fold dataChannel.Mem(Initialized)
+	// @ fold dataChannel.Mem()
 }
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
 // @ requires log != nil && noPerm < p && p <= writePerm
-// @ preserves dataChannel.Mem(AgentSecretCreated)
-// @ preserves acc(log.Mem(), _) && acc(bytes.SliceMem(inputData), p)
+// @ requires acc(bytes.SliceMem(inputData), p)
+// @ preserves dataChannel.Mem() && dataChannel.GetState() == AgentSecretCreated
+// @ preserves acc(log.Mem(), _)
 func (dataChannel *DataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm @*/) (err error) {
 	if len(inputData) == 0 {
 		log.Debugf("Ignoring empty stream data payload. PayloadType: %d", payloadType)
@@ -447,21 +441,24 @@ func (dataChannel *DataChannel) SendStreamDataMessage(log logger.T, payloadType 
 }
 
 // @ requires log != nil && noPerm < p && p <= writePerm
-// @ preserves dataChannel.Mem(AgentSecretCreated)
-// @ preserves acc(log.Mem(), _) && acc(bytes.SliceMem(inputData), p)
+// @ requires acc(dataChannel.Mem(), p) && dataChannel.GetState() >= BlockCipherInitialized
+// @ requires acc(bytes.SliceMem(inputData), p)
+// @ preserves acc(log.Mem(), _)
+// @ ensures acc(dataChannel.Mem(), p) && dataChannel.GetState() == old(dataChannel.GetState())
 func (dataChannel *DataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm @*/) (err error) {
-	// @ unfold dataChannel.Mem(AgentSecretCreated)
+	// @ oldState := dataChannel.GetState()
+	// @ unfold acc(dataChannel.Mem(), p/2)
 	// If encryption has been enabled, encrypt the payload
 	if dataChannel.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
 		if inputData, err = dataChannel.blockCipher.EncryptWithAESGCM(inputData /*@, p/2 @*/); err != nil {
-			err = fmt.Errorf("error encrypting stream data message sequence %d, err: %v", dataChannel.dataStream.GetStreamDataSequenceNumber(), err)
-			// @ fold dataChannel.Mem(AgentSecretCreated)
+			err = fmt.Errorf("error encrypting stream data message sequence %d, err: %v", dataChannel.dataStream.GetStreamDataSequenceNumber( /*@ p/2 @*/ ), err)
+			// @ fold acc(dataChannel.Mem(), p/2)
 			return
 		}
 	}
 
-	dataChannel.dataStream.Send(log, payloadType, inputData)
-	// @ fold dataChannel.Mem(AgentSecretCreated)
+	dataChannel.dataStream.Send(log, payloadType, inputData /*@, p/2 @*/)
+	// @ fold acc(dataChannel.Mem(), p/2)
 	return nil
 }
 
@@ -471,8 +468,9 @@ func (dataChannel *DataChannel) sendData(log logger.T, payloadType mgsContracts.
 // SendAgentSessionStateMessage sends agent session state to MGS
 // @ trusted
 // @ requires log != nil
-// @ preserves dataChannel.Mem(state) && acc(log.Mem(), _)
-func (dataChannel *DataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus /*@, ghost state MemState @*/) error {
+// @ preserves dataChannel.Mem() && acc(log.Mem(), _)
+// @ ensures dataChannel.GetState() == old(dataChannel.GetState())
+func (dataChannel *DataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) error {
 	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
 		SchemaVersion: schemaVersion,
 		SessionState:  string(sessionStatus),
@@ -511,7 +509,7 @@ func (dataChannel *DataChannel) tryReceiveMessageReceptionStatus(timeout time.Du
 
 // @ trusted
 // @ requires noPerm < p
-// @ preserves acc(dataChannel.Mem(AgentSecretCreated), p)
+// @ preserves acc(dataChannel.Mem(), p) && dataChannel.GetState() == AgentSecretCreated
 // @ ensures  err == nil ==> ResponseChanInv!<dataChannel, _!>(res)
 func (dataChannel *DataChannel) tryReceiveResponse(timeout time.Duration /*@, ghost p perm @*/) (res bool, err error) {
 	var ok bool
@@ -578,15 +576,15 @@ func (dataChannel *DataChannel) tryReceiveMessageReceptionStatusModel(timeout ti
 // we use this function to validate the spec of `tryReceiveResponse`
 ghost
 requires noPerm < p
-preserves acc(dataChannel.Mem(AgentSecretCreated), p)
+preserves acc(dataChannel.Mem(), p) && dataChannel.GetState() == AgentSecretCreated
 ensures  err == nil ==> ResponseChanInv!<dataChannel, _!>(res)
 func (dataChannel *DataChannel) tryReceiveResponseModel(timeout time.Duration, ghost p perm) (res bool, err error) {
 	if nonDeterministicChoice() {
-		unfold acc(dataChannel.Mem(AgentSecretCreated), p)
+		unfold acc(dataChannel.Mem(), p)
 		fold PredTrue!<!>()
 		var ok bool
 		res, ok = <-dataChannel.handshake.responseChan
-		fold acc(dataChannel.Mem(AgentSecretCreated), p)
+		fold acc(dataChannel.Mem(), p)
 		if !ok {
 			err = fmt.Errorf("Channel has been closed")
 			return
@@ -631,14 +629,28 @@ func (dataChannel *DataChannel) processStreamDataMessage(log logger.T, streamDat
 	}
 
 	switch channelStatus {
-	case ReceiveHandshakeRespone:
+	case ReceiveHandshakeResponeEncryptionEnabled:
 		payloadType := /*@ unfolding streamDataMessage.Mem() in @*/ streamDataMessage.PayloadType
 		switch mgsContracts.PayloadType(payloadType) {
 		case mgsContracts.HandshakeResponse:
 			{
 				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
-				//@ unfold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeRespone)
-				if err = dataChannel.handleHandshakeResponse(log, streamDataMessage); err != nil {
+				//@ unfold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeResponeEncryptionEnabled)
+				if err = dataChannel.handleHandshakeResponse(log, streamDataMessage, true); err != nil {
+					return fmt.Errorf("processing of HandshakeResponse message failed, %v", err)
+				}
+			}
+		default:
+			return fmt.Errorf("received message with unexpected payload type")
+		}
+	case ReceiveHandshakeResponeEncryptionDisabled:
+		payloadType := /*@ unfolding streamDataMessage.Mem() in @*/ streamDataMessage.PayloadType
+		switch mgsContracts.PayloadType(payloadType) {
+		case mgsContracts.HandshakeResponse:
+			{
+				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
+				//@ unfold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeResponeEncryptionDisabled)
+				if err = dataChannel.handleHandshakeResponse(log, streamDataMessage, false); err != nil {
 					return fmt.Errorf("processing of HandshakeResponse message failed, %v", err)
 				}
 			}
@@ -647,13 +659,13 @@ func (dataChannel *DataChannel) processStreamDataMessage(log logger.T, streamDat
 		}
 	case ReceiveOtherResponse:
 		//@ unfold StartReceivingChanInv!<dataChannel, _!>(ReceiveOtherResponse)
-		//@ unfold acc(dataChannel.Mem(AgentSecretCreated), 1/2)
+		//@ unfold acc(dataChannel.Mem(), 1/2)
 		//@ unfold streamDataMessage.Mem()
 		if dataChannel.encryptionEnabled && streamDataMessage.PayloadType == uint32(mgsContracts.Output) {
 			plaintext, err := dataChannel.blockCipher.DecryptWithAESGCM(streamDataMessage.Payload /*@, perm(1/2) @*/)
 			if err != nil {
 				// send a message to the channel to prepare for next message reception:
-				//@ fold acc(dataChannel.Mem(AgentSecretCreated), 1/2)
+				//@ fold acc(dataChannel.Mem(), 1/2)
 				dataChannel.resendReceiveOtherResponse()
 				err = fmt.Errorf("Error decrypting stream data message sequence %d, err: %v", streamDataMessage.SequenceNumber, err)
 				//@ fold streamDataMessage.Mem()
@@ -679,7 +691,7 @@ func (dataChannel *DataChannel) processStreamDataMessage(log logger.T, streamDat
 			*/
 		}
 
-		//@ fold acc(dataChannel.Mem(AgentSecretCreated), 1/2)
+		//@ fold acc(dataChannel.Mem(), 1/2)
 		//@ unfold dataChannel.RecvRoutineMem()
 		err = dataChannel.inputStreamMessageHandler(log, streamDataMessage) /*@ as StreamDataHandlerSpec{dataChannel.msgHandlerCtx} @*/
 		//@ fold dataChannel.RecvRoutineMem()
@@ -693,13 +705,13 @@ func (dataChannel *DataChannel) processStreamDataMessage(log logger.T, streamDat
 	return nil
 }
 
-// @ requires acc(dataChannel.Mem(AgentSecretCreated), 1/2) && unfolding acc(dataChannel.Mem(AgentSecretCreated), 1/2) in dataChannel.handshake.complete
+// @ requires acc(dataChannel.Mem(), 1/2) && dataChannel.GetState() == AgentSecretCreated && unfolding acc(dataChannel.Mem(), 1/2) in dataChannel.handshake.complete
 // @ preserves dataChannel.RecvRoutineMem()
 func (dataChannel *DataChannel) resendReceiveOtherResponse() {
-	//@ unfold acc(dataChannel.Mem(AgentSecretCreated), 1/2)
+	//@ unfold acc(dataChannel.Mem(), 1/2)
 	// unfold `RecvRoutineMem` before folding `Mem` such that equality of `startReceivingChan` is derived
 	//@ unfold dataChannel.RecvRoutineMem()
-	//@ fold acc(dataChannel.Mem(AgentSecretCreated), 1/2)
+	//@ fold acc(dataChannel.Mem(), 1/2)
 	//@ fold StartReceivingChanInv!<dataChannel, _!>(ReceiveOtherResponse)
 	dataChannel.handshake.startReceivingChan <- ReceiveOtherResponse
 	//@ fold dataChannel.RecvRoutineMem()
@@ -785,10 +797,11 @@ func foo(action *mgsContracts.ProcessedClientAction) {
 
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
 // requires log != nil && acc(dataChannel.Mem(), 1/2) && acc(&dataChannel.handshake.clientVersion, 1/2)
-// @ requires log != nil && dataChannel.MemTransfer(AgentSecretCreated)
+// @ requires log != nil && dataChannel.MemTransfer()
+// @ requires unfolding dataChannel.MemTransfer() in (encryptionEnabled ==> dataChannel.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dataChannel.dataChannelState == BlockCipherInitialized)
 // @ preserves acc(log.Mem(), _) && dataChannel.RecvRoutineMem()
 // @ preserves streamDataMessage.Mem()
-func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *mgsContracts.AgentMessage) error {
+func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) error {
 	log.Debug("Received Handshake Response.")
 	var handshakeResponse /*@ @ @*/ mgsContracts.HandshakeResponsePayload
 	//@ fold handshakeResponse.Mem()
@@ -802,7 +815,8 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 	// assert forall i uint :: { handshakeResponse.ProcessedClientActions[i] } 0 <= i && i < len(handshakeResponse.ProcessedClientActions) ==> handshakeResponse.ProcessedClientActions[i].Mem()
 
 	actions := handshakeResponse.ProcessedClientActions
-	//@ invariant dataChannel.MemTransfer(AgentSecretCreated)
+	//@ invariant dataChannel.MemTransfer()
+	//@ invariant unfolding dataChannel.MemTransfer() in (encryptionEnabled ==> dataChannel.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dataChannel.dataChannelState == BlockCipherInitialized)
 	//@ invariant acc(log.Mem(), _)
 	//@ invariant forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> actions[i].Mem()
 	for i := range actions {
@@ -818,6 +832,12 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 			case mgsContracts.SecureSession:
 				var resp /*@ @ @*/ mgsContracts.SecureSessionResponse
 				//@ fold resp.Mem()
+				if !encryptionEnabled {
+					//@ fold actions[i].Mem()
+					err = fmt.Errorf("unexpected action type 'SecureSession' because encryption is disabled")
+					break
+				}
+
 				if err = json.Unmarshal(action.ActionResult, &resp); err != nil {
 					//@ fold actions[i].Mem()
 					err = fmt.Errorf("failed to unmarshal action to SecureSessionResponse: %v", err)
@@ -833,9 +853,9 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 					break
 				}
 
-				//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ unfold dataChannel.MemTransfer()
 				agentId := dataChannel.dataStream.GetInstanceId()
-				//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ fold dataChannel.MemTransfer()
 				clientSignPayload := &mgsContracts.SignClientSharePayload{
 					ClientShare: resp.ClientShare,
 					AgentId:     agentId,
@@ -849,9 +869,9 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 					return err
 				}
 
-				//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ unfold dataChannel.MemTransfer()
 				ok, err := dataChannel.state.kmsService.Verify(resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2) @*/)
-				//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ fold dataChannel.MemTransfer()
 				if !ok || err != nil {
 					err = fmt.Errorf("failed to verify signature: %v", err)
 					break
@@ -877,7 +897,7 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 				}
 
 				// generate and store the shared secret
-				//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ unfold dataChannel.MemTransfer()
 				ss, _ := elliptic.P384().ScalarMult(clientx, clienty, dataChannel.state.agentSecret /*@, perm(1/2) @*/) // TODO: Double check it's fine to just use x
 				dataChannel.state.sharedSecret = ss.Bytes( /*@ perm(1/2) @*/ )
 
@@ -889,7 +909,7 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 				var sessionIDBytes []byte
 				sessionIDBytes, err = base64.StdEncoding.DecodeString(resp.SessionID)
 				if err != nil {
-					//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+					//@ fold dataChannel.MemTransfer()
 					err = fmt.Errorf("failed to decode server session id: %v", err)
 					log.Error(err)
 					break
@@ -897,7 +917,7 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 
 				if !bytes.Equal(dataChannel.state.sessionID, sessionIDBytes) {
 					err = fmt.Errorf("session ID mismatch: session ID %s does not match client session ID %s", sessionIDBytes, dataChannel.state.sessionID)
-					//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+					//@ fold dataChannel.MemTransfer()
 					log.Error(err)
 					break
 				}
@@ -991,12 +1011,12 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 				dataChannel.encryptionEnabled = true
 
 				if err = dataChannel.blockCipher.UpdateEncryptionKeys(log, dataChannel.state.agentReadKey, dataChannel.state.agentWriteKey /*@, perm(1/2) @*/); err != nil {
-					//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+					//@ fold dataChannel.MemTransfer()
 					err = fmt.Errorf("failed to update block cipher: %v", err)
 					log.Error(err)
 					break
 				}
-				//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+				//@ fold dataChannel.MemTransfer()
 			// case mgsContracts.KMSEncryption:
 			// 	err = dataChannel.finalizeKMSEncryption(log, action.ActionResult)
 			// 	break
@@ -1011,35 +1031,36 @@ func (dataChannel *DataChannel) handleHandshakeResponse(log logger.T, streamData
 		if err != nil {
 			log.Error(err)
 			// Cancel the session because handshake FAILED
-			//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
-			dataChannel.dataStream.CancelSession()
+			//@ unfold dataChannel.MemTransfer()
+			dataChannel.dataStream.CancelSession( /*@ perm(1/2) @*/ )
 			// Set handshake error. Initiate handshake waits on handshake.responseChan and will return this error when channel returns.
 			dataChannel.handshake.error = err
-			//@ fold dataChannel.MemTransfer(AgentSecretCreated)
+			//@ fold dataChannel.MemTransfer()
 		}
 	}
 	// unfold acc(dataChannel.Mem(), 1/2)
-	//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
+	//@ unfold dataChannel.MemTransfer()
 	dataChannel.handshake.clientVersion = handshakeResponse.ClientVersion
 	log.Infof("Client side session manager plugin version is: %s", handshakeResponse.ClientVersion)
 	// fold acc(dataChannel.Mem(), 1/2)
-	//@ fold dataChannel.MemTransfer(AgentSecretCreated)
-	//@ fold ResponseChanInv!<dataChannel, _!>(true)
+	//@ fold dataChannel.MemTransfer()
+	//@ fold ResponseChanInv!<dataChannel, _!>(encryptionEnabled)
 	//@ unfold dataChannel.RecvRoutineMem()
-	dataChannel.handshake.responseChan <- true
+	dataChannel.handshake.responseChan <- encryptionEnabled
 	//@ fold dataChannel.RecvRoutineMem()
 	return nil
 }
 
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
-// @ requires log != nil && dataChannel.Mem(Initialized)
+// @ requires log != nil && dataChannel.Mem() && dataChannel.GetState() == Initialized
 // @ preserves acc(log.Mem(), _)
-// @ ensures dataChannel.Mem(HandshakeSkipped)
+// @ ensures dataChannel.Mem() && dataChannel.GetState() == HandshakeSkipped
 func (dataChannel *DataChannel) SkipHandshake(log logger.T) {
 	log.Info("Skipping handshake.")
-	//@ unfold dataChannel.Mem(Initialized)
+	//@ unfold dataChannel.Mem()
 	dataChannel.handshake.skipped = true
-	//@ fold dataChannel.Mem(HandshakeSkipped)
+	dataChannel.dataChannelState = HandshakeSkipped
+	//@ fold dataChannel.Mem()
 }
 
 // // finalizeKMSEncryption parses encryption parameters returned from the client and sets up encryption
@@ -1062,17 +1083,19 @@ func (dataChannel *DataChannel) SkipHandshake(log logger.T) {
 // Note that sessionplugin.go first calls `NewDataChannel` followed by at most 1 call to `PerformHandshake`.
 // Hence, we can require in the specification that no other handshake is currently on-going for `dataChannel` without
 // restricting the current client of `DataChannel`.
-// @ requires log != nil && dataChannel.Mem(Initialized)
+// @ requires log != nil && dataChannel.Mem() && dataChannel.GetState() == Initialized
 // @ preserves acc(log.Mem(), _)
 // unfortunately, we can only return `Mem` if the channel receive operation does not timeout
-// @ ensures err == nil ==> dataChannel.Mem(AgentSecretCreated)
+// @ ensures err == nil ==> dataChannel.Mem() && dataChannel.GetState() == HandshakeCompleted
+// ensures err == nil && encryptionEnabled ==> dataChannel.GetState() == AgentSecretCreated
+// ensures err == nil && !encryptionEnabled ==> dataChannel.GetState() == BlockCipherInitialized
 func (dataChannel *DataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
 	stdLog.Printf("PerformHandshake")
 
-	//@ unfold dataChannel.Mem(Initialized)
+	//@ unfold dataChannel.Mem()
 
 	if encryptionEnabled {
 		// if dataChannel.blockCipher, err = newBlockCipher(dataChannel.context, kmsKeyId); err != nil {
@@ -1087,7 +1110,8 @@ func (dataChannel *DataChannel) PerformHandshake(log logger.T,
 
 	dataChannel.handshake.handshakeStartTime = time.Now()
 	dataChannel.encryptionEnabled = encryptionEnabled
-	//@ fold dataChannel.Mem(BlockCipherInitialized)
+	dataChannel.dataChannelState = BlockCipherInitialized
+	//@ fold dataChannel.Mem()
 
 	log.Info("Initiating Handshake")
 	stdLog.Printf("Initiating Handshake")
@@ -1101,50 +1125,61 @@ func (dataChannel *DataChannel) PerformHandshake(log logger.T,
 	}
 
 	// notify Go routing handling received messages that it can process a message:
-	//@ unfold dataChannel.Mem(AgentSecretCreated)
+	//@ unfold dataChannel.Mem()
 	startReceivingChan := dataChannel.handshake.startReceivingChan
 	responseChan := dataChannel.handshake.responseChan
-	//@ fold dataChannel.MemTransfer(AgentSecretCreated)
-	//@ fold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeRespone)
-	startReceivingChan <- ReceiveHandshakeRespone
+	//@ fold dataChannel.MemTransfer()
+	if encryptionEnabled {
+		//@ fold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeResponeEncryptionEnabled)
+		startReceivingChan <- ReceiveHandshakeResponeEncryptionEnabled
+	} else {
+		//@ fold StartReceivingChanInv!<dataChannel, _!>(ReceiveHandshakeResponeEncryptionDisabled)
+		startReceivingChan <- ReceiveHandshakeResponeEncryptionDisabled
+	}
 
 	// Block until handshake response is received or handshake times out
 	// res, err := dataChannel.tryReceiveResponse(handshakeTimeout /*@, perm(1/4) @*/)
 	res, err := dataChannel.tryReceiveResponseAlt(responseChan, handshakeTimeout /*@, perm(1/4) @*/)
-	_ = res // mark `res` as used
 	if err != nil {
 		// If handshake times out here this usually means that the client does not understand handshake or something
 		// failed critically when processing handshake request.
 		return errors.New("Handshake timed out. Please ensure that you have the latest version of the session manager plugin.")
 	}
+	// we send the flag `encryptionEnabled` back via the channel such that we are able to express the data channel's
+	// state. This flag is expected to be identical to `encryptionEnabled`:
+	if res != encryptionEnabled {
+		return errors.New("Unexpected result from processing handshake response")
+	}
 	//@ unfold ResponseChanInv!<dataChannel, _!>(res)
-	//@ unfold dataChannel.MemTransfer(AgentSecretCreated)
-	//@ assert responseChan == dataChannel.handshake.responseChan
+	//@ unfold dataChannel.MemTransfer()
 	err = dataChannel.handshake.error
 	if err != nil {
-		//@ fold dataChannel.Mem(AgentSecretCreated)
+		//@ fold dataChannel.Mem()
 		return err
 	}
 	stdLog.Printf("Handshake response received")
 
 	dataChannel.handshake.handshakeEndTime = time.Now()
-	handshakeCompletePayload /*@ @ @*/ := dataChannel.buildHandshakeCompletePayload(log)
-	if err := dataChannel.sendHandshakeComplete(log, &handshakeCompletePayload); err != nil {
-		//@ fold dataChannel.Mem(AgentSecretCreated)
+	//@ fold dataChannel.Mem()
+	handshakeCompletePayload := dataChannel.buildHandshakeCompletePayload(log)
+	if err := dataChannel.sendHandshakeComplete(log, handshakeCompletePayload); err != nil {
 		return err
 	}
+	//@ unfold dataChannel.Mem()
 	dataChannel.handshake.complete = true
+	dataChannel.dataChannelState = HandshakeCompleted
 	log.Info("Handshake successfully completed.")
 	stdLog.Printf("Handshake successfully completed.")
-	//@ fold dataChannel.Mem(AgentSecretCreated)
-	//@ assert dataChannel.Mem(AgentSecretCreated)
+	//@ fold dataChannel.Mem()
 	return
 }
 
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
-// @ requires log != nil && dataChannel.Mem(BlockCipherInitialized)
+// @ requires log != nil && dataChannel.Mem() && dataChannel.GetState() == BlockCipherInitialized
 // @ preserves acc(log.Mem(), _)
-// @ ensures  err == nil ==> dataChannel.Mem(AgentSecretCreated) && payload.Mem()
+// @ ensures  err == nil ==> dataChannel.Mem() && payload.Mem()
+// @ ensures  err == nil && !encryptionRequested ==> dataChannel.GetState() == BlockCipherInitialized
+// @ ensures  err == nil && encryptionRequested ==> dataChannel.GetState() == AgentSecretCreated
 func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
 	request mgsContracts.SessionTypeRequest) (payload *mgsContracts.HandshakeRequestPayload, err error) {
@@ -1172,7 +1207,7 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 			return nil, err
 		}
 
-		//@ unfold dataChannel.Mem(BlockCipherInitialized)
+		//@ unfold dataChannel.Mem()
 		dataChannel.state.agentSecret = agentSecret
 
 		// Base64 encode the public part and put it in the message
@@ -1181,7 +1216,7 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 
 		dataChannel.state.kmsService, err = dataChannel.dataStream.GetKMSService( /*@ perm(1/2) @*/ )
 		if err != nil {
-			//@ fold dataChannel.Mem(BlockCipherInitialized)
+			//@ fold dataChannel.Mem()
 			err = fmt.Errorf("failed to initialize KMS service: %v", err)
 			log.Error(err)
 			return nil, err
@@ -1194,6 +1229,8 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 			log.Error(err)
 			return nil, err
 		}
+
+		//@ unfold metadata.Mem()
 		if metadata.Arn == nil {
 			err = fmt.Errorf("asymmetric key ARN is nil, metadata: %+v", metadata)
 			log.Error(err)
@@ -1206,7 +1243,10 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 			log.Error(err)
 			return nil, err
 		}
+		//@ unfold sk.Mem()
 		dataChannel.logLTPk = &sk.PublicKey
+		// only now do we have all permissions required to satisfy the state transition:
+		dataChannel.dataChannelState = AgentSecretCreated
 
 		signPayload := &mgsContracts.SignAgentSharePayload{
 			AgentShare:  compressedPublic,
@@ -1214,6 +1254,7 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 			LogReaderId: dataChannel.logReaderId,
 		}
 
+		//@ fold signPayload.Mem()
 		signPayloadBytes, err := json.Marshal(signPayload /*@, perm(1/2) @*/)
 		if err != nil {
 			err = fmt.Errorf("failed to encode sign payload: %v", err)
@@ -1238,6 +1279,7 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 			AgentLTKeyARN:  dataChannel.agentLTKeyARN,
 			LogReaderId:    dataChannel.logReaderId,
 		}
+		//@ fold dataChannel.Mem()
 
 		log.Debugf("client generated SecureSessionRequest: %+v", req)
 
@@ -1256,20 +1298,27 @@ func (dataChannel *DataChannel) buildHandshakeRequestPayload(log logger.T,
 		// 		ActionParameters: mgsContracts.KMSEncryptionRequest{
 		// 			KMSKeyID: dataChannel.blockCipher.GetKMSKeyId(),
 		// 		}})
+		//@ fold handshakeRequest.Mem()
 	} else {
 		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction}
+		//@ fold handshakeRequest.Mem()
 	}
 
 	return handshakeRequest, nil
 }
 
 // buildHandshakeCompletePayload builds payload for HandshakeComplete
-func (dataChannel *DataChannel) buildHandshakeCompletePayload(log logger.T) mgsContracts.HandshakeCompletePayload {
-	handshakeComplete := mgsContracts.HandshakeCompletePayload{}
+// @ requires log != nil
+// @ preserves dataChannel.Mem() && acc(log.Mem(), _)
+// @ ensures payload.Mem() && dataChannel.GetState() == old(dataChannel.GetState())
+func (dataChannel *DataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload) {
+	handshakeComplete := &mgsContracts.HandshakeCompletePayload{}
+	//@ unfold dataChannel.Mem()
 	handshakeComplete.HandshakeTimeToComplete =
 		dataChannel.handshake.handshakeEndTime.Sub(dataChannel.handshake.handshakeStartTime)
-
+	//@ fold dataChannel.Mem()
 	clientVersion := dataChannel.GetClientVersion()
+	//@ unfold dataChannel.Mem()
 	if dataChannel.separateOutputPayload == true && versionutil.Compare(clientVersion, clientVersionWithoutOutputSeparation, true) <= 0 {
 		handshakeComplete.CustomerMessage = "Please update session manager plugin version (minimum required version " +
 			firstVersionWithOutputSeparationFeature +
@@ -1279,13 +1328,18 @@ func (dataChannel *DataChannel) buildHandshakeCompletePayload(log logger.T) mgsC
 	if dataChannel.encryptionEnabled {
 		handshakeComplete.CustomerMessage += "This session is encrypted using AWS KMS."
 	}
+	//@ fold dataChannel.Mem()
+	//@ fold handshakeComplete.Mem()
 
 	return handshakeComplete
 }
 
 // sendHandshakeRequest sends handshake request
+// @ requires log != nil && handshakeRequestPayload.Mem()
+// @ requires dataChannel.Mem() && dataChannel.GetState() >= BlockCipherInitialized
+// @ preserves acc(log.Mem(), _)
+// @ ensures dataChannel.Mem() && dataChannel.GetState() == old(dataChannel.GetState())
 func (dataChannel *DataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload) (err error) {
-	//@ share handshakeRequestPayload
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = json.Marshal(handshakeRequestPayload /*@, perm(1/2) @*/); err != nil {
 		return fmt.Errorf("Could not serialize HandshakeRequest message %v, err: %s", handshakeRequestPayload, err)
@@ -1300,6 +1354,10 @@ func (dataChannel *DataChannel) sendHandshakeRequest(log logger.T, handshakeRequ
 }
 
 // sendHandshakeComplete sends handshake complete
+// @ requires log != nil && handshakeCompletePayload.Mem()
+// @ requires dataChannel.Mem() && dataChannel.GetState() >= BlockCipherInitialized
+// @ preserves acc(log.Mem(), _)
+// @ ensures dataChannel.Mem() && dataChannel.GetState() == old(dataChannel.GetState())
 func (dataChannel *DataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
 	var handshakeCompletePayloadBytes []byte
 	if handshakeCompletePayloadBytes, err = json.Marshal(handshakeCompletePayload /*@, perm(1/2) @*/); err != nil {
@@ -1328,41 +1386,64 @@ func (dataChannel *DataChannel) sendStreamDataMessageJson(log logger.T,
 }
 */
 // GetClientVersion returns version of the client
+// @ requires acc(dataChannel.Mem(), _)
+// @ pure
 func (dataChannel *DataChannel) GetClientVersion() string {
-	return dataChannel.handshake.clientVersion
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.handshake.clientVersion
 }
 
 // GetInstanceId returns id of the target
+// @ requires acc(dataChannel.Mem(), _) && dataChannel.GetState() >= Initialized
+// @ pure
 func (dataChannel *DataChannel) GetInstanceId() string {
-	return dataChannel.dataStream.GetInstanceId()
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.dataStream.GetInstanceId()
 }
 
 // GetRegion returns aws region of the target
+// @ requires acc(dataChannel.Mem(), _) && dataChannel.GetState() >= Initialized
+// @ pure
 func (dataChannel *DataChannel) GetRegion() string {
-	return dataChannel.dataStream.GetRegion()
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.dataStream.GetRegion()
 }
 
 // IsActive returns a boolean value indicating the datachannel is actively listening
 // and communicating with service
+// @ requires acc(dataChannel.Mem(), _) && dataChannel.GetState() >= Initialized
+// @ pure
 func (dataChannel *DataChannel) IsActive() bool {
-	return dataChannel.dataStream.IsActive()
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.dataStream.IsActive()
 }
 
 // GetSeparateOutputPayload returns boolean value indicating separate
 // stdout/stderr output for non-interactive session or not
+// @ requires acc(dataChannel.Mem(), _)
+// @ pure
 func (dataChannel *DataChannel) GetSeparateOutputPayload() bool {
-	return dataChannel.separateOutputPayload
+	return /*@ unfolding acc(dataChannel.Mem(), _) in @*/ dataChannel.separateOutputPayload
 }
 
 // SetSeparateOutputPayload set separateOutputPayload value
+// @ preserves dataChannel.Mem()
+// @ ensures dataChannel.GetState() == old(dataChannel.GetState())
 func (dataChannel *DataChannel) SetSeparateOutputPayload(separateOutputPayload bool) {
+	//@ unfold dataChannel.Mem()
 	dataChannel.separateOutputPayload = separateOutputPayload
+	//@ fold dataChannel.Mem()
 }
 
-func (dataChannel *DataChannel) Close(log logger.T) error {
-	return dataChannel.dataStream.Close(log)
+// @ requires dataChannel.Mem() && dataChannel.GetState() >= Initialized
+// @ ensures  dataChannel.Mem() && dataChannel.GetState() == old(dataChannel.GetState())
+func (dataChannel *DataChannel) Close(log logger.T) (err error) {
+	//@ unfold dataChannel.Mem()
+	err = dataChannel.dataStream.Close(log)
+	//@ fold dataChannel.Mem()
+	return
 }
 
+// @ requires dataChannel.Mem() && dataChannel.GetState() >= Initialized
+// @ ensures  dataChannel.Mem() && dataChannel.GetState() == old(dataChannel.GetState())
 func (dataChannel *DataChannel) PrepareToCloseChannel(log logger.T) {
-	dataChannel.PrepareToCloseChannel(log)
+	//@ unfold dataChannel.Mem()
+	dataChannel.dataStream.PrepareToCloseChannel(log)
+	//@ fold dataChannel.Mem()
 }

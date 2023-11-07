@@ -42,25 +42,47 @@ func NewDataStream(context ctx.T,
 	cancelFlag task.CancelFlag,
 	ghost cs Calls) (res *DataStream, err error)
 
-// @ preserves acc(log.Mem(), _)
-// @ requires acc(bytes.SliceMem(inputData), _)
-func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) error
+// since `Send` internally acquires a mutex before sending, a `p` fraction of `datastream.Mem()` is sufficient
+requires log != nil && noPerm < p && acc(bytes.SliceMem(inputData), p)
+preserves acc(datastream.Mem(), p) && acc(log.Mem(), _)
+func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm) error
 
-func (datastream *DataStream) GetStreamDataSequenceNumber() int64
+// a fractional permission is sufficient as a lock is internally acquired
+requires noPerm < p
+preserves acc(datastream.Mem(), p)
+func (datastream *DataStream) GetStreamDataSequenceNumber(ghost p perm) int64
 
+requires acc(datastream.Mem(), _)
+pure
 func (datastream *DataStream) GetChannelId() string
 
+requires acc(datastream.Mem(), _)
+pure
 func (datastream *DataStream) GetInstanceId() string
 
+requires acc(datastream.Mem(), _)
+pure
 func (datastream *DataStream) GetClientId() string
 
+requires acc(datastream.Mem(), _)
+pure
 func (datastream *DataStream) GetRegion() string
 
+requires acc(datastream.Mem(), _)
+pure
 func (datastream *DataStream) IsActive() bool
 
-func (datastream *DataStream) CancelSession()
+// the cancel flag internally acquires a lock thus making read-only
+// permissions sufficient
+requires noPerm < p
+preserves acc(datastream.Mem(), p)
+func (datastream *DataStream) CancelSession(ghost p perm)
 
+preserves datastream.Mem()
 func (datastream *DataStream) Close(log logger.T) error
+
+preserves datastream.Mem()
+func (datastream *DataStream) PrepareToCloseChannel(log logger.T)
 
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
