@@ -139,8 +139,6 @@ type dataChannel struct {
 	agentLTKeyARN string
 	logReaderId   string
 	logLTPk       *rsa.PublicKey
-	// logLTKeyARN is the logReaderId's ARN for the long-term public key to decrypt session keys
-	// logLTKeyARN            string
 	/*@ msgHandlerCtx StreamDataHandlerContext @*/ // TODO: mark this as ghost as soon as Gobra supports ghost fields
 }
 
@@ -253,13 +251,6 @@ pred (dc *dataChannel) RecvRoutineMem() {
 	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
 }
 
-// pred (dc *dataChannel) Mem() {
-// 	acc(dc) && dc.dataStream.Mem() &&
-// 	dc.msgHandlerCtx != nil && dc.msgHandlerCtx.Inv() &&
-// 	dc.inputStreamMessageHandler implements StreamDataHandlerSpec{dc.msgHandlerCtx} &&
-// 	(dc.encryptionEnabled ==> dc.blockCipher != nil)
-// }
-
 // permissions in `RecvRoutineMem` are already subtracted:
 pred (dc *dataChannel) Mem() {
 	dc != nil &&
@@ -267,9 +258,7 @@ pred (dc *dataChannel) Mem() {
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
 	(dc.dataChannelState != Erroneous ==>
-		// acc(&dc.cdState, 1/2) &&
 		acc(&dc.dataStream) &&
-		// acc(&dc.inputStreamMessageHandler) &&
 		acc(&dc.hs.clientVersion) &&
 		acc(&dc.hs.error) &&
 		acc(&dc.hs.complete) &&
@@ -283,16 +272,8 @@ pred (dc *dataChannel) Mem() {
 		acc(&dc.agentLTKeyARN) &&
 		acc(&dc.logReaderId) &&
 		acc(&dc.logLTPk)) &&
-		// acc(&dc.msgHandlerCtx)) &&
 	(dc.dataChannelState >= Initialized ==>
 		dc.dataStream.Mem()) &&
-	// dc.msgHandlerCtx != nil && dc.msgHandlerCtx.Inv() &&
-	// dc.inputStreamMessageHandler implements StreamDataHandlerSpec{dc.msgHandlerCtx} &&
-	// (dc.encryptionEnabled ==> dc.blockCipher != nil && dc.blockCipher.Mem()) &&
-	// (dc.cdState <= Initialized ==>
-	// 	dc.hs.startReceivingChan.SendChannel(), _) &&
-	// (dc.cdState > Initialized ==>
-	// 	acc(dc.hs.startReceivingChan.SendChannel(), _)) &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
@@ -314,12 +295,8 @@ pred (dc *dataChannel) Mem() {
 
 pred (dc *dataChannel) MemTransfer(encryptionEnabled bool) {
 	dc != nil &&
-	// acc(&dc.dataChannelState) &&
-	// acc(&dc.dataChannelState, 1/2) &&
 	acc(&dc.dataStream) &&
-	// acc(&dc.inputStreamMessageHandler) &&
 	acc(&dc.hs.clientVersion) &&
-	// we only transfer parts of the permissions for `startReceivingChan` and `responseChan`:
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
 	acc(&dc.hs.error) &&
@@ -334,12 +311,7 @@ pred (dc *dataChannel) MemTransfer(encryptionEnabled bool) {
 	acc(&dc.agentLTKeyARN) &&
 	acc(&dc.logReaderId) &&
 	acc(&dc.logLTPk) &&
-	// acc(&dc.msgHandlerCtx) &&
 	dc.dataStream.Mem() &&
-	// dc.msgHandlerCtx != nil && dc.msgHandlerCtx.Inv() &&
-	// dc.inputStreamMessageHandler implements StreamDataHandlerSpec{dc.msgHandlerCtx} &&
-	// (dc.encryptionEnabled ==> dc.blockCipher != nil && dc.blockCipher.Mem()) &&
-	// dc.blockCipher != nil && dc.blockCipher.Mem() &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
@@ -357,9 +329,7 @@ pred (dc *dataChannel) Inv() {
 
 pred StartReceivingChanInv(dc *dataChannel, msg MessageReceptionStatus) {
 	(msg == ReceiveHandshakeResponeEncryptionEnabled ==> dc.MemTransfer(true)) &&
-	//	unfolding dc.MemTransfer() in dc.dataChannelState == AgentSecretCreated) && // acc(dc.Mem(), 1/2) && acc(&dc.hs.clientVersion, 1/2)) &&
 	(msg == ReceiveHandshakeResponeEncryptionDisabled ==> dc.MemTransfer(false)) &&
-	//	unfolding dc.MemTransfer() in dc.dataChannelState == BlockCipherInitialized) &&
 	(msg == ReceiveOtherResponse ==> acc(dc.Mem(), 1/2) &&
 		dc.getState() == AgentSecretCreated &&
 		unfolding acc(dc.Mem(), 1/2) in dc.hs.complete)
@@ -367,19 +337,15 @@ pred StartReceivingChanInv(dc *dataChannel, msg MessageReceptionStatus) {
 
 pred ResponseChanInv(dc *dataChannel, encryptionEnabled bool) {
 	dc.MemTransfer(encryptionEnabled)
-	// dc.MemTransfer() &&
-	// unfolding dc.MemTransfer() in (encryptionEnabled ==> dc.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dc.dataChannelState == BlockCipherInitialized)
 }
 @*/
-
-// TODO: make `ctx` a ghost parameter as soon as Gobra supports
-// ghost fields
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context.Mem() && cancelFlag.Mem()
 // @ requires ctx != nil && ctx.Inv() && inputStreamMessageHandler implements StreamDataHandlerSpec{ctx}
 // @ ensures  res.Mem() && typeOf(res) == *dataChannel
 // @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
+// TODO: make `ctx` a ghost parameter as soon as Gobra supports ghost fields
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
@@ -711,13 +677,6 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			// handshake has completed.
 			// We can indeed proof the inexistence of this branch:
 			// @ assert false
-			/*
-				log.Tracef("Handshake still in progress, ignore stream data message sequence %d", streamDataMessage.SequenceNumber)
-				// send a message to the channel to prepare for next message reception:
-				//@ fold acc(dc.Mem(), 1/2)
-				dc.resendReceiveOtherResponse()
-				return nil
-			*/
 		}
 
 		//@ fold acc(dc.Mem(), 1/2)
@@ -738,7 +697,6 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 // @ preserves dc.RecvRoutineMem()
 func (dc *dataChannel) resendReceiveOtherResponse() {
 	//@ unfold acc(dc.Mem(), 1/2)
-	// unfold `RecvRoutineMem` before folding `Mem` such that equality of `startReceivingChan` is derived
 	//@ unfold dc.RecvRoutineMem()
 	//@ fold acc(dc.Mem(), 1/2)
 	//@ fold StartReceivingChanInv!<dc, _!>(ReceiveOtherResponse)
@@ -784,51 +742,8 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-// TODO remove
-type HandshakeResponsePayloadTest struct {
-	ClientVersion          string                               `json:"ClientVersion"`
-	ProcessedClientActions []mgsContracts.ProcessedClientAction `json:"ProcessedClientActions"`
-	Errors                 []string                             `json:"Errors"`
-}
-
-/*@
-// TODO remove
-pred (handshakeResponsePayload *HandshakeResponsePayloadTest) Mem() {
-	acc(handshakeResponsePayload) &&
-	(forall i int :: { handshakeResponsePayload.ProcessedClientActions[i] } 0 <= i && i < len(handshakeResponsePayload.ProcessedClientActions) ==> handshakeResponsePayload.ProcessedClientActions[i].Mem()) &&
-	acc(handshakeResponsePayload.Errors)
-}
-@*/
-
-// TODO remove
-// @ requires bytes.SliceMem(data)
-// @ ensures  res.Mem()
-func foo2(data json.RawMessage) (res *mgsContracts.ProcessedClientAction) {
-	s /*@ @ @*/ := mgsContracts.ProcessedClientAction{}
-	res = &s
-	s.Error = "bla"
-	s.ActionResult = data
-	//@ fold res.Mem()
-	return
-}
-
-// TODO remove
-// @ requires action.Mem()
-func foo(action *mgsContracts.ProcessedClientAction) {
-	s /*@ @ @*/ := HandshakeResponsePayloadTest{}
-	//@ unfold action.Mem()
-	a /*@ @ @*/ := [1]mgsContracts.ProcessedClientAction{*action}
-	s.ProcessedClientActions = a[:]
-	//@ assert acc(&s.ProcessedClientActions[0])
-	//@ fold s.ProcessedClientActions[0].Mem()
-	//@ fold s.Mem()
-}
-
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
-// requires log != nil && acc(dc.Mem(), 1/2) && acc(&dc.hs.clientVersion, 1/2)
 // @ requires log != nil && dc.MemTransfer(encryptionEnabled)
-// requires log != nil && dc.MemTransfer()
-// requires unfolding dc.MemTransfer() in (encryptionEnabled ==> dc.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dc.dataChannelState == BlockCipherInitialized)
 // @ preserves acc(log.Mem(), _) && dc.RecvRoutineMem()
 // @ preserves streamDataMessage.Mem()
 func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) error {
@@ -842,12 +757,9 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	}
 	//@ fold streamDataMessage.Mem()
 	//@ unfold handshakeResponse.Mem()
-	// assert forall i uint :: { handshakeResponse.ProcessedClientActions[i] } 0 <= i && i < len(handshakeResponse.ProcessedClientActions) ==> handshakeResponse.ProcessedClientActions[i].Mem()
 
 	actions := handshakeResponse.ProcessedClientActions
 	//@ invariant dc.MemTransfer(encryptionEnabled)
-	// invariant dc.MemTransfer()
-	// invariant unfolding dc.MemTransfer() in (encryptionEnabled ==> dc.dataChannelState == AgentSecretCreated) && (!encryptionEnabled ==> dc.dataChannelState == BlockCipherInitialized)
 	//@ invariant acc(log.Mem(), _)
 	//@ invariant forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> actions[i].Mem()
 	for i := range actions {
@@ -983,8 +895,6 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 					return err
 				}
 
-				// var encryptionContext map[string]*string
-				// encryptedSessionKeys, err := dc.kmsService.Encrypt(resp.LogLTKeyARN, sessionKeysBytes, encryptionContext)
 				//@ cryptoRand.GetReaderMem()
 				encryptedSessionKeys, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, dc.logLTPk, sessionKeysBytes /*@, perm(1/2) @*/)
 				if err != nil {
@@ -1035,10 +945,6 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 
 				// TODO: actually send `encodedEncryptedSessionKeysPayloadBytes` to the log server!
 
-				// dc.encryptedAgentReadKey = encodedReadKey
-				// dc.encryptedClientReadKey = resp.EncryptedClientReadKey
-				// dc.logLTKeyARN = resp.LogLTKeyARN
-
 				dc.encryptionEnabled = true
 
 				if err = dc.blockCipher.UpdateEncryptionKeys(log, dc.state.agentReadKey, dc.state.agentWriteKey /*@, perm(1/2) @*/); err != nil {
@@ -1069,11 +975,9 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 			//@ fold dc.MemTransfer(encryptionEnabled)
 		}
 	}
-	// unfold acc(dc.Mem(), 1/2)
 	//@ unfold dc.MemTransfer(encryptionEnabled)
 	dc.hs.clientVersion = handshakeResponse.ClientVersion
 	log.Infof("Client side session manager plugin version is: %s", handshakeResponse.ClientVersion)
-	// fold acc(dc.Mem(), 1/2)
 	//@ fold dc.MemTransfer(encryptionEnabled)
 	//@ fold ResponseChanInv!<dc, _!>(encryptionEnabled)
 	//@ unfold dc.RecvRoutineMem()
@@ -1098,22 +1002,6 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	//@ fold dc.Mem()
 	return
 }
-
-// // finalizeKMSEncryption parses encryption parameters returned from the client and sets up encryption
-// func (dc *dataChannel) finalizeKMSEncryption(log logger.T, actionResult json.RawMessage) error {
-// 	encryptionResponse /*@ @ @*/ := mgsContracts.KMSEncryptionResponse{}
-
-// 	if err := json.Unmarshal(actionResult, &encryptionResponse); err != nil {
-// 		return err
-// 	}
-
-// 	sessionId := dc.dataStream.GetChannelId() // ChannelId is SessionId
-// 	if err := dc.blockCipher.UpdateEncryptionKey(log, encryptionResponse.KMSCipherTextKey, sessionId, dc.dataStream.GetInstanceId()); err != nil {
-// 		return fmt.Errorf("Fetching data key failed: %s", err)
-// 	}
-// 	dc.encryptionEnabled = true
-// 	return nil
-// }
 
 // PerformHandshake performs handshake to share version string and encryption information with clients like cli/console
 // Note that sessionplugin.go first calls `NewDataChannel` followed by at most 1 call to `PerformHandshake`.
@@ -1177,7 +1065,6 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	}
 
 	// Block until handshake response is received or handshake times out
-	// res, err := dc.tryReceiveResponse(handshakeTimeout /*@, perm(1/4) @*/)
 	res, err := dc.tryReceiveResponseAlt(responseChan, handshakeTimeout)
 	if err != nil {
 		dc.dataChannelState = Erroneous
@@ -1233,13 +1120,6 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 	handshakeRequest := &mgsContracts.HandshakeRequestPayload{}
 	handshakeRequest.AgentVersion = version.Version
-	/*
-		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{
-			{
-				ActionType:       mgsContracts.SessionType,
-				ActionParameters: request,
-			}}
-	*/
 	sessionTypeAction := mgsContracts.RequestedClientAction{
 		ActionType:       mgsContracts.SessionType,
 		ActionParameters: request,
@@ -1335,21 +1215,11 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 		log.Debugf("client generated SecureSessionRequest: %+v", req)
 
-		// handshakeRequest.RequestedClientActions = append( /*@ perm(1/1), @*/ handshakeRequest.RequestedClientActions, mgsContracts.RequestedClientAction{
-		// 	ActionType:       mgsContracts.SecureSession,
-		// 	ActionParameters: req,
-		// })
 		secureSessionAction := mgsContracts.RequestedClientAction{
 			ActionType:       mgsContracts.SecureSession,
 			ActionParameters: req,
 		}
 		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction, secureSessionAction}
-		// handshakeRequest.RequestedClientActions = append(handshakeRequest.RequestedClientActions,
-		// 	mgsContracts.RequestedClientAction{
-		// 		ActionType: mgsContracts.KMSEncryption,
-		// 		ActionParameters: mgsContracts.KMSEncryptionRequest{
-		// 			KMSKeyID: dc.blockCipher.GetKMSKeyId(),
-		// 		}})
 		//@ fold handshakeRequest.Mem()
 	} else {
 		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction}
@@ -1428,19 +1298,6 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	return nil
 }
 
-/*
-// sendStreamDataMessageJson is utility method that serializes a struct into json and sends with the given payload type
-func (dc *dataChannel) sendStreamDataMessageJson(log logger.T,
-	payloadType mgsContracts.PayloadType, serializableStruct interface{}) (err error) {
-	var messageBytes []byte
-	if messageBytes, err = json.Marshal(serializableStruct); err != nil {
-		return fmt.Errorf("Could not serialize message %v, err: %s", serializableStruct, err)
-	}
-	log.Tracef("Sending message with content %v", serializableStruct)
-	err = dc.SendStreamDataMessage(log, payloadType, messageBytes)
-	return err
-}
-*/
 // GetClientVersion returns version of the client
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
