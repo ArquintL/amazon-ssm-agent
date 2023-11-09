@@ -8,7 +8,6 @@ import (
 	"io"
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
-	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	//@ "bytes"
 )
 
@@ -34,15 +33,23 @@ pred (bc *BlockCipherT) Mem() {
 // @ trusted
 // @ requires noPerm < p
 // @ preserves bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
-func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm @*/) error {
-	newEncryptionKey := append(readKey, writeKey...)
+// @ ensures err != nil ==> err.ErrorMem()
+func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm @*/) (err error) {
+	if len(readKey) != 32 || len(writeKey) != 32 {
+		return fmt.Errorf("read or write key have invalid length")
+	}
+	newEncryptionKey := make([]byte, 2*32)
+	copy(newEncryptionKey[:32], readKey)
+	copy(newEncryptionKey[32:], writeKey)
 	return bc.UpdateEncryptionKey(log, newEncryptionKey, "", "" /*@, p @*/)
 }
 
 // @ trusted
 // @ requires noPerm < p
-// @ preserves bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(cipherTextBlob), p)
-func (bc *BlockCipherT) UpdateEncryptionKey(log logger.T, cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) error {
+// @ requires acc(bytes.SliceMem(cipherTextBlob), p)
+// @ preserves bc.Mem() && acc(log.Mem(), _)
+// @ ensures err != nil ==> err.ErrorMem()
+func (bc *BlockCipherT) UpdateEncryptionKey(log logger.T, cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) (err error) {
 	const keyLen = 32 // key length in bytes
 	bc.cipherTextKey = cipherTextBlob
 	bc.decryptionKey = cipherTextBlob[:keyLen]
@@ -70,6 +77,7 @@ const nonceSize = 12
 // @ requires noPerm < p
 // @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(plainText), p)
 // @ ensures err == nil ==> bytes.SliceMem(cipherText)
+// @ ensures err != nil ==> err.ErrorMem()
 func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p perm @*/) (cipherText []byte, err error) {
 	var aesgcm = blockCipher.encryptionCipher
 
@@ -93,6 +101,7 @@ func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p
 // @ requires noPerm < p
 // @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(cipherText), p)
 // @ ensures err == nil ==> bytes.SliceMem(plainText)
+// @ ensures err != nil ==> err.ErrorMem()
 func (blockCipher *BlockCipherT) DecryptWithAESGCM(cipherText []byte /*@, ghost p perm @*/) (plainText []byte, err error) {
 	var aesgcm = blockCipher.decryptionCipher
 
@@ -137,7 +146,7 @@ func getAEAD(plainTextKey []byte /*@, ghost p perm @*/) (aesgcm cipher.AEAD, err
 }
 
 // TODO what does this do?
-var _ crypto.IBlockCipher = (*BlockCipherT)(nil)
+// var _ crypto.IBlockCipher = (*BlockCipherT)(nil)
 
 // var newBlockCipher = func(context contextPkg.T, kmsKeyId string) (blockCipher crypto.IBlockCipher, err error) {
 // 	return crypto.NewBlockCipher(context, kmsKeyId)

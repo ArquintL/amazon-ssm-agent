@@ -19,15 +19,3 @@ requires noPerm < p
 preserves acc(i.Mem(), p)
 ensures bytes.SliceMem(res)
 func (i *Int) Bytes(ghost p perm) (res []byte)
-/*
-ensures res.Mem()
-func test() (res *Int) {
-    nat_a @ := [1]Word{ 42 }
-    i @ := Int{
-        neg: false,
-        abs: nat_a[:],
-    }
-    res = &i
-    fold res.Mem()
-}
-*/

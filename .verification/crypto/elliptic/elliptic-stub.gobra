@@ -24,6 +24,7 @@ func P384() (curve Curve)
 
 preserves curve.Mem() && rand.Mem()
 ensures err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
+ensures err != nil ==> err.ErrorMem()
 func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x *big.Int, y *big.Int, err error)
 
 requires noPerm < p

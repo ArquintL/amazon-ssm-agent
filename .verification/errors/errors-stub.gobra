@@ -1,4 +1,4 @@
 package errors
 
-ensures err != nil
+ensures err != nil && err.ErrorMem()
 func New(text string) (err error)

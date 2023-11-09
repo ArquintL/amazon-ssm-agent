@@ -5,6 +5,7 @@ import "bytes"
 type Reader interface {
 	pred Mem()
 	
-	preserves bytes.SliceMem(p)
+	preserves Mem() && bytes.SliceMem(p)
+	ensures err != nil ==> err.ErrorMem()
 	Read(p []byte) (n int, err error)
 }

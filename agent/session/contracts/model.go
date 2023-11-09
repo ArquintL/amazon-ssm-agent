@@ -421,6 +421,12 @@ type SecureSessionRequest struct {
 	LogReaderId string `json:"LogReaderId"`
 }
 
+/*@
+pred (secureSessionRequest *SecureSessionRequest) Mem() {
+	acc(secureSessionRequest)
+}
+@*/
+
 // SignClientSharePayload is the payload sent by the client to KMS for signing
 type SignClientSharePayload struct {
 	// ClientShare is the public portion of the client's secret share.

@@ -1,5 +1,5 @@
 package context
 
-type T interface{
+type T interface {
     pred Mem()
 }

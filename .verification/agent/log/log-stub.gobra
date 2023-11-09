@@ -1,14 +1,5 @@
 package log
 
-type T interface{
+type T interface {
     pred Mem()
-    Debug(params ...interface{})
-    Info(params ...interface{})
-    Error(params ...interface{})
-    Printf(format string, params ...interface{})
-    Tracef(format string, params ...interface{})
-    Debugf(format string, params ...interface{})
-    Infof(format string, params ...interface{})
-    Warnf(format string, params ...interface{})
-    Errorf(format string, params ...interface{})
 }

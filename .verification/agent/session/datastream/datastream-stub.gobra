@@ -19,9 +19,6 @@ pred (datastream *DataStream) Mem() {
 	acc(datastream.context.Mem(), _)
 }
 
-ghost
-func StreamDataHandlerFn(log logger.T, msg *mgsContracts.AgentMessage) (err error)
-
 type Calls interface {
 	pred Inv()
 }
@@ -29,12 +26,14 @@ type Calls interface {
 ghost
 requires cs != nil && log != nil
 preserves cs.Inv() && acc(log.Mem(), _) && msg.Mem()
+ensures err != nil ==> err.ErrorMem()
 func StreamDataHandlerSpec(ghost cs Calls, log logger.T, msg *mgsContracts.AgentMessage) (err error)
 
 requires acc(context.Mem(), _) && cancelFlag.Mem()
 // the following precondition allows `NewDataStream` or a started go routine to invoke `streamDataHandler`:
 requires cs != nil && cs.Inv() && streamDataHandler implements StreamDataHandlerSpec{cs}
 ensures  err == nil ==> res.Mem()
+ensures  err != nil ==> err.ErrorMem()
 func NewDataStream(context ctx.T,
 	channelId string,
 	clientId string,
@@ -45,7 +44,8 @@ func NewDataStream(context ctx.T,
 // since `Send` internally acquires a mutex before sending, a `p` fraction of `datastream.Mem()` is sufficient
 requires log != nil && noPerm < p && acc(bytes.SliceMem(inputData), p)
 preserves acc(datastream.Mem(), p) && acc(log.Mem(), _)
-func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm) error
+ensures err != nil ==> err.ErrorMem()
+func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm) (err error)
 
 // a fractional permission is sufficient as a lock is internally acquired
 requires noPerm < p
@@ -79,7 +79,8 @@ preserves acc(datastream.Mem(), p)
 func (datastream *DataStream) CancelSession(ghost p perm)
 
 preserves datastream.Mem()
-func (datastream *DataStream) Close(log logger.T) error
+ensures err != nil ==> err.ErrorMem()
+func (datastream *DataStream) Close(log logger.T) (err error)
 
 preserves datastream.Mem()
 func (datastream *DataStream) PrepareToCloseChannel(log logger.T)
@@ -87,6 +88,7 @@ func (datastream *DataStream) PrepareToCloseChannel(log logger.T)
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
 ensures err == nil ==> service.Mem()
+ensures err != nil ==> err.ErrorMem()
 func (datastream *DataStream) GetKMSService(ghost p perm) (service *crypto.KMSService, err error) {
 	unfold acc(datastream.Mem(), p)
 	service, err = crypto.NewKMSService(datastream.context)

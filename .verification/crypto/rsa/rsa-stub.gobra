@@ -34,21 +34,11 @@ pred (sk *PrivateKey) Mem() {
 requires noPerm < p
 preserves acc(random.Mem(), p)
 ensures err == nil ==> sk.Mem()
+ensures err != nil ==> err.ErrorMem()
 func GenerateKey(random io.Reader, bits int, ghost p perm) (sk *PrivateKey, err error)
 
 requires noPerm < p
 preserves acc(random.Mem(), p) && acc(pub.Mem(), p) && acc(bytes.SliceMem(msg), p)
 ensures err == nil ==> bytes.SliceMem(ciphertext)
+ensures err != nil ==> err.ErrorMem()
 func EncryptPKCS1v15(random io.Reader, pub *PublicKey, msg []byte, ghost p perm) (ciphertext []byte, err error)
-
-requires prime.Mem()
-ensures res.Mem()
-func test(prime *big.Int) (res *PrivateKey) {
-    primes_a @ := [1]*big.Int{ prime }
-    sk @ := PrivateKey{
-        Primes: primes_a[:],
-    }
-    res = &sk
-    fold res.PublicKey.Mem()
-    fold res.Mem()
-}

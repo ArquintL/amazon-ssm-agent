@@ -6,26 +6,24 @@ import (
     logger "github.com/aws/amazon-ssm-agent/agent/log"
     "github.com/aws/aws-sdk-go/service/kms"
 )
-
+/*
 type IBlockCipher interface {
 
     pred Mem()
 
     requires noPerm < p
-    preserves Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(cipherTextKey), p)
-    UpdateEncryptionKey(log logger.T, cipherTextKey []byte, sessionId string, instanceId string, ghost p perm) (err error)
-    
-    requires noPerm < p
     preserves acc(Mem(), p) && acc(bytes.SliceMem(plainText), p)
     ensures err == nil ==> bytes.SliceMem(cipherText)
+    ensures err != nil ==> err.ErrorMem()
     EncryptWithAESGCM(plainText []byte, ghost p perm) (cipherText []byte, err error)
     
     requires noPerm < p
     preserves acc(Mem(), p) && acc(bytes.SliceMem(cipherText), p)
     ensures err == nil ==> bytes.SliceMem(plainText)
+    ensures err != nil ==> err.ErrorMem()
     DecryptWithAESGCM(cipherText []byte, ghost p perm) (plainText []byte, err error)
 }
-
+*/
 type KMSService struct {
     nonEmptyStruct int
 }
@@ -34,17 +32,21 @@ pred (service *KMSService) Mem()
 
 requires acc(context.Mem(), _)
 ensures err == nil ==> service.Mem()
+ensures err != nil ==> err.ErrorMem()
 func NewKMSService(context ctx.T) (service *KMSService, err error)
 
 preserves kmsService.Mem()
 ensures err == nil ==> meta.Mem()
+ensures err != nil ==> err.ErrorMem()
 func (kmsService *KMSService) CreateKeyAssymetric() (meta *kms.KeyMetadata, err error)
 
 requires noPerm < p
 preserves kmsService.Mem() && acc(bytes.SliceMem(message), p)
 ensures err == nil ==> bytes.SliceMem(signature)
+ensures err != nil ==> err.ErrorMem()
 func (kmsService *KMSService) Sign(keyID string, message []byte, ghost p perm) (signature []byte, err error)
 
 requires noPerm < p
 preserves kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)
+ensures err != nil ==> err.ErrorMem()
 func (kmsService *KMSService) Verify(kmsKeyId string, message []byte, signature []byte, ghost p perm) (success bool, err error)
