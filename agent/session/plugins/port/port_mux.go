@@ -226,7 +226,12 @@ func (p *MuxPortSession) transferDataToMgs(ctx context.Context, dataChannel data
 		}
 	}()
 	for {
-		if dataChannel.IsActive() {
+		isActive, err := dataChannel.IsActive()
+		if err != nil {
+			log.Errorf("Retrieving Data Channel's active state failed, %v", err)
+			return err
+		}
+		if isActive {
 			packet := make([]byte, mgsConfig.StreamDataPayloadSize)
 			select {
 			case <-ctx.Done():

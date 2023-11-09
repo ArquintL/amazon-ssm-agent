@@ -148,6 +148,6 @@ var getDataChannelForSessionPlugin = func(context context.T, sessionId string, c
 	if err != nil {
 		return nil, err
 	}
-	dataChannel := channel.(*datachannel.DataChannel)
+	dataChannel := channel.(datachannel.IDataChannel)
 	return dataChannel, nil
 }

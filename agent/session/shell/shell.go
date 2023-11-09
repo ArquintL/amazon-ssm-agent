@@ -678,7 +678,13 @@ func (p *ShellPlugin) setupRoutineToWriteCmdPipelineOutput(log log.T, ipcFile *o
 		outputBytes := make([]byte, mgsConfig.StreamDataPayloadSize-prefixLen)
 		needPrefix := true
 		for {
-			if p.dataChannel.IsActive() {
+			isActive, err := p.dataChannel.IsActive()
+			if err != nil {
+				log.Errorf("Retrieving Data Channel's active state failed, %v", err)
+				done <- appconfig.ErrorExitCode
+				break
+			}
+			if isActive {
 				outputBytesLen, err := pipe.Read(outputBytes)
 				if err == io.EOF {
 					log.Debugf("Pipeline closed, finish pipeline reading. Is StdErr pipe: %t", isStderr)
@@ -729,7 +735,11 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
 	}
 	log.Infof("Sending exit code: %d", exitCode)
 
-	if p.dataChannel.IsActive() {
+	isActive, err := p.dataChannel.IsActive()
+	if err != nil {
+		return fmt.Errorf("Retrieving Data Channel's active state failed, %v", err)
+	}
+	if isActive {
 		if unprocessedBuf, err = p.processStdoutData(log, outputBytes, outputBytesLen, unprocessedBuf, ipcFile, mgsContracts.ExitCode); err != nil {
 			log.Errorf("Error processing command pipeline output data, %v", err)
 		}
@@ -757,7 +767,11 @@ func (p *ShellPlugin) writePump(log log.T, ipcFile *os.File, initialWaitSecond i
 
 	var unprocessedBuf bytes.Buffer
 	for {
-		if p.dataChannel.IsActive() {
+		isActive, err := p.dataChannel.IsActive()
+		if err != nil {
+			return appconfig.ErrorExitCode
+		}
+		if isActive {
 			stdoutBytesLen, err := reader.Read(stdoutBytes)
 			if err != nil {
 				log.Debugf("Failed to read from command output: %s", err)
@@ -846,10 +860,19 @@ func (p *ShellPlugin) startStreamingLogs(
 		return
 	}
 
+	region, err := p.dataChannel.GetRegion()
+	if err != nil {
+		return fmt.Errorf("Retrieving Data Channel's region failed, %v", err)
+	}
+	instanceId, err := p.dataChannel.GetInstanceId()
+	if err != nil {
+		return fmt.Errorf("Retrieving Data Channel's instance ID failed, %v", err)
+	}
+
 	p.logger.cwl.SetCloudWatchMessage(
 		"1.0",
-		p.dataChannel.GetRegion(),
-		p.dataChannel.GetInstanceId(),
+		region,
+		instanceId,
 		p.runAsUser,
 		config.SessionId,
 		config.SessionOwner)

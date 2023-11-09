@@ -126,7 +126,12 @@ func (p *BasicPortSession) WritePump(dataChannel datachannel.IDataChannel) (erro
 	packet := make([]byte, mgsConfig.StreamDataPayloadSize)
 
 	for {
-		if dataChannel.IsActive() {
+		isActive, err := dataChannel.IsActive()
+		if err != nil {
+			log.Errorf("Retrieving Data Channel's active state failed, %v", err)
+			return appconfig.ErrorExitCode
+		}
+		if isActive {
 			numBytes, err := p.conn.Read(packet)
 			if err != nil {
 				var exitCode int

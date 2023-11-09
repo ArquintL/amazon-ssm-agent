@@ -275,7 +275,11 @@ func (p *PortPlugin) initializeParameters(config agentContracts.Configuration) (
 		return err
 	}
 
-	p.session, err = GetSession(p.context, portParameters, p.cancelled, p.dataChannel.GetClientVersion(), config.SessionId)
+	clientVersion, err := p.dataChannel.GetClientVersion()
+	if err != nil {
+		return fmt.Errorf("Retrieving Data Channel's client version failed, %v", err)
+	}
+	p.session, err = GetSession(p.context, portParameters, p.cancelled, clientVersion, config.SessionId)
 
 	return
 }
