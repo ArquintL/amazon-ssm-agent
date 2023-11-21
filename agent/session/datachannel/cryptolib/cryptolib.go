@@ -9,9 +9,13 @@ import (
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	//@ "bytes"
+	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
+	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
 type BlockCipherT struct {
+	ready            bool
 	cipherTextKey    []byte
 	encryptionKey    []byte
 	decryptionKey    []byte
@@ -22,19 +26,74 @@ type BlockCipherT struct {
 /*@
 pred (bc *BlockCipherT) Mem() {
 	acc(bc) &&
-	(bc.cipherTextKey != nil ==> bytes.SliceMem(bc.cipherTextKey)) &&
-	(bc.encryptionKey != nil ==> bytes.SliceMem(bc.encryptionKey)) &&
-	(bc.decryptionKey != nil ==> bytes.SliceMem(bc.decryptionKey)) &&
-	(bc.encryptionCipher != nil ==> bc.encryptionCipher.Mem()) &&
-	(bc.decryptionCipher != nil ==> bc.decryptionCipher.Mem())
+	bc.EncKeyTMem() &&
+	bc.DecKeyTMem() &&
+	(bc.ready ==>
+		bytes.SliceMem(bc.cipherTextKey) &&
+		bytes.SliceMem(bc.encryptionKey) &&
+		by.gamma(bc.getEncKeyT()) == abs.Abs(bc.encryptionKey) &&
+		bytes.SliceMem(bc.decryptionKey) &&
+		by.gamma(bc.getDecKeyT()) == abs.Abs(bc.decryptionKey) &&
+		bc.encryptionCipher.Mem() &&
+		bc.decryptionCipher.Mem())
 }
+
+pred (bc *BlockCipherT) EncKeyTMem()
+
+ghost
+requires acc(bc.EncKeyTMem(), _)
+pure func (bc *BlockCipherT) getEncKeyT() tm.Term
+
+ghost
+requires acc(bc.Mem(), _)
+ensures  bc.IsReady() ==> by.gamma(res) == bc.GetEncKeyB()
+pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
+	return unfolding acc(bc.Mem(), _) in bc.getEncKeyT()
+}
+
+ghost
+requires acc(bc.Mem(), _) && bc.IsReady()
+pure func (bc *BlockCipherT) GetEncKeyB() by.Bytes {
+	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.encryptionKey)
+}
+
+ghost
+preserves bc.EncKeyTMem()
+ensures bc.getEncKeyT() == encKeyT
+func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
+
+pred (bc *BlockCipherT) DecKeyTMem()
+
+ghost
+requires acc(bc.DecKeyTMem(), _)
+pure func (bc *BlockCipherT) getDecKeyT() tm.Term
+
+ghost
+requires acc(bc.Mem(), _)
+pure func (bc *BlockCipherT) GetDecKeyT() tm.Term {
+	return unfolding acc(bc.Mem(), _) in bc.getDecKeyT()
+}
+
+ghost
+preserves bc.DecKeyTMem()
+ensures bc.getDecKeyT() == decKeyT
+func (bc *BlockCipherT) setDecKeyT(decKeyT tm.Term)
 @*/
+
+// @ requires acc(bc.Mem(), _)
+// @ pure
+func (bc *BlockCipherT) IsReady() bool {
+	return /*@ unfolding acc(bc.Mem(), _) in @*/ bc.ready
+}
 
 // @ trusted
 // @ requires noPerm < p
-// @ preserves bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
-// @ ensures err != nil ==> err.ErrorMem()
-func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm @*/) (err error) {
+// @ requires bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
+// @ requires by.gamma(readKeyT) == abs.Abs(readKey) && by.gamma(writeKeyT) == abs.Abs(writeKey)
+// @ ensures  bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
+// @ ensures  err == nil ==> bc.IsReady() && bc.GetEncKeyT() == writeKeyT && bc.GetDecKeyT() == readKeyT
+// @ ensures  err != nil ==> err.ErrorMem()
+func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm, ghost readKeyT tm.Term, ghost writeKeyT tm.Term @*/) (err error) {
 	if len(readKey) != 32 || len(writeKey) != 32 {
 		return fmt.Errorf("read or write key have invalid length")
 	}
@@ -75,9 +134,12 @@ const nonceSize = 12
 // EncryptWithGCM encrypts plain text using AES block cipher GCM mode
 // @ trusted
 // @ requires noPerm < p
-// @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(plainText), p)
-// @ ensures err == nil ==> bytes.SliceMem(cipherText)
-// @ ensures err != nil ==> err.ErrorMem()
+// @ requires acc(blockCipher.Mem(), p) && blockCipher.IsReady()
+// @ preserves acc(bytes.SliceMem(plainText), p)
+// @ ensures  acc(blockCipher.Mem(), p) && blockCipher.IsReady()
+// @ ensures  err == nil ==> bytes.SliceMem(cipherText)
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  err == nil ==> abs.Abs(cipherText) == by.sencB(abs.Abs(plainText), blockCipher.GetEncKeyB())
 func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p perm @*/) (cipherText []byte, err error) {
 	var aesgcm = blockCipher.encryptionCipher
 
@@ -99,7 +161,9 @@ func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p
 // DecryptWithGCM decrypts cipher text using AES block cipher GCM mode
 // @ trusted
 // @ requires noPerm < p
-// @ preserves acc(blockCipher.Mem(), p) && acc(bytes.SliceMem(cipherText), p)
+// @ requires acc(blockCipher.Mem(), p) && blockCipher.IsReady()
+// @ preserves acc(bytes.SliceMem(cipherText), p)
+// @ ensures  acc(blockCipher.Mem(), p)
 // @ ensures err == nil ==> bytes.SliceMem(plainText)
 // @ ensures err != nil ==> err.ErrorMem()
 func (blockCipher *BlockCipherT) DecryptWithAESGCM(cipherText []byte /*@, ghost p perm @*/) (plainText []byte, err error) {

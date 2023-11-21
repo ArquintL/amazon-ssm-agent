@@ -1,0 +1,9 @@
+package arb
+
+import (
+    tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+)
+
+// returns a completey unconstraint (and thus arbitrary) term
+ghost
+func GetArbTerm() tm.Term

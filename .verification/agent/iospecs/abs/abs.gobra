@@ -1,0 +1,21 @@
+package abs
+
+import (
+    "big"
+    "bytes"
+    by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+)
+
+ghost
+decreases
+requires acc(bytes.SliceMem(b), _)
+pure func Abs(b []byte) (res by.Bytes)
+/*
+ghost
+pure func AbsString(s string) (res by.Bytes)
+*/
+/*
+ghost
+requires acc(x.Mem(), _) && acc(y.Mem(), _)
+pure func AbsEllipticPk(x, y *big.Int) (res by.Bytes)
+*/

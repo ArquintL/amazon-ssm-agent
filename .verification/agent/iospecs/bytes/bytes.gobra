@@ -1,0 +1,77 @@
+package bytes
+
+import (
+    . "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
+    . "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+)
+
+type Bytes domain {
+    // constructors
+    func pairB(b1, b2 Bytes) Bytes
+    func tuple3B(b1, b2, b3 Bytes) Bytes
+    func tuple4B(b1, b2, b3, b4 Bytes) Bytes
+    func tuple5B(b1, b2, b3, b4, b5 Bytes) Bytes
+    func pkB(sk Bytes) Bytes
+    func aencB(plaintext Bytes, key Bytes) Bytes
+    func sencB(plaintext Bytes, key Bytes) Bytes
+    func generatorB() Bytes
+    func expB(b1, b2 Bytes) Bytes
+    func msgB(string) Bytes
+
+    // destructors
+    func getFirst(b Bytes) Bytes
+    func getSecond(b Bytes) Bytes
+    func getSkB(pk Bytes) Bytes
+    // func getPlaintextB(ciphertext Bytes) Bytes
+    // func getKeyB(ciphertext Bytes) Bytes
+    func adecB(ciphertext, sk Bytes) Bytes
+    func sdecB(ciphertext, sk Bytes) Bytes
+
+    axiom {
+        forall b1, b2 Bytes :: { pairB(b1, b2) } getFirst(pairB(b1, b2)) == b1 && getSecond(pairB(b1, b2)) == b2
+    }
+
+    axiom {
+        forall b1, b2, b3 Bytes :: { tuple3B(b1, b2, b3) } tuple3B(b1, b2, b3) == pairB(b1, pairB(b2, b3))
+    }
+
+    axiom {
+        forall b1, b2, b3, b4 Bytes :: { tuple4B(b1, b2, b3, b4) } tuple4B(b1, b2, b3, b4) == pairB(b1, pairB(b2, pairB(b3, b4)))
+    }
+
+    axiom {
+        forall b1, b2, b3, b4, b5 Bytes :: { tuple5B(b1, b2, b3, b4, b5) } tuple5B(b1, b2, b3, b4, b5) == pairB(b1, pairB(b2, pairB(b3, pairB(b4, b5))))
+    }
+
+    axiom {
+        forall sk Bytes :: { pkB(sk) } getSkB(pkB(sk)) == sk
+    }
+
+    axiom {
+        forall plaintext, sk Bytes :: { aencB(plaintext, pkB(sk)) } adecB(aencB(plaintext, pkB(sk)), sk) == plaintext
+    }
+
+    axiom {
+        forall plaintext, key Bytes :: { sencB(plaintext, key) } sdecB(sencB(plaintext, key), key) == plaintext
+    }
+}
+
+type Gamma domain {
+    func gamma(Term) Bytes
+
+    func oneTerm(Bytes) Term
+
+    axiom { // totality
+        forall b Bytes :: {oneTerm(b)} gamma(oneTerm(b)) == b
+    }
+
+    axiom { // homomorphism
+        (forall t1, t2 Term :: { gamma(pair(t1, t2)) } gamma(pair(t1, t2)) == pairB(gamma(t1), gamma(t2))) &&
+        (forall plaintext, pk Term :: { gamma(aenc(plaintext, pk)) } gamma(aenc(plaintext, pk)) == aencB(gamma(plaintext), gamma(pk))) &&
+        (forall plaintext, key Term :: { gamma(senc(plaintext, key)) } gamma(senc(plaintext, key)) == sencB(gamma(plaintext), gamma(key))) &&
+        (gamma(pubTerm(const_g_pub())) == generatorB()) &&
+        (forall l, r Term :: { gamma(exp(l,r)) } gamma(exp(l,r)) == expB(gamma(l), gamma(r))) &&
+        (forall s string :: { gamma(pubTerm(pub_msg(s))) } gamma(pubTerm(pub_msg(s))) == msgB(s)) &&
+        true
+    }
+}

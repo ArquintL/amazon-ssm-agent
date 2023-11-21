@@ -4,6 +4,7 @@ import (
     "big"
     "bytes"
     "io"
+    by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 )
 
 type PublicKey struct {
@@ -15,6 +16,9 @@ pred (pk *PublicKey) Mem() {
     acc(pk) &&
     (pk.N != nil ==> pk.N.Mem())
 }
+
+pure func (pk *PublicKey) Abs() by.Bytes
+
 
 type PrivateKey struct {
 	PublicKey            // public part.

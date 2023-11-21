@@ -4,6 +4,11 @@ import (
     "big"
     "bytes"
     "io"
+    "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
+    by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+    "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
+    pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
+    tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
 type Curve interface {
@@ -23,13 +28,21 @@ ensures curve != nil && curve.Mem()
 func P384() (curve Curve)
 
 preserves curve.Mem() && rand.Mem()
-ensures err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
-ensures err != nil ==> err.ErrorMem()
-func GenerateKey(curve Curve, rand io.Reader) (priv []byte, x *big.Int, y *big.Int, err error)
+requires pl.token(t0) && iospec.e_FrFact(t0, rid)
+ensures  err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
+ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
+ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
+// ensures  err == nil ==> abs.AbsEllipticPk(x, y) == by.expB(by.generatorB(), abs.Abs(priv))
+ensures  err != nil ==> err.ErrorMem()
+ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
+    iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&
+    iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
+func GenerateKey(curve Curve, rand io.Reader, ghost t0 pl.Place, ghost rid tm.Term) (priv []byte, x *big.Int, y *big.Int, err error, ghost t1 pl.Place)
 
 requires noPerm < p
 preserves curve.Mem() && acc(x.Mem(), p) && acc(y.Mem(), p)
 ensures bytes.SliceMem(res)
+// ensures abs.Abs(res) == abs.AbsEllipticPk(x, y)
 func MarshalCompressed(curve Curve, x *big.Int, y *big.Int, ghost p perm) (res []byte)
 
 requires noPerm < p

@@ -34,6 +34,9 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/utils"
 	"github.com/aws/amazon-ssm-agent/agent/times"
 	"github.com/twinj/uuid"
+	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
+	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
 type IAgentMessage interface {
@@ -65,6 +68,14 @@ pred (msg *AgentMessage) Mem() {
 	msg.MessageId.Mem() &&
 	bytes.SliceMem(msg.PayloadDigest) &&
 	bytes.SliceMem(msg.Payload)
+}
+
+ghost
+requires acc(msg.Mem(), _)
+pure
+func (msg *AgentMessage) Abs() by.Bytes {
+	return unfolding acc(msg.Mem(), _) in
+		by.pairB(by.gamma(payloadTypeTerm(PayloadType(msg.PayloadType))), abs.Abs(msg.Payload))
 }
 @*/
 

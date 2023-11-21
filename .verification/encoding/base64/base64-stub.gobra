@@ -1,6 +1,10 @@
 package base64
 
-import "bytes"
+import (
+    "bytes"
+    "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
+    by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+)
 
 // we omit permissions to `encoding` because we assume
 // that the following variables behave like constants
@@ -16,7 +20,8 @@ type Encoding struct {
 
 requires noPerm < p
 preserves acc(bytes.SliceMem(src), p)
-func (encoding *Encoding) EncodeToString(src []byte, ghost p perm) string
+// ensures  abs.Abs(src) == by.msgB(res) 
+func (encoding *Encoding) EncodeToString(src []byte, ghost p perm) (res string)
 
 ensures err == nil ==> bytes.SliceMem(res)
 ensures err != nil ==> err.ErrorMem()

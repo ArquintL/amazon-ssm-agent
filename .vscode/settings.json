@@ -11,8 +11,13 @@
         },
         "serverJar": {
             "mac": "/Users/arquintl/gobra-ide/server/target/scala-2.13/server.jar"
+        },
+        "z3Executable": {
+            // "mac": "/usr/local/bin/z3"
+            "mac": "$gobraTools$/z3/bin/z3"
         }
     },
+    "gobraSettings.loglevel": "DEBUG",
     "gobraSettings.autoVerify": false,
     "gobraSettings.verifyPackage": false,
 }
