@@ -1,0 +1,7 @@
+field f: Int
+
+method foo(x: Ref)
+requires acc(x.f) --* old[lhs](x.f) == 42
+{
+
+}
