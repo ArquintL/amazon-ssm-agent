@@ -136,6 +136,7 @@ var getDataChannelForSessionPlugin = func(context context.T, sessionId string, c
 				context,
 				sessionId,
 				clientId,
+				"logReaderId",
 				inputStreamMessageHandler,
 				cancelFlag)
 		},
