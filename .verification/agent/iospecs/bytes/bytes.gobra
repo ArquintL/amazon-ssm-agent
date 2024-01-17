@@ -17,6 +17,9 @@ type Bytes domain {
     func generatorB() Bytes
     func expB(b1, b2 Bytes) Bytes
     func msgB(string) Bytes
+    func hashB(Bytes) Bytes
+    func kdf1B(Bytes) Bytes
+    func kdf2B(Bytes) Bytes
 
     // destructors
     func getFirst(b Bytes) Bytes
@@ -72,6 +75,9 @@ type Gamma domain {
         (gamma(pubTerm(const_g_pub())) == generatorB()) &&
         (forall l, r Term :: { gamma(exp(l,r)) } gamma(exp(l,r)) == expB(gamma(l), gamma(r))) &&
         (forall s string :: { gamma(pubTerm(pub_msg(s))) } gamma(pubTerm(pub_msg(s))) == msgB(s)) &&
+        (forall b Term :: {gamma(hash(b))} gamma(hash(b)) == hashB(gamma(b))) &&
+        (forall b Term :: {gamma(kdf1(b))} gamma(kdf1(b)) == kdf1B(gamma(b))) &&
+        (forall b Term :: {gamma(kdf2(b))} gamma(kdf2(b)) == kdf2B(gamma(b))) &&
         true
     }
 }

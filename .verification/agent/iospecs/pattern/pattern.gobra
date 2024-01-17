@@ -1,0 +1,19 @@
+package pattern
+
+import (
+    by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+	ft "github.com/aws/amazon-ssm-agent/agent/iospecs/fact"
+	io "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
+	pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
+	pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
+	tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+)
+
+
+ghost
+requires pl.token(p) && io.P_Agent(p, rid, s)
+requires mset[ft.Fact]{ ft.St_Agent_3(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX) } subset s
+requires by.gamma(t) == by.gamma(tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), someZ), tm.pair(someSigY, tm.pair(someClientLtKeyId, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), someZ), xT)))))))
+ensures  pl.token(p) && io.P_Agent(p, rid, s)
+ensures  t == tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), Z), tm.pair(SigY, tm.pair(ClientLtKeyId, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), Z), xT))))))
+func patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, someZ, someSigY, someClientLtKeyId, t tm.Term, p pl.Place, s mset[ft.Fact]) (Z, SigY, ClientLtKeyId tm.Term)

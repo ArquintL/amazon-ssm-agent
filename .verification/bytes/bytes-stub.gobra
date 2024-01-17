@@ -5,11 +5,10 @@ pred SliceMem(bytes []byte) {
 }
 
 decreases
-requires acc(SliceMem(a), _)
-requires acc(SliceMem(b), _)
-pure func Equal(a, b []byte) bool {
+requires acc(SliceMem(a), _) && acc(SliceMem(b), _)
+pure func Equal(a, b []byte) bool /*{
 	// Neither cmd/compile nor gccgo allocates for these string conversions.
 	return unfolding acc(SliceMem(a), _) in
 		unfolding acc(SliceMem(b), _) in
 		string(a) == string(b)
-}
+}*/

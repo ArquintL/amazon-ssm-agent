@@ -10,7 +10,7 @@
             "mac": "$HOME/Library/Application Support/Code/User/globalStorage/viper-admin.gobra-ide/Nightly/GobraTools"
         },
         "serverJar": {
-            "mac": "/Users/arquintl/gobra-ide/server/target/scala-2.13/server.jar"
+            "mac": "/Users/arquintlinard/ETH/PhD/gobra-ide/server/target/scala-2.13/server.jar"
         },
         "z3Executable": {
             // "mac": "/usr/local/bin/z3"

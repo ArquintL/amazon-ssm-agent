@@ -141,27 +141,27 @@ func internBIO_e_Agent_SendHandshakeComplete(tami_p Place, RunId Term, AgentId T
 
 
 // permission e_Agent_ReceiveMessages
-pred e_Agent_ReceiveMessages(ghost tami_p Place, ghost RunId Term, ghost AgentId Term, ghost KMSId Term, ghost ClientId Term, ghost ReaderId Term, ghost AgentLtKeyId Term, ghost logPk Term, ghost x Term, ghost SigX Term, ghost ClientLtKeyId Term, ghost Y Term, ghost SigY Term, ghost SigSessionKey Term, ghost msg Term, ghost tami_lp mset[Fact], ghost tami_ap mset[Claim], ghost tami_rp mset[Fact])
+pred e_Agent_ReceiveMessages(ghost tami_p Place, ghost RunId Term, ghost AgentId Term, ghost KMSId Term, ghost ClientId Term, ghost ReaderId Term, ghost AgentLtKeyId Term, ghost logPk Term, ghost x Term, ghost SigX Term, ghost ClientLtKeyId Term, ghost Y Term, ghost SigY Term, ghost SigSessionKey Term, ghost payload Term, ghost tami_lp mset[Fact], ghost tami_ap mset[Claim], ghost tami_rp mset[Fact])
 
 ghost
-requires e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp)
-pure func get_e_Agent_ReceiveMessages_placeDst(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (placeDst Place)
+requires e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp)
+pure func get_e_Agent_ReceiveMessages_placeDst(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (placeDst Place)
 
 ghost
-requires token(tami_p) && e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp)
-ensures token(tami_pp) && tami_pp == old(get_e_Agent_ReceiveMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp))
-func internBIO_e_Agent_ReceiveMessages(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (tami_pp Place)
+requires token(tami_p) && e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp)
+ensures token(tami_pp) && tami_pp == old(get_e_Agent_ReceiveMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp))
+func internBIO_e_Agent_ReceiveMessages(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (tami_pp Place)
 
 
 // permission e_Agent_SendMessages
-pred e_Agent_SendMessages(ghost tami_p Place, ghost RunId Term, ghost AgentId Term, ghost KMSId Term, ghost ClientId Term, ghost ReaderId Term, ghost AgentLtKeyId Term, ghost logPk Term, ghost x Term, ghost SigX Term, ghost ClientLtKeyId Term, ghost Y Term, ghost SigY Term, ghost SigSessionKey Term, ghost msg Term, ghost tami_lp mset[Fact], ghost tami_ap mset[Claim], ghost tami_rp mset[Fact])
+pred e_Agent_SendMessages(ghost tami_p Place, ghost RunId Term, ghost AgentId Term, ghost KMSId Term, ghost ClientId Term, ghost ReaderId Term, ghost AgentLtKeyId Term, ghost logPk Term, ghost x Term, ghost SigX Term, ghost ClientLtKeyId Term, ghost Y Term, ghost SigY Term, ghost SigSessionKey Term, ghost payload Term, ghost tami_lp mset[Fact], ghost tami_ap mset[Claim], ghost tami_rp mset[Fact])
 
 ghost
-requires e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp)
-pure func get_e_Agent_SendMessages_placeDst(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (placeDst Place)
+requires e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp)
+pure func get_e_Agent_SendMessages_placeDst(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (placeDst Place)
 
 ghost
-requires token(tami_p) && e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp)
-ensures token(tami_pp) && tami_pp == old(get_e_Agent_SendMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp))
-func internBIO_e_Agent_SendMessages(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (tami_pp Place)
+requires token(tami_p) && e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp)
+ensures token(tami_pp) && tami_pp == old(get_e_Agent_SendMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp))
+func internBIO_e_Agent_SendMessages(tami_p Place, RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact]) (tami_pp Place)
 

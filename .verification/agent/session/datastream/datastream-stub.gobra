@@ -42,7 +42,7 @@ ghost
 requires cs != nil && log != nil
 requires QuantifiedStreamDataHandlerSpecWand(msg)
 preserves cs.Inv() && acc(log.Mem(), _)
-ensures msg.Mem()
+ensures err == nil ==> msg.Mem()
 ensures err != nil ==> err.ErrorMem()
 func StreamDataHandlerSpec(ghost cs Calls, log logger.T, msg *mgsContracts.AgentMessage) (err error)
 

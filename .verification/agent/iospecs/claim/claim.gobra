@@ -48,6 +48,15 @@ type Claim domain {
                 t1)
     }
 
+    func AgentSendEncryptedSessionKey(t1 Term) Claim
+    func getAgentSendEncryptedSessionKey(f Claim) Term
+    axiom  {
+        forall t1 Term :: 
+            { AgentSendEncryptedSessionKey(t1) } (
+                getAgentSendEncryptedSessionKey(AgentSendEncryptedSessionKey(t1)) ==
+                t1)
+    }
+
     func Agent_Finish(t1 Term) Claim
     func getAgent_Finish(f Claim) Term
     axiom  {

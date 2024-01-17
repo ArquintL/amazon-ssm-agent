@@ -475,7 +475,14 @@ pred (secureSessionResponse *SecureSessionResponse) Mem() {
 }
 
 ghost
-pure func (secureSessionResponse *SecureSessionResponse) Abs() by.Bytes
+requires acc(secureSessionResponse.Mem(), _)
+pure func (secureSessionResponse *SecureSessionResponse) Abs() by.Bytes {
+	return unfolding acc(secureSessionResponse.Mem(), _) in by.tuple4B(
+		by.msgB(secureSessionResponse.ClientShare),
+		by.msgB(secureSessionResponse.Signature),
+		by.msgB(secureSessionResponse.ClientLTKeyARN),
+		by.msgB(secureSessionResponse.SessionID))
+}
 @*/
 
 // Handshake payload sent by the agent to the session manager plugin
@@ -631,7 +638,8 @@ pure func (handshakeResponsePayload *HandshakeResponsePayload) Abs() by.Bytes {
 	return handshakeResponsePayload.ContainsSecureSession() ?
 		// see comment in `containsSecureSession` regarding this simplification
 		// (unfolding acc(handshakeResponsePayload.Mem(), _) in by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponsePayload.ProcessedClientActions[getSecureSessionIndex(handshakeResponsePayload.ProcessedClientActions, 0)].Abs())) :
-		(unfolding acc(handshakeResponsePayload.Mem(), _) in by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponsePayload.ProcessedClientActions[0].Abs())) :
+		// (unfolding acc(handshakeResponsePayload.Mem(), _) in by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponsePayload.ProcessedClientActions[1].Abs())) :
+		(unfolding acc(handshakeResponsePayload.Mem(), _) in handshakeResponsePayload.ProcessedClientActions[1].Abs()) :
 		handshakeResponsePayload.UnknownAbs()
 }
 
@@ -641,12 +649,32 @@ decreases
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) UnknownAbs() by.Bytes
 
+// ghost
+// decreases
+// requires acc(handshakeResponsePayload.Mem(), _)
+// pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSession() bool {
+// 	return unfolding acc(handshakeResponsePayload.Mem(), _) in
+// 		containsSecureSession(handshakeResponsePayload.ProcessedClientActions, 0)
+// }
+
+// this pure function aids verification as no existential quantifiers are used
+// it's less generic but sufficient as the agent adheres to the specified order of
+// actions.
 ghost
-decreases
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSession() bool {
 	return unfolding acc(handshakeResponsePayload.Mem(), _) in
-		containsSecureSession(handshakeResponsePayload.ProcessedClientActions, 0)
+		2 <= len(handshakeResponsePayload.ProcessedClientActions) &&
+		handshakeResponsePayload.ProcessedClientActions[0].Type() == SessionType &&
+		handshakeResponsePayload.ProcessedClientActions[1].Type() == SecureSession
+}
+
+ghost
+requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), _)
+pure func ActionsContainsSecureSession(actions []ProcessedClientAction) bool {
+	return 2 <= len(actions) &&
+		actions[0].Type() == SessionType &&
+		actions[1].Type() == SecureSession
 }
 
 ghost
@@ -719,11 +747,12 @@ pred (signSessionKeysPayload *SignSessionKeysPayload) Mem() {
 @*/
 
 type EncryptedSessionKeysPayload struct {
+	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
+	Signature            string `json:"Signature"`
+	AgentId              string `json:"AgentId"`
 	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
 	AgentLTKeyARN        string `json:"AgentLTKeyARN"`
 	ClientId             string `json:"ClientId"`
-	EncryptedSessionKeys string `json:"EncryptedSessionKeys"`
-	Signature            string `json:"Signature"`
 }
 
 /*@

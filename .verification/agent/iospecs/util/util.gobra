@@ -1,0 +1,38 @@
+package util
+
+import (
+    tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+)
+
+type Term = tm.Term
+
+type TermUtil domain {
+
+    func tuple3(tm.Term, tm.Term, tm.Term) tm.Term
+    axiom { 
+        forall x1, x2, x3 tm.Term :: {tuple3(x1, x2, x3)} tuple3(x1, x2, x3) == tm.pair(x1,tm.pair(x2,x3))
+    }
+
+    func tuple5(tm.Term, tm.Term, tm.Term, tm.Term, tm.Term) tm.Term
+    axiom { 
+        forall x1, x2, x3, x4, x5 tm.Term :: {tuple5(x1, x2, x3, x4, x5)} tuple5(x1, x2, x3, x4, x5) == tm.pair(x1,tm.pair(x2,tm.pair(x3,tm.pair(x4,x5))))
+    }
+
+    func getFirst(tm.Term) tm.Term
+    func getSecond(tm.Term) tm.Term
+    func getThird(tm.Term) tm.Term
+    func getFourth(tm.Term) tm.Term
+    func getFifth(tm.Term) tm.Term
+    func getSixth(tm.Term) tm.Term
+    func getSeventh(tm.Term) tm.Term
+
+    // tuple3 deconstructors
+    axiom {
+        forall t1, t2, t3 Term :: { tuple3(t1, t2, t3) } getFirst(tuple3(t1, t2, t3)) == t1 && getSecond(tuple3(t1, t2, t3)) == t2 && getThird(tuple3(t1, t2, t3)) == t3
+    }
+
+    // tuple5 deconstructors
+    axiom {
+        forall t1, t2, t3, t4, t5 Term :: { tuple5(t1, t2, t3, t4, t5) } getFirst(tuple5(t1, t2, t3, t4, t5)) == t1 && getSecond(tuple5(t1, t2, t3, t4, t5)) == t2 && getThird(tuple5(t1, t2, t3, t4, t5)) == t3 && getFourth(tuple5(t1, t2, t3, t4, t5)) == t4 && getFifth(tuple5(t1, t2, t3, t4, t5)) == t5
+    }
+}

@@ -68,24 +68,19 @@ func (kmsService *KMSService) Sign(keyID string, message []byte, ghost p perm, g
     // executing a send and a receive operations via a secure channel, which is a TLS
     // connection to KMS in this case here.
     ghost var t1 pl.Place
-    err, t1 = kmsService.send(keyID, message, p, t, rid, agentId, kmsId, messageT, m)
+    err, t1 = kmsService.sendSignRequest(keyID, message, p, t, rid, agentId, kmsId, messageT, m)
     if err != nil {
         return
     }
     assert t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
     ghost var t2 pl.Place
     ghost var recvKmsId, recvAgentId, recvRid Term
-    signature, err, t2, recvKmsId, recvAgentId, recvRid, signatureT = kmsService.receive(t1, rid)
+    signature, err, t2, recvKmsId, recvAgentId, recvRid, signatureT = kmsService.receiveSignResponse(t1, rid)
     // we assume that `receive` only accept messages from the same TLS connection as used by `send`
     // and that thus the following equalities hold:
     assume recvKmsId == kmsId && recvAgentId == agentId && recvRid == rid
     return
 }
-
-requires noPerm < p
-preserves kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)
-ensures err != nil ==> err.ErrorMem()
-func (kmsService *KMSService) Verify(kmsKeyId string, message []byte, signature []byte, ghost p perm) (success bool, err error)
 
 requires noPerm < p
 requires m == pair(pubTerm(const_SignRequest_pub()), pair(pubTerm(pub_msg(keyID)), inputDataT))
@@ -96,7 +91,7 @@ ensures  err != nil ==> err.ErrorMem()
 ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
 /*ensures  err != nil ==> t1 == t && pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) &&
     io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))*/
-func (kmsService *KMSService) send(keyID string, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost inputDataT Term, ghost m Term) (err error, ghost t1 pl.Place)
+func (kmsService *KMSService) sendSignRequest(keyID string, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost inputDataT Term, ghost m Term) (err error, ghost t1 pl.Place)
 
 requires  pl.token(t) && io.e_In_KMS(t, rid)
 preserves kmsService.Mem()
@@ -114,4 +109,65 @@ ensures   err == nil ==> pl.token(t1) &&
     io.get_e_In_KMS_r2(t, rid) == old(io.get_e_In_KMS_r2(t, rid)) &&
     io.get_e_In_KMS_r3(t, rid) == old(io.get_e_In_KMS_r3(t, rid)) &&
     io.get_e_In_KMS_r4(t, rid) == old(io.get_e_In_KMS_r4(t, rid))*/
-func (kmsService *KMSService) receive(ghost t pl.Place, ghost rid Term) (data []byte, err error, ghost t1 pl.Place, ghost kmsId Term, ghost agentId Term, ghost runId Term, ghost dataT Term)
+func (kmsService *KMSService) receiveSignResponse(ghost t pl.Place, ghost rid Term) (data []byte, err error, ghost t1 pl.Place, ghost kmsId Term, ghost agentId Term, ghost runId Term, ghost dataT Term)
+
+
+requires noPerm < p
+requires m == pair(pubTerm(const_VerifyRequest_pub()), pair(clientId, pair(kmsKeyIdT, pair(messageT, signatureT))))
+requires kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)
+requires pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(kmsKeyIdT) == by.msgB(kmsKeyId) && by.gamma(messageT) == abs.Abs(message) && by.gamma(signatureT) == abs.Abs(signature)
+requires let t1 := io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) in (
+    io.e_In_KMS(t1, rid))
+ensures  kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)
+ensures  err != nil ==> err.ErrorMem()
+ensures  err == nil ==> let t1 := old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m)) in (
+    pl.token(old(io.get_e_In_KMS_placeDst(t1, rid))) &&
+    kmsId == old(io.get_e_In_KMS_r1(t1, rid)) &&
+    agentId == old(io.get_e_In_KMS_r2(t1, rid)) &&
+    rid == old(io.get_e_In_KMS_r3(t1, rid)) &&
+    pubTerm(const_VerifyResponse_pub()) == old(io.get_e_In_KMS_r4(t1, rid)))
+func (kmsService *KMSService) Verify(kmsKeyId string, message []byte, signature []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost clientId Term, ghost kmsKeyIdT Term, ghost messageT Term, ghost signatureT Term, ghost m Term) (success bool, err error) {
+    // this body acts as a proof that the provided specification is correct and allows
+    // executing a send and a receive operations via a secure channel, which is a TLS
+    // connection to KMS in this case here.
+    ghost var t1 pl.Place
+    err, t1 = kmsService.sendVerifyRequest(kmsKeyId, message, signature, p, t, rid, agentId, kmsId, clientId, kmsKeyIdT, messageT, signatureT, m)
+    if err != nil {
+        return
+    }
+    assert t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
+    ghost var t2 pl.Place
+    ghost var recvKmsId, recvAgentId, recvRid Term
+    err, t2, recvKmsId, recvAgentId, recvRid = kmsService.receiveVerifyResponse(t1, rid)
+    // we assume that `receive` only accept messages from the same TLS connection as used by `send`
+    // and that thus the following equalities hold:
+    assume recvKmsId == kmsId && recvAgentId == agentId && recvRid == rid
+}
+
+requires noPerm < p
+requires m == pair(pubTerm(const_VerifyRequest_pub()), pair(clientId, pair(keyIDT, pair(inputDataT, signatureT))))
+requires kmsService.Mem() && acc(bytes.SliceMem(inputData), p) && acc(bytes.SliceMem(signature), p)
+requires pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(keyIDT) == by.msgB(keyID) && by.gamma(inputDataT) == abs.Abs(inputData) && by.gamma(signatureT) == abs.Abs(signature)
+ensures  kmsService.Mem() && acc(bytes.SliceMem(inputData), p) && acc(bytes.SliceMem(signature), p)
+ensures  err != nil ==> err.ErrorMem()
+ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
+/*ensures  err != nil ==> t1 == t && pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) &&
+    io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))*/
+func (kmsService *KMSService) sendVerifyRequest(keyID string, inputData []byte, signature []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost clientId Term, ghost keyIDT Term, ghost inputDataT Term, ghost signatureT Term, ghost m Term) (err error, ghost t1 pl.Place)
+
+requires  pl.token(t) && io.e_In_KMS(t, rid)
+preserves kmsService.Mem()
+ensures   err != nil ==> err.ErrorMem()
+ensures   err == nil ==> pl.token(t1) &&
+    t1 == old(io.get_e_In_KMS_placeDst(t, rid)) &&
+    kmsId == old(io.get_e_In_KMS_r1(t, rid)) &&
+    agentId == old(io.get_e_In_KMS_r2(t, rid)) &&
+    runId == old(io.get_e_In_KMS_r3(t, rid)) &&
+    pubTerm(const_VerifyResponse_pub()) == old(io.get_e_In_KMS_r4(t, rid))
+/*ensures   err != nil ==> t1 == t && pl.token(t) && io.e_In_KMS(t, rid) &&
+    io.get_e_In_KMS_placeDst(t, rid) == old(io.get_e_In_KMS_placeDst(t, rid)) &&
+    io.get_e_In_KMS_r1(t, rid) == old(io.get_e_In_KMS_r1(t, rid)) &&
+    io.get_e_In_KMS_r2(t, rid) == old(io.get_e_In_KMS_r2(t, rid)) &&
+    io.get_e_In_KMS_r3(t, rid) == old(io.get_e_In_KMS_r3(t, rid)) &&
+    io.get_e_In_KMS_r4(t, rid) == old(io.get_e_In_KMS_r4(t, rid))*/
+func (kmsService *KMSService) receiveVerifyResponse(ghost t pl.Place, ghost rid Term) (err error, ghost t1 pl.Place, ghost kmsId Term, ghost agentId Term, ghost runId Term)

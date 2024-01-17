@@ -41,7 +41,6 @@ pred phiR_Agent_0(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
                             AgentStarted()} &&
              tami_rp == mset[Fact] {
                             St_Agent_1(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x),
-// TODO adapt Tamarin model to nest message according to this:
                             Out_KMS_Agent(RunId, AgentId, KMSId, RunId, pair(pubTerm(const_SignRequest_pub()), pair(AgentLtKeyId, pair(exp(pubTerm(const_g_pub()), x), pair(ReaderId, ClientId)))))}) ==>
             (e_Agent_SendSignRequest(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, tami_lp, tami_ap, tami_rp) && 
              P_Agent(get_e_Agent_SendSignRequest_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
@@ -99,7 +98,7 @@ pred phiR_Agent_4(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
                         } &&
              tami_rp == mset[Fact] {
                             St_Agent_5(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY),
-                            Out_KMS_Agent(RunId, AgentId, KMSId, RunId, pair(pubTerm(const_VerifyRequest_pub()), pair(ClientLtKeyId, pair(Y, pair(SigY, AgentId)))))}) ==>
+                            Out_KMS_Agent(RunId, AgentId, KMSId, RunId, pair(pubTerm(const_VerifyRequest_pub()), pair(ClientId, pair(ClientLtKeyId, pair(pair(Y, AgentId), SigY)))))}) ==>
             (e_Agent_SendVerifyRequest(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, tami_lp, tami_ap, tami_rp) && 
              P_Agent(get_e_Agent_SendVerifyRequest_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
 }
@@ -152,10 +151,10 @@ pred phiR_Agent_8(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
              tami_lp == mset[Fact] {
                             St_Agent_8(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey)} &&
              tami_ap == mset[Claim] {
-                        } &&
+                            AgentSendEncryptedSessionKey(x)} &&
              tami_rp == mset[Fact] {
                             St_Agent_9(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
-                            OutFact_Agent(RunId, pair(pubTerm(const_EncryptedSessionKey_pub()), pair(aenc(pair(kdf1(exp(Y, x)), kdf2(exp(Y, x))), logPk), pair(SigSessionKey, pair(AgentLtKeyId, ClientId)))))}) ==>
+                            OutFact_Agent(RunId, pair(pubTerm(const_EncryptedSessionKey_pub()), pair(aenc(pair(kdf1(exp(Y, x)), kdf2(exp(Y, x))), logPk), pair(SigSessionKey, pair(AgentId, pair(AgentLtKeyId, ClientId))))))}) ==>
             (e_Agent_SendEncryptedSessionKey(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, tami_lp, tami_ap, tami_rp) && 
              P_Agent(get_e_Agent_SendEncryptedSessionKey_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
 }
@@ -183,34 +182,34 @@ pred phiR_Agent_9(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
              P_Agent(get_e_Agent_SendHandshakeComplete_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
 }
 pred phiR_Agent_10(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
-    forall RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact] :: 
-        { e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp) } (
+    forall RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact] :: 
+        { e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp) } (
             (M(tami_lp, tami_s) &&
              tami_lp == mset[Fact] {
                             St_Agent_10(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
-                            InFact_Agent(RunId, pair(pubTerm(const_Message_pub()), senc(msg, kdf2(exp(Y, x)))))} &&
+                            InFact_Agent(RunId, pair(pubTerm(const_Message_pub()), senc(payload, kdf2(exp(Y, x)))))} &&
              tami_ap == mset[Claim] {
                             AgentRecvLoop(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, ClientLtKeyId, Y)} &&
              tami_rp == mset[Fact] {
                             St_Agent_10(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey)}) ==>
-            (e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp) && 
-             P_Agent(get_e_Agent_ReceiveMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
+            (e_Agent_ReceiveMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp) && 
+             P_Agent(get_e_Agent_ReceiveMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
 }
 pred phiR_Agent_11(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
-    forall RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, msg Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact] :: 
-        { e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp) } (
+    forall RunId Term, AgentId Term, KMSId Term, ClientId Term, ReaderId Term, AgentLtKeyId Term, logPk Term, x Term, SigX Term, ClientLtKeyId Term, Y Term, SigY Term, SigSessionKey Term, payload Term, tami_lp mset[Fact], tami_ap mset[Claim], tami_rp mset[Fact] :: 
+        { e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp) } (
             (M(tami_lp, tami_s) &&
              tami_lp == mset[Fact] {
                             St_Agent_10(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
-                            InFact_Agent(RunId, msg)} &&
+                            InFact_Agent(RunId, payload)} &&
              tami_ap == mset[Claim] {
                             AgentSendLoop(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, ClientLtKeyId, Y)} &&
              tami_rp == mset[Fact] {
                             St_Agent_10(RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
-                            OutFact_Agent(RunId, pair(pubTerm(const_Message_pub()), senc(msg, kdf1(exp(Y, x))))),
-                            OutFact_Agent(RunId, pair(pubTerm(const_Log_pub()), pair(pubTerm(const_Message_pub()), senc(msg, kdf1(exp(Y, x))))))}) ==>
-            (e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp) && 
-             P_Agent(get_e_Agent_SendMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, msg, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
+                            OutFact_Agent(RunId, pair(pubTerm(const_Message_pub()), senc(payload, kdf1(exp(Y, x))))),
+                            OutFact_Agent(RunId, pair(pubTerm(const_Log_pub()), pair(pubTerm(const_Message_pub()), senc(payload, kdf1(exp(Y, x))))))}) ==>
+            (e_Agent_SendMessages(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp) && 
+             P_Agent(get_e_Agent_SendMessages_placeDst(tami_p, RunId, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, payload, tami_lp, tami_ap, tami_rp), tami_rid, U(tami_lp, tami_rp, tami_s))))
 }
 pred phiRG_Agent_12(tami_p Place, tami_rid Term, ghost tami_s mset[Fact]) {
     forall new_x Term, new_x_1 Term, new_x_2 Term, new_x_3 Term :: 
