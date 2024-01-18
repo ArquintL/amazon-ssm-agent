@@ -1,6 +1,8 @@
 package bytes
 
 import (
+    "time"
+    . "github.com/aws/amazon-ssm-agent/agent/iospecs/fresh"
     . "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
     . "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
@@ -20,6 +22,7 @@ type Bytes domain {
     func hashB(Bytes) Bytes
     func kdf1B(Bytes) Bytes
     func kdf2B(Bytes) Bytes
+    func durationB(time.Duration) Bytes
 
     // destructors
     func getFirst(b Bytes) Bytes
@@ -78,6 +81,7 @@ type Gamma domain {
         (forall b Term :: {gamma(hash(b))} gamma(hash(b)) == hashB(gamma(b))) &&
         (forall b Term :: {gamma(kdf1(b))} gamma(kdf1(b)) == kdf1B(gamma(b))) &&
         (forall b Term :: {gamma(kdf2(b))} gamma(kdf2(b)) == kdf2B(gamma(b))) &&
+        (forall i time.Duration :: {gamma(freshTerm(fr_duration(i)))} gamma(freshTerm(fr_duration(i))) == durationB(i)) &&
         true
     }
 }

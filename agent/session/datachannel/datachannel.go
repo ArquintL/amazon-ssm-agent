@@ -313,19 +313,25 @@ pred (dc *dataChannel) Mem() {
 	(dc.dataChannelState >= AgentSecretCreatedAndSigned && dc.dataChannelState < HandshakeCompleted ==>
 		bytes.SliceMem(dc.state.agentSecret) &&
 		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.state.agentSecret)) &&
-	(dc.dataChannelState >= BlockCipherReady ==>
-		(dc.encryptionEnabled ==> dc.blockCipher.IsReady())) &&
-	(dc.dataChannelState >= HandshakeCompleted ==>
-		exists AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey tm.Term :: ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in dc.getAbsState() && tm.kdf1(tm.exp(Y, x)) == dc.blockCipher.GetEncKeyT()) &&
+	(dc.dataChannelState >= BlockCipherReady && dc.encryptionEnabled ==>
+		dc.blockCipher.IsReady() &&
+		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
+		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
 	// relate state to abstract state:
 	(dc.dataChannelState == Initialized || dc.dataChannelState == BlockCipherInitialized ==>
 		ft.Setup_Agent(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT()) in dc.getAbsState()) &&
 	(dc.dataChannelState == AgentSecretCreatedAndSigned ==>
 		ft.St_Agent_2(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
 	(dc.dataChannelState == HandshakeRequestSent ==>
-		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState())
+		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+	(dc.dataChannelState == BlockCipherReady ==>
+		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+	(dc.dataChannelState >= HandshakeCompleted ==>
+		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState())
 }
 
+// `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
+// the handshake.
 pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
 	dc != nil &&
 	acc(&dc.dataStream) &&
@@ -374,6 +380,7 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	(state == HandshakeResponseVerified ==>
 		ft.St_Agent_6(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT()) in dc.getAbsState()) &&
 	(state == BlockCipherReady ==>
+		(encryptionEnabled ==> dc.blockCipher.IsReady() && dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
 		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState())
 }
 
@@ -1012,9 +1019,14 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	}
 
 	//@ unfold dc.Mem()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ t0 := dc.getToken()
-	//@ rid := dc.getRid()
 	//@ s0 := dc.getAbsState()
+	//@ sharedSecretT := dc.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
+	//@ clientSecretT := dc.getClientShareT()
+	//@ sigYT := dc.getClientShareSignatureT()
+	//@ sigSessionKeysT := dc.getSigSessionKeysT()
 
 	// receive `inputData` from environment:
 	//@ unfold iospec.P_Agent(t0, rid, s0)
@@ -1026,35 +1038,29 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData) && inputDataT == old[#lhs](iospec.get_e_InFact_r1(t0, rid)) && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
 
 	// obtain permission to send the ciphertext containing `inputData`:
-	//@ assert exists AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey tm.Term :: ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s0 && tm.kdf1(tm.exp(Y, x)) == dc.blockCipher.GetEncKeyT()
-	// existential elimination:
-	//@ AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey := arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm()
-	//@ assume ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s0 && tm.kdf1(tm.exp(Y, x)) == dc.blockCipher.GetEncKeyT()
 	/*@
 		l := mset[ft.Fact] {
-			ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
+			ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
 			ft.InFact_Agent(rid, inputDataT),
 		}
 		a := mset[cl.Claim] {
-			cl.AgentSendLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, ClientLtKeyId, Y),
+			cl.AgentSendLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
 		}
 		r := mset[ft.Fact] {
-	    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey),
-	        ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(tm.exp(Y, x))))),
-	        ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Log_pub()), tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(tm.exp(Y, x)))))),
+	    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+	        ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT)))),
+	        ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Log_pub()), tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT))))),
 		}
 	@*/
 	//@ unfold iospec.P_Agent(t1, rid, s1)
 	//@ unfold iospec.phiR_Agent_11(t1, rid, s1)
-	//@ t2 := iospec.get_e_Agent_SendMessages_placeDst(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, inputDataT, l, a, r)
+	//@ t2 := iospec.get_e_Agent_SendMessages_placeDst(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
 	//@ s2 := ft.U(l, r, s1)
 	//@ unfold dc.IoSpecMem()
 	//@ dc.setToken(t2)
 	//@ dc.setAbsState(s2)
 	//@ fold dc.IoSpecMem()
-	//@ iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey, inputDataT, l, a, r)
-	// the following assert stmt is necessary:
-	//@ assert ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s2
+	//@ iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
 	//@ fold dc.Mem()
 
 	if len(inputData) == 0 {
@@ -1091,21 +1097,17 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	}
 
 	/*@
+	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	t0 := dc.getToken()
-	rid := dc.getRid()
 	s0 := dc.getAbsState()
+	sharedSecretT := dc.getSharedSecretT()
+	clientLtKeyIdT := dc.getClientLtKeyIdT()
+	clientSecretT := dc.getClientShareT()
+	sigYT := dc.getClientShareSignatureT()
+	sigSessionKeysT := dc.getSigSessionKeysT()
 	m := tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)
 	unfold iospec.P_Agent(t0, rid, s0)
 	unfold iospec.phiRG_Agent_13(t0, rid, s0)
-	@*/
-
-	/*@
-	// existential elimination:
-	AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey := arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm(), arb.GetArbTerm()
-	ghost if dc.dataChannelState >= HandshakeCompleted {
-		assert exists AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey tm.Term :: ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s0 && tm.kdf1(tm.exp(Y, x)) == dc.blockCipher.GetEncKeyT()
-		assume ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s0 && tm.kdf1(tm.exp(Y, x)) == dc.blockCipher.GetEncKeyT()
-	}
 	@*/
 
 	//@ ghost var t1 pl.Place
@@ -1121,12 +1123,6 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	// @ s1 := s0 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, m) }
 	// @ dc.setAbsState(s1)
 	// @ fold dc.IoSpecMem()
-	/*@
-	ghost if dc.dataChannelState >= HandshakeCompleted {
-		// the following assert stmt is necessary:
-		assert ft.St_Agent_10(dc.getRid(), AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, x, SigX, ClientLtKeyId, Y, SigY, SigSessionKey) in s1
-	}
-	@*/
 	// @ fold dc.Mem()
 	return nil
 }
@@ -1552,8 +1548,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 					}
 				}
 			// case mgsContracts.KMSEncryption:
-			// 	err = dc.finalizeKMSEncryption(log, action.ActionResult)
-			// 	break
+			// 	 err = dc.finalizeKMSEncryption(log, action.ActionResult)
 			case mgsContracts.SessionType:
 				//@ fold acc(actions[i].Mem(), 1/2)
 				//@ fold acc(handshakeResponse.Mem(), 1/2)
@@ -2129,14 +2124,17 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 		return errors.New("Unexpected result from processing handshake response")
 	}
 	//@ unfold ResponseChanInv!<dc, _!>(res)
-	//@ unfold dc.MemTransfer(Erroneous, encryptionEnabled)
+	//@ unfold dc.MemTransfer(res.state, encryptionEnabled)
 	err = dc.hs.error
 	if err != nil {
+		dc.dataChannelState = Erroneous
 		//@ fold dc.Mem()
 		return err
 	}
 	logDebug(log, "Handshake response received")
 
+	//@ assert res.state == BlockCipherReady
+	dc.dataChannelState = res.state
 	dc.hs.handshakeEndTime = time.Now()
 	//@ fold dc.Mem()
 	handshakeCompletePayload, err := dc.buildHandshakeCompletePayload(log)
@@ -2147,8 +2145,6 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 		return err
 	}
 	//@ unfold dc.Mem()
-	dc.hs.complete = true
-	dc.dataChannelState = HandshakeCompleted
 	logInfo(log, "Handshake successfully completed.")
 	//@ fold dc.Mem()
 	return
@@ -2467,34 +2463,79 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 }
 
 // buildHandshakeCompletePayload builds payload for HandshakeComplete
-// @ requires log != nil && dc.Mem() && dc.getState() != Erroneous
+// @ requires log != nil && dc.Mem() && dc.getState() >= Initialized
+// @ requires unfolding dc.Mem() in dc.encryptionEnabled ==> dc.dataChannelState == BlockCipherReady
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem() && dc.getState() == old(dc.getState())
-// @ ensures err == nil ==> payload.Mem()
+// @ ensures err == nil ==> payload.Mem() && payload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
+// @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
+// @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
-	handshakeComplete := &mgsContracts.HandshakeCompletePayload{}
-	//@ unfold dc.Mem()
-	handshakeComplete.HandshakeTimeToComplete =
-		dc.hs.handshakeEndTime.Sub(dc.hs.handshakeStartTime)
-	//@ fold dc.Mem()
 	clientVersion, err := dc.GetClientVersion( /*@ perm(1/2) @*/ )
 	if err != nil {
-		return nil, err
+		return
 	}
+
 	//@ unfold dc.Mem()
-	if dc.separateOutputPayload == true && versionutil.Compare(clientVersion, clientVersionWithoutOutputSeparation, true) <= 0 {
-		handshakeComplete.CustomerMessage = "Please update session manager plugin version (minimum required version " +
+	//@ t0 := dc.getToken()
+	//@ rid := dc.getRid()
+	//@ s0 := dc.getAbsState()
+	//@ unfold iospec.P_Agent(t0, rid, s0)
+	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
+	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
+
+	duration := dc.hs.handshakeEndTime.Sub(dc.hs.handshakeStartTime)
+	customerMessage, err /*@, payloadT @*/ := getHandshakeCompletePayload(duration, dc.separateOutputPayload, dc.encryptionEnabled, clientVersion /*@, t0, rid @*/)
+	if err != nil {
+		// @ fold iospec.phiRF_Agent_16(t0, rid, s0)
+		// @ fold iospec.P_Agent(t0, rid, s0)
+		// @ fold dc.Mem()
+		return
+	}
+	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, payloadT) }
+	//@ unfold dc.IoSpecMem()
+	//@ dc.setToken(t1)
+	//@ dc.setAbsState(s1)
+	//@ dc.setInFactT(payloadT)
+	//@ fold dc.IoSpecMem()
+	//@ fold dc.Mem()
+
+	payload = &mgsContracts.HandshakeCompletePayload{
+		HandshakeTimeToComplete: duration,
+		CustomerMessage: customerMessage,
+	}
+	//@ fold payload.Mem()
+	return
+}
+
+
+// We model is function as receiving the payload with the corresponding term representation from the
+// environment because we model in Tamarin that the payload is under full adversarial control.
+// Conceptually, we receive an arbitrary payload from the environment and check whether it's equal to
+// the tuple of duration and customer message (on the byte-level). Otherwise, we reject the message and
+// return an error.
+// @ trusted
+// @ requires pl.token(t) && iospec.e_InFact(t, rid)
+// @ ensures  err == nil ==> pl.token(old(iospec.get_e_InFact_placeDst(t, rid))) &&
+// @	payloadT == old(iospec.get_e_InFact_r1(t, rid))
+// @ ensures err == nil ==> by.gamma(payloadT) == by.pairB(by.durationB(handshakeDuration), by.msgB(customerMessage))
+// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures err != nil ==> pl.token(t) && iospec.e_InFact(t, rid) &&
+// @ 	iospec.get_e_InFact_placeDst(t, rid) == old(iospec.get_e_InFact_placeDst(t, rid)) &&
+// @ 	iospec.get_e_InFact_r1(t, rid) == old(iospec.get_e_InFact_r1(t, rid))
+func getHandshakeCompletePayload(handshakeDuration time.Duration, separateOutputPayload, encryptionEnabled bool, clientVersion string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (customerMessage string, err error /*@, ghost payloadT tm.Term @*/) {
+	customerMessage = ""
+	if separateOutputPayload == true && versionutil.Compare(clientVersion, clientVersionWithoutOutputSeparation, true) <= 0 {
+		customerMessage += "Please update session manager plugin version (minimum required version " +
 			firstVersionWithOutputSeparationFeature +
 			") for fully support of separate StdOut/StdErr output.\r\n"
 	}
 
-	if dc.encryptionEnabled {
-		handshakeComplete.CustomerMessage += "This session is encrypted using AWS KMS."
+	if encryptionEnabled {
+		customerMessage += "This session is encrypted using AWS KMS."
 	}
-	//@ fold dc.Mem()
-	//@ fold handshakeComplete.Mem()
 
-	return handshakeComplete, nil
+	return
 }
 
 // sendHandshakeRequest sends handshake request
@@ -2574,28 +2615,92 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 
 // sendHandshakeComplete sends handshake complete
 // @ requires log != nil && handshakeCompletePayload.Mem()
-// @ requires dc.Mem() && dc.getState() >= BlockCipherReady
+// @ requires dc.Mem() && dc.getState() == BlockCipherReady
+// @ requires handshakeCompletePayload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
+// @ requires ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ preserves acc(log.Mem(), _)
-// @ ensures dc.Mem() && dc.getState() == old(dc.getState())
+// @ ensures dc.Mem()
+// @ ensures err == nil ==> dc.getState() == HandshakeCompleted
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
-	var handshakeCompletePayloadBytes []byte
-	if handshakeCompletePayloadBytes, err = json.Marshal(handshakeCompletePayload /*@, perm(1/2) @*/); err != nil {
+	handshakeCompletePayloadBytes, err := marshalHandshakeComplete(handshakeCompletePayload /*@, perm(1/2) @*/)
+	if err != nil {
 		return fmtErrorfHandshakeCompleteErr("Could not serialize HandshakeComplete message %v, err: %s", handshakeCompletePayload, err /*@, perm(1/1) @*/)
 	}
+	assert abs.Abs(handshakeCompletePayloadBytes) == handshakeCompletePayload.Abs()
 
 	logDebug(log, "Sending HandshakeComplete.")
 	logTracefHandshakeCompletePayload(log, "Sending HandshakeComplete message with content %v", handshakeCompletePayload /*@, perm(1/2) @*/)
-	//@ ghost var inputDataT tm.Term
+	//@ payloadT := dc.GetInFactT()
+	//@ inputDataT := tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), payloadT)
+
+	//@ unfold dc.Mem()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ t0 := dc.getToken()
+	//@ s0 := dc.getAbsState()
+	//@ sharedSecretT := dc.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
+	//@ clientSecretT := dc.getClientShareT()
+	//@ sigYT := dc.getClientShareSignatureT()
+	//@ sigSessionKeysT := dc.getSigSessionKeysT()
+	/*@
+		l := mset[ft.Fact] {
+			ft.St_Agent_9(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+			ft.InFact_Agent(rid, payloadT),
+		}
+		a := mset[cl.Claim] {
+			cl.Agent_Finish(AgentId),
+			cl.Secret(tm.pair(tm.kdf1(sharedSecretT), tm.kdf2(sharedSecretT))),
+			cl.Commit(tm.pubTerm(pub.const_Agent_pub()), tm.pubTerm(pub.const_Client_pub()), ut.tuple4(AgentId, ClientId, tm.kdf1(sharedSecretT), tm.kdf2(sharedSecretT))),
+			cl.Running(tm.pubTerm(pub.const_Agent_pub()), tm.pubTerm(pub.const_Client_pub()), ut.tuple4(AgentId, ClientId, tm.kdf1(sharedSecretT), tm.kdf2(sharedSecretT))),
+			cl.HonestReader(ReaderId),
+			cl.HonestKmsOwner(AgentId),
+			cl.HonestKmsOwner(ClientId),
+			cl.AgentHandshakeCompleted(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
+		}
+		r := mset[ft.Fact] {
+		    ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+			ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_HandshakeComplete_pub()), tm.senc(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), payloadT), tm.kdf1(sharedSecretT)))),
+			ft.OutFact_Agent(rid, ut.tuple3(tm.pubTerm(pub.const_Log_pub()), tm.pubTerm(pub.const_HandshakeComplete_pub()), tm.senc(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), payloadT), tm.kdf1(sharedSecretT)))),
+		}
+	@*/
+	//@ unfold iospec.P_Agent(t0, rid, s0)
+	//@ unfold iospec.phiR_Agent_9(t0, rid, s0)
+	//@ t1 := iospec.internBIO_e_Agent_SendHandshakeComplete(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
+	//@ s1 := ft.U(l, r, s0)
+	//@ unfold dc.IoSpecMem()
+	//@ dc.setToken(t1)
+	//@ dc.setAbsState(s1)
+	//@ fold dc.IoSpecMem()
+	dc.dataChannelState = HandshakeCompleted
+	//@ fold dc.Mem()
+
 	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, perm(1/2), inputDataT @*/); err != nil {
 		return err
 	}
+
+	//@ unfold dc.Mem()
+	dc.hs.complete = true
+	//@ fold dc.Mem()
+
 	return nil
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ requires acc(handshakeCompletePayload.Mem(), p)
+// @ ensures  acc(handshakeCompletePayload.Mem(), p)
+// @ ensures  err == nil ==> bytes.SliceMem(handshakeCompletePayloadBytes)
+// @ ensures  err == nil ==> abs.Abs(handshakeCompletePayloadBytes) == handshakeCompletePayload.Abs()
+// @ ensures  err != nil ==> err.ErrorMem()
+func marshalHandshakeComplete(handshakeCompletePayload *mgsContracts.HandshakeCompletePayload /*@, ghost p perm @*/) (handshakeCompletePayloadBytes []byte, err error) {
+	return json.Marshal(handshakeCompletePayload /*@, p/2 @*/)
 }
 
 // GetClientVersion returns version of the client
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
+// @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
 	if dc.getState() == Erroneous {
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())

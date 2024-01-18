@@ -691,6 +691,13 @@ type HandshakeCompletePayload struct {
 pred (handshakeCompletePayload *HandshakeCompletePayload) Mem() {
 	acc(handshakeCompletePayload)
 }
+
+ghost
+requires acc(handshakeCompletePayload.Mem(), _)
+pure func (handshakeCompletePayload *HandshakeCompletePayload) Abs() by.Bytes {
+	return unfolding acc(handshakeCompletePayload.Mem(), _) in
+		by.tuple3B(by.gamma(tm.pubTerm(pub.const_HandshakeCompletePayload_pub())), by.durationB(handshakeCompletePayload.HandshakeTimeToComplete), by.msgB(handshakeCompletePayload.CustomerMessage))
+}
 @*/
 
 // ErrHandlerNotReady message indicates that the session plugin's incoming message handler is not ready

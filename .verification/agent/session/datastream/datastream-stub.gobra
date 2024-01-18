@@ -102,10 +102,14 @@ func (datastream *DataStream) CancelSession(ghost p perm)
 preserves datastream.Mem()
 ensures err != nil ==> err.ErrorMem()
 ensures datastream.GetChannelId() == old(datastream.GetChannelId())
+ensures datastream.GetClientId() == old(datastream.GetClientId())
+ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
 func (datastream *DataStream) Close(log logger.T) (err error)
 
 preserves datastream.Mem()
 ensures datastream.GetChannelId() == old(datastream.GetChannelId())
+ensures datastream.GetClientId() == old(datastream.GetClientId())
+ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
 func (datastream *DataStream) PrepareToCloseChannel(log logger.T)
 
 requires noPerm < p
