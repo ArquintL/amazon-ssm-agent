@@ -1487,150 +1487,6 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-/*
-ghost
-requires endIdx <= len(actions)
-requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), _)
-decreases endIdx
-pure func secSessionNotFoundBelow(actions []mgsContracts.ProcessedClientAction, endIdx int) bool {
-	return endIdx <= 0 ||
-		!actions[endIdx - 1].IsSuccessfulSecureSession() && secSessionNotFoundBelow(actions, endIdx - 1)
-}
-
-ghost
-requires noPerm < p
-requires 0 <= idx && idx < len(actions)
-requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-requires secSessionNotFoundBelow(actions, idx)
-requires actions[idx].IsSuccessfulSecureSession()
-ensures  forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-ensures  mgsContracts.containsSecureSession(actions, 0)
-ensures  mgsContracts.getSecureSessionIndex(actions, 0) == idx
-func containsSecureSessionLemma(actions []mgsContracts.ProcessedClientAction, idx int, p perm) {
-	containsSecureSessionHelperLemma(actions, idx, p, 0)
-}
-
-ghost
-requires noPerm < p
-requires 0 <= startIdx && startIdx <= idx && idx < len(actions)
-requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-requires secSessionNotFoundBelow(actions, idx)
-requires actions[idx].IsSuccessfulSecureSession()
-ensures  forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-ensures  mgsContracts.containsSecureSession(actions, startIdx)
-ensures  mgsContracts.getSecureSessionIndex(actions, startIdx) == idx
-decreases len(actions) - startIdx
-func containsSecureSessionHelperLemma(actions []mgsContracts.ProcessedClientAction, idx int, p perm, startIdx int) {
-	if startIdx != idx {
-		containsSecureSessionHelperLemma(actions, idx, p/2, startIdx + 1)
-		secSessionNotFoundLemma(actions, idx, p/2, startIdx)
-	}
-}
-
-ghost
-requires noPerm < p
-requires 0 <= startIdx && startIdx < idx && idx < len(actions)
-requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-requires secSessionNotFoundBelow(actions, idx)
-ensures  forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), p)
-ensures  !actions[startIdx].IsSuccessfulSecureSession()
-decreases idx
-func secSessionNotFoundLemma(actions []mgsContracts.ProcessedClientAction, idx int, p perm, startIdx int) {
-	if startIdx + 1 != idx {
-		secSessionNotFoundLemma(actions, idx - 1, p/2, startIdx)
-	}
-}
-*/
-
-/*
-ghost
-decreases
-pure func IsSuccessfulSecureSession(action mgsContracts.ProcessedClientActionAdt) bool {
-	return action.ActionType == mgsContracts.SecureSession &&
-		action.ActionStatus == mgsContracts.Success
-}
-
-ghost
-requires 0 <= startIdx && startIdx <= len(actions)
-decreases len(actions) - startIdx
-pure func containsSecureSession(actions seq[mgsContracts.ProcessedClientActionAdt], startIdx int) bool {
-	return startIdx == len(actions) ? false :
-		(IsSuccessfulSecureSession(actions[startIdx]) ?
-			true : containsSecureSession(actions, startIdx + 1))
-}
-
-ghost
-requires 0 <= startIdx && startIdx <= len(actions)
-requires containsSecureSession(actions, startIdx)
-ensures  startIdx <= res && res < len(actions)
-ensures  IsSuccessfulSecureSession(actions[res])
-decreases len(actions) - startIdx
-pure func getSecureSessionIndex(actions seq[mgsContracts.ProcessedClientActionAdt], startIdx int) (res int) {
-	return IsSuccessfulSecureSession(actions[startIdx]) ?
-			startIdx : getSecureSessionIndex(actions, startIdx + 1)
-}
-
-ghost
-requires endIdx <= len(actions)
-decreases endIdx
-pure func secSessionNotFoundBelow(actions seq[mgsContracts.ProcessedClientActionAdt], endIdx int) bool {
-	return endIdx <= 0 ||
-		(!IsSuccessfulSecureSession(actions[endIdx - 1]) &&
-			secSessionNotFoundBelow(actions, endIdx - 1))
-}
-
-ghost
-requires 0 <= idx && idx < len(actions)
-requires secSessionNotFoundBelow(actions, idx)
-requires IsSuccessfulSecureSession(actions[idx])
-ensures  containsSecureSession(actions, 0)
-ensures  getSecureSessionIndex(actions, 0) == idx
-func containsSecureSessionLemma(actions seq[mgsContracts.ProcessedClientActionAdt], idx int) {
-	containsSecureSessionHelperLemma(actions, idx, 0)
-}
-
-ghost
-requires 0 <= startIdx && startIdx <= idx && idx < len(actions)
-requires secSessionNotFoundBelow(actions, idx)
-requires IsSuccessfulSecureSession(actions[idx])
-ensures  containsSecureSession(actions, startIdx)
-ensures  getSecureSessionIndex(actions, startIdx) == idx
-decreases len(actions) - startIdx
-func containsSecureSessionHelperLemma(actions seq[mgsContracts.ProcessedClientActionAdt], idx int, startIdx int) {
-	if startIdx != idx {
-		containsSecureSessionHelperLemma(actions, idx, startIdx + 1)
-		secSessionNotFoundLemma(actions, idx, startIdx)
-	}
-}
-
-ghost
-requires 0 <= startIdx && startIdx < idx && idx < len(actions)
-requires secSessionNotFoundBelow(actions, idx)
-ensures  !IsSuccessfulSecureSession(actions[startIdx])
-decreases idx
-func secSessionNotFoundLemma(actions seq[mgsContracts.ProcessedClientActionAdt], idx int, startIdx int) {
-	if startIdx + 1 != idx {
-		secSessionNotFoundLemma(actions, idx - 1, startIdx)
-	}
-}
-
-ghost
-requires noPerm < p
-requires acc(handshakeResponsePayload.Mem(), p)
-requires 0 <= startIdx && startIdx <= unfolding acc(handshakeResponsePayload.Mem(), p) in len(handshakeResponsePayload.ProcessedClientActions)
-ensures acc(handshakeResponsePayload.Mem(), p)
-ensures unfolding acc(handshakeResponsePayload.Mem(), p) in
-	let res := old(handshakeResponsePayload.Adt(startIdx)) in
-	(len(res) == len(handshakeResponsePayload.ProcessedClientActions) - startIdx) &&
-	(forall i int :: { res[i] } 0 <= i && i < len(res) ==> res[i] == handshakeResponsePayload.ProcessedClientActions[startIdx + i].Adt())
-func HandshakeResponsePayloadAdtLemma(handshakeResponsePayload *mgsContracts.HandshakeResponsePayload, startIdx int, p perm) {
-	actionsLen := unfolding acc(handshakeResponsePayload.Mem(), p/2) in len(handshakeResponsePayload.ProcessedClientActions)
-	if startIdx != actionsLen {
-		HandshakeResponsePayloadAdtLemma(handshakeResponsePayload, startIdx + 1, p/2)
-	}
-}
-*/
-
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
 // @ requires log != nil && dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
@@ -1641,46 +1497,19 @@ func HandshakeResponsePayloadAdtLemma(handshakeResponsePayload *mgsContracts.Han
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) (err error) {
 	logDebug(log, "Received Handshake Response.")
-	// var handshakeResponse /*@ @ @*/ mgsContracts.HandshakeResponsePayload
-	// fold handshakeResponse.Mem()
 	//@ unfold streamDataMessage.Mem()
-	// if err := json.Unmarshal(streamDataMessage.Payload, &handshakeResponse /*@, perm(1/2) @*/); err != nil {
-	// 	//@ fold streamDataMessage.Mem()
-	// 	return fmtErrorf("Unmarshalling of HandshakeResponse message failed, %s", err /*@, perm(1/1) @*/)
-	// }
 	handshakeResponse, err := unmarshalHandshakeResponse(streamDataMessage.Payload /*@, perm(1/2) @*/)
+	//@ fold streamDataMessage.Mem()
 	if err != nil {
-		//@ fold streamDataMessage.Mem()
 		return fmtErrorf("Unmarshalling of HandshakeResponse message failed, %s", err /*@, perm(1/1) @*/)
 	}
-	//@ assert abs.Abs(streamDataMessage.Payload) == handshakeResponse.Abs()
-	// assert handshakeResponse.ContainsSecureSession()
-	//@ ghost var firstActionAbs by.Bytes
-	/*
-	ghost if handshakeResponse.ContainsSecureSession() {
-		// assert unfolding handshakeResponse.Mem() in mgsContracts.containsSecureSession(handshakeResponse.ProcessedClientActions, 0)
-		assert unfolding handshakeResponse.Mem() in len(handshakeResponse.ProcessedClientActions) == 1
-		// firstActionAbs := unfolding handshakeResponse.Mem() in handshakeResponse.ProcessedClientActions[mgsContracts.getSecureSessionIndex(handshakeResponse.ProcessedClientActions, 0)].Abs()
-		// assert abs.Abs(streamDataMessage.Payload) == by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), firstActionAbs)
-		firstActionAbs = unfolding handshakeResponse.Mem() in handshakeResponse.ProcessedClientActions[0].Abs()
-		assert abs.Abs(streamDataMessage.Payload) == by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), firstActionAbs)
-	}
-	*/
-	// assert abs.Abs(streamDataMessage.Payload) == by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponse.Abs())
-	//@ msgPayloadB := abs.Abs(streamDataMessage.Payload)
-	//@ fold streamDataMessage.Mem()
-	// absActions := handshakeResponse.Adt(0)
-	// HandshakeResponsePayloadAdtLemma(handshakeResponse, 0, perm(1/2))
-	//@ unfold acc(handshakeResponse.Mem(), 1/2)
 
-	// i := 0
+	//@ unfold acc(handshakeResponse.Mem(), 1/2)
 	actions := handshakeResponse.ProcessedClientActions
-	// assert secSessionNotFoundBelow(actions, 0)
-	// assert secSessionNotFoundBelow(absActions, 0)
 	containsSecureSessionAction := false
 	state := HandshakeRequestSent
 	//@ fold acc(handshakeResponse.Mem(), 1/2)
-	// invariant acc(handshakeResponse.Mem(), 1/2)
+
 	//@ invariant err == nil
 	//@ invariant handshakeResponse.Mem()
 	//@ invariant unfolding acc(handshakeResponse.Mem(), 1/2) in handshakeResponse.ProcessedClientActions === actions
@@ -1688,7 +1517,6 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	//@ invariant dc.MemTransfer(state, encryptionEnabled)
 	//@ invariant err == nil && !containsSecureSessionAction ==> state == HandshakeRequestSent
 	//@ invariant err == nil && containsSecureSessionAction ==> state == BlockCipherReady
-	// invariant err != nil ==> state == Erroneous
 	//@ invariant err != nil ==> err.ErrorMem()
 	//@ invariant acc(log.Mem(), _)
 	//@ invariant acc(streamDataMessage.Mem(), 1/2)
@@ -1697,19 +1525,6 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	//@ 	abs.Abs(streamDataMessage.Payload) == handshakeResponse.Abs()
 	//@ invariant i <= 1 ==> !containsSecureSessionAction
 	//@ invariant !containsSecureSessionAction ==> unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
-	// invariant forall j int :: { actions[j] } 0 <= j && j < len(actions) ==> acc(actions[j].Mem(), 1/2) // && actions[j].Adt() == absActions[j]
-	// invariant 0 <= containsSecureSessionAction ==>
-	//		containsSecureSessionAction < len(actions) &&
-	// 	mgsContracts.containsSecureSession(actions, 0) &&
-	// 	mgsContracts.getSecureSessionIndex(actions, 0) == containsSecureSessionAction
-	// invariant containsSecureSessionAction < 0 ==> (forall j int :: { !actions[j].IsSuccessfulSecureSession() } 0 <= j && j < i ==> !actions[j].IsSuccessfulSecureSession())
-	// invariant containsSecureSessionAction < 0 ==> secSessionNotFoundBelow(actions, i)
-	// invariant containsSecureSessionAction < 0 ==> secSessionNotFoundBelow(absActions, i)
-	//@ invariant msgPayloadB == unfolding acc(streamDataMessage.Mem(), 1/2) in abs.Abs(streamDataMessage.Payload)
-	// invariant mgsContracts.containsSecureSession(actions, 0) ==> firstActionAbs == actions[0].Abs()
-	// invariant mgsContracts.containsSecureSession(actions, 0) ==>
-	//		(unfolding acc(streamDataMessage.Mem(), 1/2) in abs.Abs(streamDataMessage.Payload)) == by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), actions[0].Abs())
-	// for i = range actions {
 	for i := 0; i < len(actions); i++ {
 		//@ unfold acc(handshakeResponse.Mem(), 1/2)
 		//@ unfold acc(actions[i].Mem(), 1/2)
@@ -1727,36 +1542,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 					err = fmtError("unexpected actions in HandshakeResponse")
 					//@ fold acc(handshakeResponse.Mem(), 1/2)
 				} else {
-					assert mgsContracts.ActionsContainsSecureSession(actions)
-					assert handshakeResponse.ContainsSecureSession()
-					// assert handshakeResponse.Abs() == by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), actions[i].Abs())
-					assert handshakeResponse.Abs() == actions[i].Abs()
-					unfold acc(streamDataMessage.Mem(), 1/2)
-					assert mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse
-					assert abs.Abs(streamDataMessage.Payload) == handshakeResponse.Abs()
-					fold acc(streamDataMessage.Mem(), 1/2)
-					assert streamDataMessage.Abs() == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), handshakeResponse.Abs())
-					assert unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.getInFactT()) == streamDataMessage.Abs()
 					containsSecureSessionAction = true
-					/*
-					if !containsSecureSessionAction {
-						// this is the *first* action we found with matching type and status
-						containsSecureSessionAction = true
-						// assert i < len(actions)
-						// assert actions[i].Type() == mgsContracts.SecureSession
-						// assert actions[i].Status() == mgsContracts.Success
-						//@ assert mgsContracts.containsSecureSession(actions, i)
-						//@ containsSecureSessionLemma(actions, i, perm(1/2))
-						// containsSecureSessionLemma(absActions, i)
-						//@ assert mgsContracts.containsSecureSession(actions, 0)
-						//@ assert mgsContracts.getSecureSessionIndex(actions, 0) == i
-						// assert
-					} else {
-						// this is not necessarily true since the current index
-						// could be a duplicate but successful secure session action:
-						// assert secSessionNotFoundBelow(actions, i + 1)
-					}
-					*/
 					if !encryptionEnabled {
 						err = fmtError("unexpected action type 'SecureSession' because encryption is disabled")
 						//@ fold acc(handshakeResponse.Mem(), 1/2)
@@ -1778,14 +1564,6 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 			}
 		}
 		if err != nil {
-			// logError(log, err /*@, perm(1/1) @*/)
-			// Cancel the session because handshake FAILED
-			// unfold dc.MemTransfer(state, encryptionEnabled)
-			// dc.dataStream.CancelSession( /*@ perm(1/2) @*/ )
-			// Set handshake error. Initiate handshake waits on handshake.responseChan and will return this error when channel returns.
-			// dc.hs.error = err
-			// state = Erroneous
-			// fold dc.MemTransfer(state, encryptionEnabled)
 			break
 		}
 	}
@@ -1852,7 +1630,6 @@ func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessi
 
 // @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
-// requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), action.Abs()))
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
 // @ preserves acc(log.Mem(), _) 
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
@@ -1863,12 +1640,11 @@ func (dc *dataChannel) processSecureSessionResponse(log logger.T, action *mgsCon
 	if err != nil {
 		return
 	}
-	state, err = dc.completeSecureSessionResponseProcessing(log, action)
+	state, err = dc.completeSecureSessionResponseProcessing(log)
 }
 
 // @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/8) && action.IsSuccessfulSecureSession()
-// requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), action.Abs()))
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
 // @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
@@ -1894,19 +1670,15 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
-	// assert abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), clientSecretB), abs.Abs(dc.state.agentSecret))
 
 	dc.state.sharedSecret = sharedSecret
 
 	// hash the shared secret to obtain the session identifier
 	dc.state.sessionID = computeSHA384(sharedSecret /*@, 1/2 @*/)
-
-	assert abs.Abs(dc.state.sessionID) == by.hashB(abs.Abs(sharedSecret))
-
 	logDebugfString(log, "agent computed session ID: %v", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
+
 	// decode the session ID
-	var sessionIDBytes []byte
-	sessionIDBytes, err = base64.StdEncoding.DecodeString(resp.SessionID)
+	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
 		err = fmtErrorf("failed to decode server session id: %v", err /*@, perm(1/1) @*/)
@@ -1921,56 +1693,19 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 		return
 	}
 
-	assert abs.Abs(dc.state.sessionID) == abs.Abs(sessionIDBytes)
-	assert abs.Abs(dc.state.sessionID) == by.msgB(resp.SessionID)
-
 	//@ receivedMsgT := dc.getInFactT()
-	// assert by.gamma(receivedMsgT) == by.gamma(Term_M2(rid, by.oneTerm(sidR), ltkT, pskT, ekiT, c3T, h4T, by.oneTerm(epkR), by.oneTerm(mac1), by.oneTerm(mac2)))
-	// clientSecretT := by.oneTerm(clientSecretB)
 	//@ xT := dc.getAgentShareT()
 	//@ sigYB := by.msgB(resp.Signature)
-	// sigYT := by.oneTerm(sigYB)
 	//@ clientLtKeyIdB := by.msgB(resp.ClientLTKeyARN)
-	// clientLtKeyIdT := by.oneTerm(clientLtKeyIdB)
-	assert mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse) == tm.pubTerm(pub.const_SecureSessionResponse_pub())
-	assert action.Abs() == respAbs
-	assert by.msgB(resp.ClientShare) == by.expB(by.generatorB(), clientSecretB)
-	assert action.Abs() == by.tuple4B(
-		by.expB(by.generatorB(), clientSecretB),
-		sigYB,
-		clientLtKeyIdB,
-		by.msgB(resp.SessionID))
-
-	assert action.Abs() == by.tuple4B(
-		by.expB(by.generatorB(), clientSecretB),
-		sigYB,
-		clientLtKeyIdB,
-		by.msgB(resp.SessionID))
-
-	assert abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), clientSecretB), abs.Abs(dc.state.agentSecret))
-	assert by.gamma(by.oneTerm(clientSecretB)) == clientSecretB
-	assert by.gamma(xT) == abs.Abs(dc.state.agentSecret)
-	assert abs.Abs(sharedSecret) == by.gamma(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), by.oneTerm(clientSecretB)), xT))
-	assert abs.Abs(dc.state.sessionID) == by.hashB(abs.Abs(sharedSecret))
-	assert abs.Abs(dc.state.sessionID) == by.gamma(tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), by.oneTerm(clientSecretB)), xT)))
-
 	//@ t0 := dc.getToken()
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ s0 := dc.getAbsState()
-	//@ assert ft.St_Agent_3(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX) in s0
 
-	assert by.gamma(receivedMsgT) == by.gamma(tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), by.oneTerm(clientSecretB)), tm.pair(by.oneTerm(sigYB), tm.pair(by.oneTerm(clientLtKeyIdB), tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), by.oneTerm(clientSecretB)), xT)))))))
 	// retrieve the term representation of `clientSecretT`, `sigYT`, and `clientLtKeyIdT` by applying our term-uniqueness assumption of the received message:
 	clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), by.oneTerm(clientLtKeyIdB), receivedMsgT, t0, s0)
-	// clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN)), receivedMsgT, t0, s0)
 	//@ sharedSecretT := tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT)
 	//@ assert abs.Abs(sharedSecret) == by.gamma(sharedSecretT)
-	/*
-	assert receivedMsgT == tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), tm.pair(sigYT, tm.pair(clientLtKeyIdT, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT))))))
-	assert receivedMsgT == ut.tuple5(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, clientLtKeyIdT, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT)))
-	assert by.gamma(tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN))) == by.msgB(resp.ClientLTKeyARN)
-	assert clientLtKeyIdT == tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN))
-	*/
+
 	/*@
 		l := mset[ft.Fact] {
 			ft.St_Agent_3(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX),
@@ -1985,7 +1720,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	@*/
 	//@ unfold iospec.P_Agent(t0, rid, s0)
 	//@ unfold iospec.phiR_Agent_3(t0, rid, s0)
-	//@ assert ft.M(l, s0)
 	//@ t1 := iospec.internBIO_e_Agent_RecvSecureSessionResponse(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientSecretT, sigYT, clientLtKeyIdT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
 	//@ unfold dc.IoSpecMem()
@@ -1998,10 +1732,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ fold dc.IoSpecMem()
 	state = HandshakeResponseReceived
 
-	// assert action.Abs() == by.gamma(tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), tm.pair(sigYT, tm.pair(clientLtKeyIdT, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT))))))
-	// assert by.gamma(receivedMsgT) == by.gamma(tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), tm.pair(sigYT, tm.pair(clientLtKeyIdT, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT))))))))
-	// assert by.gamma(receivedMsgT) == by.gamma(tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), tm.pair(sigYT, tm.pair(clientLtKeyIdT, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT)))))))
-
 	// verify client signature
 	sig, err := base64.StdEncoding.DecodeString(resp.Signature)
 	if err != nil {
@@ -2013,18 +1743,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	agentId := dc.dataStream.GetInstanceId()
 	//@ fold dc.MemTransfer(state, true)
 	
-	// clientSignPayload := &mgsContracts.SignClientSharePayload{
-	// 	ClientShare: resp.ClientShare,
-	// 	AgentId:     agentId,
-	// }
-
-	// //@ fold clientSignPayload.Mem()
-	// clientSignPayloadBytes, err := json.Marshal(clientSignPayload /*@, perm(1/2) @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to encode client sign payload: %v", err /*@, perm(1/1) @*/)
-	// 	logError(log, err /*@, perm(1/1) @*/)
-	// 	return
-	// }
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
 	if err != nil {
 		err = fmtErrorf("failed to encode client sign payload: %v", err /*@, perm(1/1) @*/)
@@ -2047,7 +1765,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	@*/
 	//@ unfold iospec.P_Agent(t1, rid, s1)
 	//@ unfold iospec.phiR_Agent_4(t1, rid, s1)
-	//@ assert ft.M(l2, s1)
 	//@ t2 := iospec.internBIO_e_Agent_SendVerifyRequest(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, l2, a2, r2)
 	//@ s2 := ft.U(l2, r2, s1)
 
@@ -2062,14 +1779,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
 	//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
-	// ghost var messageT, signatureT tm.Term
 	//@ messageT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), AgentId)
-	// m := ut.tuple5(tm.pubTerm(pub.const_VerifyRequest_pub()), ClientId, tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN)), messageT, signatureT)
-	assert by.gamma(clientLtKeyIdT) == by.gamma(tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN)))
-	// assert clientLtKeyIdT == tm.pubTerm(pub.pub_msg(resp.ClientLTKeyARN))
-	assert abs.Abs(clientSignPayloadBytes) == by.pairB(by.msgB(resp.ClientShare), by.msgB(agentId))
-	assert abs.Abs(clientSignPayloadBytes) == by.pairB(by.expB(by.generatorB(), clientSecretB), by.msgB(agentId))
-	assert by.gamma(AgentId) == by.msgB(agentId)
 	ok, err := dc.state.kmsService.Verify(resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
 	if !ok {
 		state = Erroneous
@@ -2100,7 +1810,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	@*/
 	//@ unfold iospec.P_Agent(t4, rid, s4)
 	//@ unfold iospec.phiR_Agent_5(t4, rid, s4)
-	//@ assert ft.M(l3, s4)
 	//@ t5 := iospec.internBIO_e_Agent_RecvVerifyResponse(t4, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, l3, a3, r3)
 	//@ s5 := ft.U(l3, r3, s4)
 	//@ unfold dc.IoSpecMem()
@@ -2113,14 +1822,12 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 }
 
 // @ requires log != nil
-// @ requires dc.MemTransfer(HandshakeResponseVerified, true) && acc(action.Mem(), 1/8) && action.IsSuccessfulSecureSession()
-//  requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
+// @ requires dc.MemTransfer(HandshakeResponseVerified, true)
 // @ preserves acc(log.Mem(), _) 
-// @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
+// @ ensures  dc.MemTransfer(state, true)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
-// TODO: remove `action` parameter
-func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
+func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (state DataChannelState, err error) {
 	state = HandshakeResponseVerified
 	//@ unfold dc.MemTransfer(state, true)
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
@@ -2143,28 +1850,11 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		//@ fold dc.MemTransfer(state, true)
 		return
 	}
-	assert abs.Abs(dc.state.agentWriteKey) == by.kdf1B(abs.Abs(sharedSecret))
-	assert abs.Abs(dc.state.agentReadKey) == by.kdf2B(abs.Abs(sharedSecret))
 
 	agentReadKey := dc.state.agentReadKey
 	agentWriteKey := dc.state.agentWriteKey
-	// encodedAgentReadKey := base64.RawStdEncoding.EncodeToString(agentReadKey /*@, perm(1/2) @*/)
-	// encodedAgentWriteKey := base64.RawStdEncoding.EncodeToString(agentWriteKey /*@, perm(1/2) @*/)
 	logDebugfBytes(log, "agent read key: %s", agentReadKey /*@, perm(1/2) @*/)
 	logDebugfBytes(log, "agent write key: %s", agentWriteKey /*@, perm(1/2) @*/)
-	
-	// // create ciphertext containing session keys:
-	// sessionKeys := &mgsContracts.SessionKeys{
-	// 	AgentWriteKey: encodedAgentWriteKey,
-	// 	AgentReadKey:  encodedAgentReadKey,
-	// }
-	// //@ fold sessionKeys.Mem()
-	// sessionKeysBytes, err := json.Marshal(sessionKeys /*@, perm(1/2) @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to encode session keys: %v", err /*@, perm(1/1) @*/)
-	// 	logError(log, err /*@, perm(1/1) @*/)
-	// 	return
-	// }
 	
 	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/2) @*/)
 	if err != nil {
@@ -2173,19 +1863,9 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
-	assert abs.Abs(sessionKeysBytes) == by.pairB(abs.Abs(agentWriteKey), abs.Abs(agentReadKey))
-	assert abs.Abs(sessionKeysBytes) == by.pairB(by.kdf1B(abs.Abs(sharedSecret)), by.kdf2B(abs.Abs(sharedSecret)))
 	//@ sessionKeysBytesT := tm.pair(tm.kdf1(sharedSecretT), tm.kdf2(sharedSecretT))
 	//@ assert abs.Abs(sessionKeysBytes) == by.gamma(sessionKeysBytesT)
 
-	//@ cryptoRand.GetReaderMem()
-	// encryptedSessionKeys, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, dc.logLTPk, sessionKeysBytes /*@, perm(1/2) @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to encrypt session keys: %v", err /*@, perm(1/1) @*/)
-	// 	return
-	// }
-	// encodedEncryptedSessionKeys := base64.StdEncoding.EncodeToString(encryptedSessionKeys /*@, perm(1/2) @*/)
-	
 	encodedEncryptedSessionKeys, err := encryptAndEncode(sessionKeysBytes, dc.logLTPk /*@, perm(1/2) @*/)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
@@ -2193,26 +1873,10 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		return
 	}
 	logInfofString(log, "encrypted base-64-encoded session keys: %s", encodedEncryptedSessionKeys)
-
-	assert by.msgB(encodedEncryptedSessionKeys) == by.aencB(by.pairB(by.kdf1B(abs.Abs(sharedSecret)), by.kdf2B(abs.Abs(sharedSecret))), dc.logLTPk.Abs())
-	assert dc.logLTPk.Abs() == by.gamma(dc.getLogLTPkT())
 	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.getLogLTPkT())
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
 	// sign ciphertext containing session keys using KMS:
-	// signSessionKeysPayload := &mgsContracts.SignSessionKeysPayload{
-	// 	EncryptedSessionKeys: encodedEncryptedSessionKeys,
-	// 	ClientId:             dc.dataStream.GetClientId(),
-	// }
-
-	// //@ fold signSessionKeysPayload.Mem()
-	// signSessionKeysPayloadBytes, err := json.Marshal(signSessionKeysPayload /*@, perm(1/2) @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to encode sign session keys payload: %v", err /*@, perm(1/1) @*/)
-	// 	logError(log, err /*@, perm(1/1) @*/)
-	// 	return
-	// }
-
 	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.dataStream.GetClientId())
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
@@ -2220,9 +1884,6 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
-
-	assert abs.Abs(signSessionKeysPayloadBytes) == by.pairB(by.msgB(encodedEncryptedSessionKeys), by.gamma(dc.getClientIdT()))
-
 	//@ messageT := tm.pair(encodedEncryptedSessionKeysT, dc.getClientIdT())
 	//@ assert abs.Abs(signSessionKeysPayloadBytes) == by.gamma(messageT)
 	//@ m := ut.tuple3(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), messageT)
@@ -2239,7 +1900,6 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		    ft.Out_KMS_Agent(rid, AgentId, KMSId, rid, m),
 		}
 	@*/
-	// assert ft.M(l, s0)
 	//@ unfold iospec.P_Agent(t0, rid, s0)
 	//@ unfold iospec.phiR_Agent_6(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_SendSessionKeySignRequest(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, l, a, r)
@@ -2257,15 +1917,6 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 	//@ unfold iospec.phiRF_Agent_15(t2, rid, s2)
 	//@ t3 := iospec.get_e_In_KMS_placeDst(t2, rid)
 
-	// sigSessionKeys, err /*@, signatureT @*/ := dc.state.kmsService.Sign(dc.agentLTKeyARN, signSessionKeysPayloadBytes /*@, perm(1/2), t0, rid, AgentId, KMSId, messageT, m @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to sign session keys payload: %v", err /*@, perm(1/1) @*/)
-	// 	logError(log, err /*@, perm(1/1) @*/)
-	// 	return
-	// }
-
-	// encodedSigSessionKeys := base64.StdEncoding.EncodeToString(sigSessionKeys /*@, perm(1/2) @*/)
-
 	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.state.kmsService, dc.agentLTKeyARN, signSessionKeysPayloadBytes /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
 	if err != nil {
 		state = Erroneous
@@ -2276,7 +1927,6 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 	}
 
 	//@ s3 := s2 union mset[ft.Fact] { ft.In_KMS_Agent(rid, KMSId, AgentId, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), sigSessionKeysT)) }
-
 	/*@
 		l2 := mset[ft.Fact] {
 			ft.St_Agent_7(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT),
@@ -2287,10 +1937,8 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 		    ft.St_Agent_8(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
 		}
 	@*/
-	// assert ft.M(l2, s3)
 	//@ unfold iospec.P_Agent(t3, rid, s3)
 	//@ unfold iospec.phiR_Agent_7(t3, rid, s3)
-	// assert iospec.e_Agent_RecvSessionKeySignResponse(t3, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, l2, a2, r2)
 	//@ t4 := iospec.internBIO_e_Agent_RecvSessionKeySignResponse(t3, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, l2, a2, r2)
 	//@ s4 := ft.U(l2, r2, s3)
 
@@ -2311,22 +1959,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 	//@ t5 := iospec.internBIO_e_Agent_SendEncryptedSessionKey(t4, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, l3, a3, r3)
 	//@ s5 := ft.U(l3, r3, s4)
 
-	// // send ciphertext containing session keys and the corresponding signature to the log server:
-	// encryptedSessionKeysPayload := &mgsContracts.EncryptedSessionKeysPayload{
-	// 	AgentLTKeyARN:        dc.agentLTKeyARN,
-	// 	ClientId:             dc.dataStream.GetClientId(),
-	// 	EncryptedSessionKeys: encodedEncryptedSessionKeys,
-	// 	Signature:            encodedSigSessionKeys,
-	// }
-	// //@ fold encryptedSessionKeysPayload.Mem()
-	// encryptedSessionKeysPayloadBytes, err := json.Marshal(encryptedSessionKeysPayload /*@, perm(1/2) @*/)
-	// if err != nil {
-	// 	err = fmtErrorf("failed to encode encrypted session keys payload: %v", err /*@, perm(1/1) @*/)
-	// 	logError(log, err /*@, perm(1/1) @*/)
-	// 	return
-	// }
-	// encodedEncryptedSessionKeysPayloadBytes := base64.StdEncoding.EncodeToString(encryptedSessionKeysPayloadBytes /*@, perm(1/2) @*/)
-	
+	// send ciphertext containing session keys and the corresponding signature to the log server:
 	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.dataStream.GetInstanceId(), dc.agentLTKeyARN, dc.dataStream.GetClientId())
 	if err != nil {
 		state = Erroneous
@@ -2344,8 +1977,6 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
 	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
 
-	dc.encryptionEnabled = true
-
 	if err = dc.blockCipher.UpdateEncryptionKeys(log, dc.state.agentReadKey, dc.state.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -2360,6 +1991,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T, act
 	//@ dc.setSigSessionKeysT(sigSessionKeysT)
 	//@ fold dc.IoSpecMem()
 	state = BlockCipherReady
+	dc.encryptionEnabled = true
 	//@ fold dc.MemTransfer(state, true)
 	return
 }
@@ -2818,6 +2450,7 @@ func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessi
 	return
 }
 
+// @ trusted
 // @ requires noPerm < p
 // @ preserves acc(bytes.SliceMem(payload), p) && acc(pk.Mem(), p)
 // @ ensures  err == nil ==> by.msgB(encodedCiphertext) == by.aencB(abs.Abs(payload), pk.Abs())
@@ -2933,7 +2566,7 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 // @ ensures  acc(handshakeRequestPayload.Mem(), p)
 // @ ensures  handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
 // @ ensures  err == nil ==> bytes.SliceMem(handshakeRequestPayloadBytes)
-// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == handshakeRequestPayload.Abs(secActionB)
+// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == secActionB
 // @ ensures  err != nil ==> err.ErrorMem()
 func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost p perm, ghost secActionB by.Bytes @*/) (handshakeRequestPayloadBytes []byte, err error) {
 	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)

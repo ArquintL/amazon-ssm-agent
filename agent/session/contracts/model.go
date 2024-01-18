@@ -497,17 +497,6 @@ pred (handshakeRequestPayload *HandshakeRequestPayload) Mem() {
 	(forall i int :: { handshakeRequestPayload.RequestedClientActions[i] } 0 <= i && i < len(handshakeRequestPayload.RequestedClientActions) ==> handshakeRequestPayload.RequestedClientActions[i].Mem())
 }
 
-// ghost
-// requires acc(handshakeRequestPayload.Mem(), _)
-// pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSecureSessionAction(secActionB by.Bytes) bool {
-// 	return unfolding acc(handshakeRequestPayload.Mem(), _) in (
-// 		(exists i int :: { handshakeRequestPayload.RequestedClientActions[i].Type() == SessionType } 0 <= i && i < len(handshakeRequestPayload.RequestedClientActions) ==> handshakeRequestPayload.RequestedClientActions[i].Type() == SessionType) &&
-// 		(exists i int :: { handshakeRequestPayload.RequestedClientActions[i].Type() == SecureSession } 0 <= i && i < len(handshakeRequestPayload.RequestedClientActions) ==> handshakeRequestPayload.RequestedClientActions[i].Type() == SecureSession && handshakeRequestPayload.RequestedClientActions[i].Abs() == secActionB))
-// }
-
-// this pure function aids verification as no existential quantifiers are used
-// it's less generic but sufficient as the agent adheres to the specified order of
-// actions.
 ghost
 requires acc(handshakeRequestPayload.Mem(), _)
 pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSecureSessionAction(secActionB by.Bytes) bool {
@@ -516,15 +505,6 @@ pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSecureSessi
 		handshakeRequestPayload.RequestedClientActions[0].Type() == SessionType &&
 		handshakeRequestPayload.RequestedClientActions[1].Type() == SecureSession &&
 		handshakeRequestPayload.RequestedClientActions[1].Abs() == secActionB)
-}
-
-// returns the abstract byte representation of this handshake request IF it is marshaled as JSON
-ghost
-requires acc(handshakeRequestPayload.Mem(), _)
-requires handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
-pure func (handshakeRequestPayload *HandshakeRequestPayload) Abs(secActionB by.Bytes) by.Bytes {
-	// return by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionRequest_pub())), secActionB)
-	return secActionB
 }
 @*/
 
@@ -608,14 +588,6 @@ pure func (processedClientAction *ProcessedClientAction) Abs() by.Bytes {
 	return unfolding acc(processedClientAction.Mem(), _) in
 		abs.Abs(processedClientAction.ActionResult)
 }
-// pair(exp(pubTerm(const_g_pub()), z), pair(SigY, pair(ClientLtKeyId, hash(exp(exp(pubTerm(const_g_pub()), z), x)))))))
-
-ghost
-decreases
-requires acc(processedClientAction.Mem(), _)
-pure func (processedClientAction *ProcessedClientAction) Adt() ProcessedClientActionAdt {
-	return Action{processedClientAction.Type(), processedClientAction.Status()}
-}
 @*/
 
 // Handshake Response sent by the plugin in response to the handshake request
@@ -636,9 +608,6 @@ ghost
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) Abs() by.Bytes {
 	return handshakeResponsePayload.ContainsSecureSession() ?
-		// see comment in `containsSecureSession` regarding this simplification
-		// (unfolding acc(handshakeResponsePayload.Mem(), _) in by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponsePayload.ProcessedClientActions[getSecureSessionIndex(handshakeResponsePayload.ProcessedClientActions, 0)].Abs())) :
-		// (unfolding acc(handshakeResponsePayload.Mem(), _) in by.pairB(by.gamma(tm.pubTerm(pub.const_SecureSessionResponse_pub())), handshakeResponsePayload.ProcessedClientActions[1].Abs())) :
 		(unfolding acc(handshakeResponsePayload.Mem(), _) in handshakeResponsePayload.ProcessedClientActions[1].Abs()) :
 		handshakeResponsePayload.UnknownAbs()
 }
@@ -649,17 +618,6 @@ decreases
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) UnknownAbs() by.Bytes
 
-// ghost
-// decreases
-// requires acc(handshakeResponsePayload.Mem(), _)
-// pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSession() bool {
-// 	return unfolding acc(handshakeResponsePayload.Mem(), _) in
-// 		containsSecureSession(handshakeResponsePayload.ProcessedClientActions, 0)
-// }
-
-// this pure function aids verification as no existential quantifiers are used
-// it's less generic but sufficient as the agent adheres to the specified order of
-// actions.
 ghost
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSession() bool {
@@ -667,60 +625,6 @@ pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSes
 		2 <= len(handshakeResponsePayload.ProcessedClientActions) &&
 		handshakeResponsePayload.ProcessedClientActions[0].Type() == SessionType &&
 		handshakeResponsePayload.ProcessedClientActions[1].Type() == SecureSession
-}
-
-ghost
-requires forall i int :: { actions[i] } 0 <= i && i < len(actions) ==> acc(actions[i].Mem(), _)
-pure func ActionsContainsSecureSession(actions []ProcessedClientAction) bool {
-	return 2 <= len(actions) &&
-		actions[0].Type() == SessionType &&
-		actions[1].Type() == SecureSession
-}
-
-ghost
-decreases
-requires acc(handshakeResponsePayload.Mem(), _)
-requires handshakeResponsePayload.ContainsSecureSession()
-pure func (handshakeResponsePayload *HandshakeResponsePayload) GetSecureSessionIndex() int {
-	return unfolding acc(handshakeResponsePayload.Mem(), _) in
-		getSecureSessionIndex(handshakeResponsePayload.ProcessedClientActions, 0)
-}
-
-ghost
-requires 0 <= startIdx && startIdx <= len(actions)
-requires forall i int :: { actions[i] } startIdx <= i && i < len(actions) ==> acc(actions[i].Mem(), _)
-decreases len(actions) - startIdx
-pure func containsSecureSession(actions []ProcessedClientAction, startIdx int) bool {
-	// return startIdx == len(actions) ? false :
-	// 	(actions[startIdx].IsSuccessfulSecureSession() ?
-	// 		true : containsSecureSession(actions, startIdx + 1))
-
-	// to overcome non-termination, we simplify it as the client sends a single action
-	return len(actions) == 1 &&
-		startIdx == 0 &&
-		actions[0].IsSuccessfulSecureSession()
-}
-
-ghost
-requires 0 <= startIdx && startIdx <= len(actions)
-requires forall i int :: { actions[i] } startIdx <= i && i < len(actions) ==> acc(actions[i].Mem(), _)
-requires containsSecureSession(actions, startIdx)
-ensures  startIdx <= res && res < len(actions)
-ensures  actions[res].IsSuccessfulSecureSession()
-decreases len(actions) - startIdx
-pure func getSecureSessionIndex(actions []ProcessedClientAction, startIdx int) (res int) {
-	return actions[startIdx].IsSuccessfulSecureSession() ?
-			startIdx : getSecureSessionIndex(actions, startIdx + 1)
-}
-
-ghost
-requires acc(handshakeResponsePayload.Mem(), _)
-requires 0 <= startIdx && startIdx <= unfolding acc(handshakeResponsePayload.Mem(), _) in len(handshakeResponsePayload.ProcessedClientActions)
-decreases unfolding acc(handshakeResponsePayload.Mem(), _) in len(handshakeResponsePayload.ProcessedClientActions) - startIdx
-pure func (handshakeResponsePayload *HandshakeResponsePayload) Adt(startIdx int) (res seq[ProcessedClientActionAdt]) {
-	return unfolding acc(handshakeResponsePayload.Mem(), _) in
-		len(handshakeResponsePayload.ProcessedClientActions) - startIdx == 0 ? seq[ProcessedClientActionAdt]{} :
-			seq[ProcessedClientActionAdt]{ handshakeResponsePayload.ProcessedClientActions[startIdx].Adt() } ++ handshakeResponsePayload.Adt(startIdx + 1)
 }
 @*/
 
