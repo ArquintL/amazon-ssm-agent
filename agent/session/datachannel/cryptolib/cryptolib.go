@@ -75,6 +75,12 @@ pure func (bc *BlockCipherT) GetDecKeyT() tm.Term {
 }
 
 ghost
+requires acc(bc.Mem(), _) && bc.IsReady()
+pure func (bc *BlockCipherT) GetDecKeyB() by.Bytes {
+	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.decryptionKey)
+}
+
+ghost
 preserves bc.DecKeyTMem()
 ensures bc.getDecKeyT() == decKeyT
 func (bc *BlockCipherT) setDecKeyT(decKeyT tm.Term)
@@ -161,11 +167,11 @@ func (blockCipher *BlockCipherT) EncryptWithAESGCM(plainText []byte /*@, ghost p
 // DecryptWithGCM decrypts cipher text using AES block cipher GCM mode
 // @ trusted
 // @ requires noPerm < p
-// @ requires acc(blockCipher.Mem(), p) && blockCipher.IsReady()
+// @ preserves acc(blockCipher.Mem(), p) && blockCipher.IsReady()
 // @ preserves acc(bytes.SliceMem(cipherText), p)
-// @ ensures  acc(blockCipher.Mem(), p)
 // @ ensures err == nil ==> bytes.SliceMem(plainText)
 // @ ensures err != nil ==> err.ErrorMem()
+// @ ensures err == nil ==> abs.Abs(cipherText) == by.sencB(abs.Abs(plainText), blockCipher.GetDecKeyB())
 func (blockCipher *BlockCipherT) DecryptWithAESGCM(cipherText []byte /*@, ghost p perm @*/) (plainText []byte, err error) {
 	var aesgcm = blockCipher.decryptionCipher
 

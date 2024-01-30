@@ -42,6 +42,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/versionutil"
 	"github.com/aws/aws-sdk-go/service/kms"
 	"golang.org/x/crypto/hkdf"
+	//@ "sync"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ arb "github.com/aws/amazon-ssm-agent/agent/iospecs/arb"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -84,7 +85,7 @@ type IDataChannel interface {
 
 	//@ pred Mem()
 
-	//@ requires log != nil
+	// @ requires log != nil
 	// @ requires QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
 	// @ preserves Mem()
 	// @ preserves acc(log.Mem(), _)
@@ -135,17 +136,6 @@ type IDataChannel interface {
 	Close(log logger.T) error
 }
 
-// instruct Gobra to prove that DataChannel is a behavioral subtype of IDataChannel:
-/* TODO remove impl proof but leave implements clause
-(* dataChannel) implements IDataChannel {
-	(dc *dataChannel) SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte, ghost p perm, ghost inputDataT tm.Term) error {
-		// assert (forall t pl.Place, rid tm.Term :: (pl.token(t) && iospec.e_InFact(t, rid)) --* (acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData) && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t, rid)))))
-		unfold SendStreamDataMessageWand(t, rid, inputData, inputDataT, p)
-		return dc.SendStreamDataMessage(log, dataType, inputData, p, inputDataT)
-	}
-}
-*/
-
 type DataChannelState int
 
 const (
@@ -160,6 +150,7 @@ const (
 	HandshakeResponseVerified   DataChannelState = 8
 	BlockCipherReady            DataChannelState = 9
 	HandshakeCompleted          DataChannelState = 10
+	IODistributed				DataChannelState = 11
 )
 
 // dataChannel used for session communication between the message gateway service and the agent.
@@ -182,7 +173,14 @@ type dataChannel struct {
 	agentLTKeyARN string
 	logReaderId   string
 	logLTPk       *rsa.PublicKey
-	/*@ msgHandlerCtx StreamDataHandlerContext @*/ // TODO: mark this as ghost as soon as Gobra supports ghost fields
+
+	// TODO: mark the following fields as ghost as soon as Gobra supports ghost fields
+	//@ msgHandlerCtx StreamDataHandlerContext
+	//@ ioLock *sync.Mutex
+	//@ ioLockDidLocalReceive bool
+	//@ ioLockCanRemoteSend bool
+	//@ ioLockDidRemoteReceive bool
+	//@ ioLockCanLocalSend bool
 }
 
 // AgentHandshakeState represents the state of the handshake.
@@ -196,7 +194,7 @@ type agentHandshakeState struct {
 	agentReadKey  []byte
 }
 
-type InputStreamMessageHandler = func(log logger.T, streamDataMessage *mgsContracts.AgentMessage) error
+type InputStreamMessageHandler = func(log logger.T, streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
 
 type MessageReceptionStatus int
 type MessageReceptionPayload struct {
@@ -244,9 +242,14 @@ type StreamDataHandlerContext interface {
 
 ghost
 requires ctx != nil && log != nil
+requires agentMessage.Mem()
+requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
 preserves ctx.Inv() && acc(log.Mem(), _)
+ensures err == nil ==> agentMessage.Mem()
 ensures err != nil ==> err.ErrorMem()
-func StreamDataHandlerSpec(ghost ctx StreamDataHandlerContext, log logger.T, agentMessage *mgsContracts.AgentMessage) (err error)
+ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))) 
+ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
+func StreamDataHandlerSpec(ghost ctx StreamDataHandlerContext, log logger.T, agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
 
 pred (dc *dataChannel) RecvRoutineMem() {
 	dc != nil &&
@@ -264,13 +267,63 @@ pred (dc *dataChannel) RecvRoutineMem() {
 	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
 }
 
-// permissions in `RecvRoutineMem` are already subtracted:
-pred (dc *dataChannel) Mem() {
-	dc != nil &&
-	acc(&dc.dataChannelState) &&
+pred (dc *dataChannel) MemFields(state DataChannelState) {
+	acc(&dc.dataStream) &&
+	acc(&dc.hs.clientVersion) &&
+	acc(&dc.hs.error) &&
+	acc(&dc.hs.complete) &&
+	acc(&dc.hs.skipped) &&
+	acc(&dc.hs.handshakeStartTime) &&
+	acc(&dc.hs.handshakeEndTime) &&
+	acc(&dc.blockCipher) &&
+	acc(&dc.encryptionEnabled) &&
+	acc(&dc.separateOutputPayload) &&
+	acc(&dc.state) &&
+	acc(&dc.agentLTKeyARN) &&
+	acc(&dc.logReaderId) &&
+	acc(&dc.logLTPk) &&
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
-	(dc.dataChannelState != Erroneous ==>
+	acc(&dc.ioLock) &&
+	(state >= Initialized ==>
+		dc.dataStream.Mem() &&
+		dc.state.kmsService.Mem() &&
+		dc.logLTPk.Mem())
+}
+
+pred (dc *dataChannel) MemOld() {
+	dc != nil &&
+	acc(&dc.dataChannelState, 1/2) &&
+	acc(dc.MemInternal(dc.dataChannelState), 1/2) &&
+	(dc.dataChannelState != IODistributed ==>
+		acc(&dc.dataChannelState, 1/2) &&
+		acc(dc.MemInternal(dc.dataChannelState), 1/2))
+}
+
+pred (dc *dataChannel) Mem() {
+	dc != nil &&
+	acc(&dc.dataChannelState, 1/2) &&
+	(dc.dataChannelState != IODistributed ==>
+		acc(dc.MemChannelState(), 1/2)) &&
+	acc(dc.MemInternal(dc.dataChannelState), dc.dataChannelState != IODistributed ? writePerm : perm(1/2))
+}
+
+// due to an incompleteness, we need this indirection
+pred (dc *dataChannel) MemChannelState() {
+	acc(&dc.dataChannelState)
+}
+
+pred (dc *dataChannel) MemInternal(state DataChannelState) {
+	dc != nil &&
+	acc(&dc.hs.startReceivingChan, _) &&
+	acc(&dc.hs.responseChan, _) &&
+	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
+	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
+	acc(dc.hs.responseChan.RecvChannel(), _) &&
+	dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
+	dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
+	(state != Erroneous ==>
 		acc(&dc.dataStream) &&
 		acc(&dc.hs.clientVersion) &&
 		acc(&dc.hs.error) &&
@@ -284,50 +337,164 @@ pred (dc *dataChannel) Mem() {
 		acc(&dc.state) &&
 		acc(&dc.agentLTKeyARN) &&
 		acc(&dc.logReaderId) &&
-		acc(&dc.logLTPk)) &&
-	(dc.dataChannelState >= Initialized ==>
+		acc(&dc.logLTPk) &&
+		acc(&dc.ioLock)) &&
+	(state != Erroneous && state < IODistributed ==>
+		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
+		acc(&dc.ioLockDidRemoteReceive) && acc(&dc.ioLockCanLocalSend) &&
+		dc.LocalInFactTMem() && dc.RemoteInFactTMem() &&
+		dc.LocalOutFactTMem() && dc.RemoteOutFactTMem()) &&
+	(state >= Initialized ==>
+		dc.IoSpecMemPartial() &&
 		dc.dataStream.Mem() &&
 		dc.state.kmsService.Mem() &&
-		dc.logLTPk.Mem() &&
-		dc.IoSpecMem() &&
+		dc.logLTPk.Mem()) &&
+	(state >= Initialized && state < IODistributed ==>
+		dc.IoSpecMemMain() &&
 		pl.token(dc.getToken()) &&
 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
 		tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
 		tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
 		tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
 		by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()) &&
-	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
-	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
-	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
-	acc(dc.hs.responseChan.RecvChannel(), _) &&
-	dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
-	dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
-	(dc.dataChannelState == Initialized ==>
+	(state == Initialized ==>
 		!dc.hs.skipped) &&
-	(dc.dataChannelState == HandshakeSkipped ==>
+	(state == HandshakeSkipped ==>
 		dc.hs.skipped) &&
-	(dc.dataChannelState >= BlockCipherInitialized ==>
+	(state >= BlockCipherInitialized ==>
 		!dc.hs.skipped &&
 		dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
 		dc.blockCipher != nil && dc.blockCipher.Mem()) &&
-	(dc.dataChannelState >= AgentSecretCreatedAndSigned && dc.dataChannelState < HandshakeCompleted ==>
+	(state >= AgentSecretCreatedAndSigned && state < HandshakeCompleted ==>
 		bytes.SliceMem(dc.state.agentSecret) &&
 		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.state.agentSecret)) &&
-	(dc.dataChannelState >= BlockCipherReady && dc.encryptionEnabled ==>
+	(state >= BlockCipherReady && dc.encryptionEnabled ==>
 		dc.blockCipher.IsReady() &&
 		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
+		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
+		dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT())) &&
 	// relate state to abstract state:
-	(dc.dataChannelState == Initialized || dc.dataChannelState == BlockCipherInitialized ==>
+	(state == Initialized || state == BlockCipherInitialized ==>
 		ft.Setup_Agent(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT()) in dc.getAbsState()) &&
-	(dc.dataChannelState == AgentSecretCreatedAndSigned ==>
+	(state == AgentSecretCreatedAndSigned ==>
 		ft.St_Agent_2(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
-	(dc.dataChannelState == HandshakeRequestSent ==>
+	(state == HandshakeRequestSent ==>
 		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
-	(dc.dataChannelState == BlockCipherReady ==>
+	(state == BlockCipherReady ==>
 		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
-	(dc.dataChannelState >= HandshakeCompleted ==>
-		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState())
+	(state == HandshakeCompleted ==>
+		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+	(state == IODistributed ==>
+		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
+		// acc(dc.LocalInFactTMem(), 1/2) && acc(dc.RemoteOutFactTMem(), 1/2) &&
+		// acc(dc.IoSpecMemPartial(), 1/2) &&
+		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
+		dc.LocalInFactTMem() && dc.RemoteOutFactTMem() &&
+		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+}
+
+// permissions in `RecvRoutineMem` are already subtracted:
+// pred (dc *dataChannel) Mem2() {
+// 	dc != nil &&
+// 	acc(&dc.dataChannelState, 1/2) &&
+// 	(dc.dataChannelState != IODistributed ==>
+// 		acc(&dc.dataChannelState, 1/2)) &&
+// 	(dc.dataChannelState != Erroneous ==>
+// 		acc(dc.MemFields(dc.dataChannelState), 1/2)) &&
+// 	(dc.dataChannelState != Erroneous && dc.dataChannelState < IODistributed ==>
+// 		acc(dc.MemFields(dc.dataChannelState), 1/2)) &&
+// 	// (let p := (dc.dataChannelState != Erroneous && dc.dataChannelState < IODistributed) ? writePerm : (dc.dataChannelState != Erroneous ? 1/2 : noPerm) in
+// 	//	acc(dc.MemFields(dc.dataChannelState), p)) &&
+// 	(dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed ==>
+// 		dc.IoSpecMem() &&
+// 		pl.token(dc.getToken()) &&
+// 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
+// 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
+// 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
+// 		//tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
+// 		true/*by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()*/) &&
+// 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
+// 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+// 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
+// 	acc(dc.hs.responseChan.RecvChannel(), _) &&
+// 	dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
+// 	dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
+// 	(dc.dataChannelState == Initialized ==>
+// 		!dc.hs.skipped) &&
+// 	(dc.dataChannelState == HandshakeSkipped ==>
+// 		dc.hs.skipped) &&
+// 	(dc.dataChannelState >= BlockCipherInitialized ==>
+// 		!dc.hs.skipped &&
+// 		dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
+// 		dc.blockCipher != nil && dc.blockCipher.Mem()) &&
+// 	(dc.dataChannelState >= AgentSecretCreatedAndSigned && dc.dataChannelState < HandshakeCompleted ==>
+// 		bytes.SliceMem(dc.state.agentSecret) &&
+// 		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.state.agentSecret)) &&
+// 	(dc.dataChannelState >= BlockCipherReady && dc.encryptionEnabled ==>
+// 		dc.blockCipher.IsReady()) &&
+// 	(dc.dataChannelState >= BlockCipherReady && dc.dataChannelState < IODistributed && dc.encryptionEnabled ==>
+// 		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
+// 		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
+// 	// relate state to abstract state:
+// 	(dc.dataChannelState == Initialized || dc.dataChannelState == BlockCipherInitialized ==>
+// 		ft.Setup_Agent(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT()) in dc.getAbsState()) &&
+// 	(dc.dataChannelState == AgentSecretCreatedAndSigned ==>
+// 		ft.St_Agent_2(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+// 	(dc.dataChannelState == HandshakeRequestSent ==>
+// 		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+// 	(dc.dataChannelState == BlockCipherReady ==>
+// 		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+// 	(dc.dataChannelState == HandshakeCompleted ==>
+// 		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+// 	(dc.dataChannelState == IODistributed ==>
+// 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
+// 		// acc(dc.LocalInFactTMem(), 1/2) && acc(dc.RemoteOutFactTMem(), 1/2) &&
+// 		acc(dc.IoSpecMemPartial(), 1/4) &&
+// 		acc(&dc.ioLockDidLocalReceive, 1/2) && acc(&dc.ioLockCanRemoteSend, 1/2) )// &&
+// 		//acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+// }
+
+// `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
+// TODO move below `MemTransfer`
+pred (dc *dataChannel) MemRecv() {
+	dc != nil &&
+	acc(&dc.dataChannelState, 1/2) &&
+	dc.dataChannelState == IODistributed &&
+	acc(&dc.ioLock, 1/2) &&
+	acc(&dc.hs.startReceivingChan, _) &&
+	acc(&dc.hs.responseChan, _) &&
+	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
+	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
+	// acc(dc.hs.responseChan.RecvChannel(), _) &&
+	// dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
+	// dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
+	acc(&dc.dataStream, 1/2) &&
+	acc(&dc.hs.clientVersion, 1/2) &&
+	acc(&dc.hs.error, 1/2) &&
+	acc(&dc.hs.complete, 1/2) &&
+	acc(&dc.hs.skipped, 1/2) &&
+	acc(&dc.hs.handshakeStartTime, 1/2) &&
+	acc(&dc.hs.handshakeEndTime, 1/2) &&
+	acc(&dc.encryptionEnabled, 1/2) &&
+	acc(&dc.blockCipher, 1/2) &&
+	acc(dc.blockCipher.Mem(), 1/2) &&
+	(dc.encryptionEnabled ==> dc.blockCipher.IsReady()) &&
+	acc(&dc.separateOutputPayload, 1/2) &&
+	acc(&dc.state, 1/2) &&
+	acc(&dc.agentLTKeyARN, 1/2) &&
+	acc(&dc.logReaderId, 1/2) &&
+	acc(&dc.logLTPk, 1/2) &&
+	acc(dc.dataStream.Mem(), 1/2) &&
+	acc(dc.state.kmsService.Mem(), 1/2) &&
+	acc(dc.logLTPk.Mem(), 1/2) &&
+	acc(dc.IoSpecMemPartial(), 1/4) &&
+	dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
+	dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
+	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT()) &&
+	acc(&dc.ioLockCanLocalSend, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2) &&
+	acc(dc.LocalOutFactTMem(), 1/2) && acc(dc.RemoteInFactTMem(), 1/2) &&
+	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>
 }
 
 // `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
@@ -357,7 +524,9 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	!dc.hs.skipped &&
 	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
 	dc.blockCipher != nil && dc.blockCipher.Mem() &&
-	dc.IoSpecMem() &&
+	// dc.IoSpecMem() &&
+	dc.IoSpecMemMain() &&
+	dc.IoSpecMemPartial() &&
 	(state != Erroneous ==>
 		pl.token(dc.getToken()) &&
 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())) &&
@@ -380,7 +549,10 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	(state == HandshakeResponseVerified ==>
 		ft.St_Agent_6(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT()) in dc.getAbsState()) &&
 	(state == BlockCipherReady ==>
-		(encryptionEnabled ==> dc.blockCipher.IsReady() && dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
+		(encryptionEnabled ==>
+			dc.blockCipher.IsReady() &&
+			dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
+			dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT())) &&
 		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState())
 }
 
@@ -394,9 +566,10 @@ pred StartReceivingChanInv(dc *dataChannel, payload MessageReceptionPayload) {
 		payload.status == ReceiveOtherResponse) &&
 	(payload.status == ReceiveHandshakeResponeEncryptionEnabled ==> dc.MemTransfer(HandshakeRequestSent, true)) &&
 	(payload.status == ReceiveHandshakeResponeEncryptionDisabled ==> dc.MemTransfer(HandshakeRequestSent, false) && !assumeEncryptionEnabledForVerification()) &&
-	(payload.status == ReceiveOtherResponse ==> acc(dc.Mem(), 1/2) &&
-		dc.getState() == AgentSecretCreatedAndSigned &&
-		unfolding acc(dc.Mem(), 1/2) in dc.hs.complete)
+	(payload.status == ReceiveOtherResponse ==>
+		dc.MemRecv() &&
+		// TODO move the following conditions within MemRecv:
+		unfolding dc.MemRecv() in dc.dataChannelState == IODistributed && dc.hs.complete)
 }
 
 pred ResponseChanInv(dc *dataChannel, payload ResponseChanPayload) {
@@ -404,6 +577,42 @@ pred ResponseChanInv(dc *dataChannel, payload ResponseChanPayload) {
 	unfolding dc.MemTransfer(payload.state, payload.encryptionEnabled) in
 		(dc.hs.error == nil && payload.encryptionEnabled ==> payload.state == BlockCipherReady) &&
 		(dc.hs.error != nil ==> payload.state == Erroneous)
+}
+
+pred IoLockInv(dc *dataChannel, instanceId, clientId, agentLTKeyARN string) {
+	// dc.IoSpecMem() &&
+	acc(dc.IoSpecMemPartial(), 1/4) &&
+	acc(&dc.ioLockDidLocalReceive, 1/2) &&
+	acc(&dc.ioLockCanRemoteSend, 1/2) &&
+	acc(&dc.ioLockDidRemoteReceive, 1/2) &&
+	acc(&dc.ioLockCanLocalSend, 1/2) &&
+	acc(dc.LocalInFactTMem(), 1/2) &&
+	acc(dc.RemoteInFactTMem(), 1/2) &&
+	acc(dc.LocalOutFactTMem(), 1/2) &&
+	acc(dc.RemoteOutFactTMem(), 1/2) &&
+	// dc.TokenMem() &&
+	// dc.AbsStateMem() &&
+	// pl.token(dc.getTokenInternal()) &&
+	// iospec.P_Agent(dc.getTokenInternal(), dc.getRidPartial(), dc.getAbsStateInternal()) &&
+	// unfolding acc(dc.IoSpecMemPartial(), 1/2) in
+	// 	tm.pubTerm(pub.pub_msg(instanceId)) == dc.getAgentIdTInternal() &&
+	// 	tm.pubTerm(pub.pub_msg(clientId)) == dc.getClientIdTInternal() &&
+	// 	ft.St_Agent_10(dc.getRidInternal(), dc.getAgentIdTInternal(), dc.getKMSIdTInternal(), dc.getClientIdTInternal(), dc.getReaderIdTInternal(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.getLogLTPkTInternal(), dc.getAgentShareTInternal(), dc.getAgentShareSignatureTInternal(), dc.getClientLtKeyIdTInternal(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareTInternal()), dc.getClientShareSignatureTInternal(), dc.getSigSessionKeysTInternal()) in dc.getAbsStateInternal() &&
+	// 	(dc.ioLockDidLocalReceive ==> ft.InFact_Agent(dc.getRidInternal(), dc.getLocalInFactTInternal()) in dc.getAbsStateInternal()) &&
+	// 	(dc.ioLockCanRemoteSend ==> ft.OutFact_Agent(dc.getRidInternal(), dc.getRemoteOutFactTInternal()) in dc.getAbsStateInternal()) &&
+	// 	(dc.ioLockDidRemoteReceive ==> ft.InFact_Agent(dc.getRidInternal(), dc.getRemoteInFactTInternal()) in dc.getAbsStateInternal()) &&
+	// 	(dc.ioLockCanLocalSend ==> ft.OutFact_Agent(dc.getRidInternal(), dc.getLocalOutFactTInternal()) in dc.getAbsStateInternal())
+	dc.IoSpecMemMain() &&
+	pl.token(dc.getToken()) &&
+	iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
+	tm.pubTerm(pub.pub_msg(instanceId)) == dc.getAgentIdT() &&
+	tm.pubTerm(pub.pub_msg(clientId)) == dc.getClientIdT() &&
+	ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState() &&
+	dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
+	(((dc.ioLockDidLocalReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.getRid(), dc.getLocalInFactTInternal()) } : mset[ft.Fact]{ }) union
+		(dc.ioLockCanRemoteSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.getRid(), dc.getRemoteOutFactTInternal()) } : mset[ft.Fact]{ } ) union
+		(dc.ioLockDidRemoteReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.getRid(), dc.getRemoteInFactTInternal()) } : mset[ft.Fact]{ } ) union
+		(dc.ioLockCanLocalSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.getRid(), dc.getLocalOutFactTInternal()) } : mset[ft.Fact]{ } )) subset dc.getAbsState())
 }
 
 // conceptually, this predicate contains write permissions to
@@ -424,7 +633,37 @@ pred (dc *dataChannel) IoSpecMem() {
 	dc.ClientLtKeyIdTMem() &&
 	dc.ClientShareTMem() &&
 	dc.ClientShareSignatureTMem() &&
-	dc.SigSessionKeysTMem()
+	dc.SigSessionKeysTMem() &&
+	dc.LocalInFactTMem() &&
+	dc.RemoteInFactTMem() &&
+	dc.LocalOutFactTMem() &&
+	dc.RemoteOutFactTMem()
+}
+
+pred (dc *dataChannel) IoSpecMemMain() {
+	dc.TokenMem() &&
+	dc.AbsStateMem()
+}
+
+pred (dc *dataChannel) IoSpecMemPartial() {
+	dc.RidMem() &&
+	dc.AgentIdTMem() &&
+	dc.KMSIdTMem() &&
+	dc.ClientIdTMem() &&
+	dc.ReaderIdTMem() &&
+	dc.LogLTPkTMem() &&
+	dc.AgentShareTMem() &&
+	dc.AgentShareSignatureTMem() &&
+	dc.InFactTMem() &&
+	dc.SharedSecretTMem() &&
+	dc.ClientLtKeyIdTMem() &&
+	dc.ClientShareTMem() &&
+	dc.ClientShareSignatureTMem() &&
+	dc.SigSessionKeysTMem() // &&
+	// dc.LocalInFactTMem() &&
+	// dc.RemoteInFactTMem() &&
+	// dc.LocalOutFactTMem() &&
+	// dc.RemoteOutFactTMem()
 }
 
 pred (dc *dataChannel) TokenMem()
@@ -434,22 +673,20 @@ requires acc(dc.TokenMem(), _)
 pure func (dc *dataChannel) getTokenInternal() pl.Place
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemMain(), _)
 pure func (dc *dataChannel) getToken() pl.Place {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getTokenInternal()
+	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getTokenInternal()
 }
 
 ghost
-requires acc(dc.Mem(), _) && dc.getState() >= Initialized
+requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetToken() pl.Place {
-	return unfolding acc(dc.Mem(), _) in dc.getToken()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getToken()
 }
 
 ghost
 preserves dc.TokenMem()
 ensures dc.getTokenInternal() == token
-// ensures getRid(sessionId) == old(getRid(sessionId))
-// ensures getAbsState(sessionId) == old(getAbsState(sessionId))
 func (dc *dataChannel) setToken(token pl.Place)
 
 pred (dc *dataChannel) RidMem()
@@ -459,22 +696,52 @@ requires acc(dc.RidMem(), _)
 pure func (dc *dataChannel) getRidInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getRid() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getRidInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRidInternal()
 }
 
+// ghost
+// requires acc(dc.IoSpecMemPartial(), _)
+// pure func (dc *dataChannel) getRidPartial() tm.Term {
+// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRidInternal()
+// }
+
+// ghost
+// requires acc(dc.MemInternal(state), _) && state >= Initialized && state < IODistributed
+// pure func (dc *dataChannel) GetRidInternal(state DataChannelState) tm.Term {
+// 	return unfolding acc(dc.MemInternal(state), _) in dc.getRid()
+// }
+
+// ghost
+// requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
+// pure func (dc *dataChannel) GetRid0() tm.Term {
+// 	return unfolding acc(dc.Mem(), _) in dc.GetRidInternal(dc.dataChannelState)
+// }
+
 ghost
-requires acc(dc.Mem(), _) && dc.getState() >= Initialized
+requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetRid() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getRid()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getRid()
 }
+
+// ghost
+// requires acc(dc.Mem(), _) && unfolding acc(dc.Mem(), _) in (dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed)
+// pure func (dc *dataChannel) GetRid2() tm.Term {
+// 	return unfolding acc(dc.Mem(), _) in dc.getRid()
+// }
+
+// ghost
+// requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
+// func foo(dc *dataChannel) {
+// 	assert dc.getState() >= Initialized && dc.getState() < IODistributed
+// 	unfold acc(dc.Mem(), _)
+// 	assert dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed
+// }
 
 ghost
 preserves dc.RidMem()
 ensures dc.getRidInternal() == rid
-// ensures getAbsState(sessionId) == old(getAbsState(sessionId))
-// ensures getToken(sessionId) == old(getToken(sessionId))
 func (dc *dataChannel) setRid(rid tm.Term)
 
 pred (dc *dataChannel) AbsStateMem()
@@ -484,22 +751,20 @@ requires acc(dc.AbsStateMem(), _)
 pure func (dc *dataChannel) getAbsStateInternal() mset[ft.Fact]
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemMain(), _)
 pure func (dc *dataChannel) getAbsState() mset[ft.Fact] {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getAbsStateInternal()
+	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getAbsStateInternal()
 }
 
 ghost
-requires acc(dc.Mem(), _) && dc.getState() >= Initialized
+requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetAbsState() mset[ft.Fact] {
-	return unfolding acc(dc.Mem(), _) in dc.getAbsState()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAbsState()
 }
 
 ghost
 preserves dc.AbsStateMem()
 ensures dc.getAbsStateInternal() == state
-// ensures getToken(sessionId) == old(getToken(sessionId))
-// ensures getRid(sessionId) == old(getRid(sessionId))
 func (dc *dataChannel) setAbsState(state mset[ft.Fact])
 
 pred (dc *dataChannel) AgentIdTMem()
@@ -509,15 +774,15 @@ requires acc(dc.AgentIdTMem(), _)
 pure func (dc *dataChannel) getAgentIdTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getAgentIdTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentIdTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getAgentIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentIdT()
 }
 
 ghost
@@ -532,15 +797,15 @@ requires acc(dc.KMSIdTMem(), _)
 pure func (dc *dataChannel) getKMSIdTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getKMSIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getKMSIdTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getKMSIdTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetKMSIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getKMSIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getKMSIdT()
 }
 
 ghost
@@ -555,15 +820,15 @@ requires acc(dc.ClientIdTMem(), _)
 pure func (dc *dataChannel) getClientIdTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getClientIdTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientIdTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getClientIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientIdT()
 }
 
 ghost
@@ -578,15 +843,15 @@ requires acc(dc.ReaderIdTMem(), _)
 pure func (dc *dataChannel) getReaderIdTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getReaderIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getReaderIdTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getReaderIdTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetReaderIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getReaderIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getReaderIdT()
 }
 
 ghost
@@ -605,15 +870,15 @@ requires acc(dc.LogLTPkTMem(), _)
 pure func (dc *dataChannel) getLogLTPkTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getLogLTPkT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getLogLTPkTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLogLTPkTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetLogLTPkT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getLogLTPkT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getLogLTPkT()
 }
 
 ghost
@@ -628,15 +893,15 @@ requires acc(dc.AgentShareTMem(), _)
 pure func (dc *dataChannel) getAgentShareTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentShareT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getAgentShareTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getAgentShareT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareT()
 }
 
 ghost
@@ -651,15 +916,15 @@ requires acc(dc.AgentShareSignatureTMem(), _)
 pure func (dc *dataChannel) getAgentShareSignatureTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentShareSignatureT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getAgentShareSignatureTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareSignatureTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareSignatureT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getAgentShareSignatureT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareSignatureT()
 }
 
 ghost
@@ -674,15 +939,15 @@ requires acc(dc.InFactTMem(), _)
 pure func (dc *dataChannel) getInFactTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getInFactT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getInFactTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getInFactTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetInFactT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getInFactT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getInFactT()
 }
 
 ghost
@@ -697,15 +962,15 @@ requires acc(dc.SharedSecretTMem(), _)
 pure func (dc *dataChannel) getSharedSecretTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getSharedSecretT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getSharedSecretTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSharedSecretTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSharedSecretT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getSharedSecretT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSharedSecretT()
 }
 
 ghost
@@ -720,15 +985,15 @@ requires acc(dc.ClientLtKeyIdTMem(), _)
 pure func (dc *dataChannel) getClientLtKeyIdTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientLtKeyIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getClientLtKeyIdTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientLtKeyIdTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientLtKeyIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getClientLtKeyIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientLtKeyIdT()
 }
 
 ghost
@@ -743,15 +1008,15 @@ requires acc(dc.ClientShareTMem(), _)
 pure func (dc *dataChannel) getClientShareTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientShareT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getClientShareTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getClientShareT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareT()
 }
 
 ghost
@@ -766,15 +1031,15 @@ requires acc(dc.ClientShareSignatureTMem(), _)
 pure func (dc *dataChannel) getClientShareSignatureTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientShareSignatureT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getClientShareSignatureTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareSignatureTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareSignatureT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getClientShareSignatureT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareSignatureT()
 }
 
 ghost
@@ -789,15 +1054,15 @@ requires acc(dc.SigSessionKeysTMem(), _)
 pure func (dc *dataChannel) getSigSessionKeysTInternal() tm.Term
 
 ghost
-requires acc(dc.IoSpecMem(), _)
+requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getSigSessionKeysT() tm.Term {
-	return unfolding acc(dc.IoSpecMem(), _) in dc.getSigSessionKeysTInternal()
+	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSigSessionKeysTInternal()
 }
 
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSigSessionKeysT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.getSigSessionKeysT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSigSessionKeysT()
 }
 
 ghost
@@ -805,10 +1070,78 @@ preserves dc.SigSessionKeysTMem()
 ensures dc.getSigSessionKeysTInternal() == sigSessionKeysT
 func (dc *dataChannel) setSigSessionKeysT(sigSessionKeysT tm.Term)
 
+pred (dc *dataChannel) LocalInFactTMem()
+
+ghost
+requires acc(dc.LocalInFactTMem(), _)
+pure func (dc *dataChannel) getLocalInFactTInternal() tm.Term
+
+// ghost
+// requires acc(dc.IoSpecMemPartial(), _)
+// pure func (dc *dataChannel) getLocalInFactT() tm.Term {
+// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLocalInFactTInternal()
+// }
+
+ghost
+preserves dc.LocalInFactTMem()
+ensures dc.getLocalInFactTInternal() == inFactT
+func (dc *dataChannel) setLocalInFactT(inFactT tm.Term)
+
+pred (dc *dataChannel) RemoteInFactTMem()
+
+ghost
+requires acc(dc.RemoteInFactTMem(), _)
+pure func (dc *dataChannel) getRemoteInFactTInternal() tm.Term
+
+// ghost
+// requires acc(dc.IoSpecMemPartial(), _)
+// pure func (dc *dataChannel) getRemoteInFactT() tm.Term {
+// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRemoteInFactTInternal()
+// }
+
+ghost
+preserves dc.RemoteInFactTMem()
+ensures dc.getRemoteInFactTInternal() == inFactT
+func (dc *dataChannel) setRemoteInFactT(inFactT tm.Term)
+
+pred (dc *dataChannel) LocalOutFactTMem()
+
+ghost
+requires acc(dc.LocalOutFactTMem(), _)
+pure func (dc *dataChannel) getLocalOutFactTInternal() tm.Term
+
+// ghost
+// requires acc(dc.IoSpecMemPartial(), _)
+// pure func (dc *dataChannel) getLocalOutFactT() tm.Term {
+// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLocalOutFactTInternal()
+// }
+
+ghost
+preserves dc.LocalOutFactTMem()
+ensures dc.getLocalOutFactTInternal() == outFactT
+func (dc *dataChannel) setLocalOutFactT(outFactT tm.Term)
+
+pred (dc *dataChannel) RemoteOutFactTMem()
+
+ghost
+requires acc(dc.RemoteOutFactTMem(), _)
+pure func (dc *dataChannel) getRemoteOutFactTInternal() tm.Term
+
+// ghost
+// requires acc(dc.IoSpecMemPartial(), _)
+// pure func (dc *dataChannel) getRemoteOutFactT() tm.Term {
+// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRemoteOutFactTInternal()
+// }
+
+ghost
+preserves dc.RemoteOutFactTMem()
+ensures dc.getRemoteOutFactTInternal() == outFactT
+func (dc *dataChannel) setRemoteOutFactT(outFactT tm.Term)
+
 ghost
 requires acc(dc.Mem(), _) && dc.getState() >= BlockCipherInitialized
 pure func (dc *dataChannel) GetEncKeyT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in dc.blockCipher.GetEncKeyT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.blockCipher.GetEncKeyT()
 }
 
 // while assuming that verification is enabled is not necessary to prove
@@ -870,9 +1203,13 @@ func NewDataChannel(context contextPkg.T,
 	//@ dc.setToken(t0)
 	//@ dc.setRid(rid)
 	//@ dc.setAbsState(mset[ft.Fact]{})
-	//@ fold dc.IoSpecMem()
+	// fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemMain()
+	//@ fold dc.IoSpecMemPartial()
 
 	//@ fold dc.RecvRoutineMem()
+	//@ fold acc(dc.MemChannelState(), 1/2)
+	//@ fold dc.MemInternal(Uninitialized)
 	//@ fold dc.Mem()
 	//@ fold dc.Inv()
 	dataStream, err := datastream.NewDataStream(context,
@@ -898,11 +1235,12 @@ func NewDataChannel(context contextPkg.T,
 
 // initialize populates datachannel object.
 // @ requires dc.Mem() && dc.getState() == Uninitialized && dataStream.Mem()
-// @ requires dc.IoSpecMem() && pl.token(dc.getToken()) && iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())
+// @ requires dc.IoSpecMemMain() && dc.IoSpecMemPartial() && pl.token(dc.getToken()) && iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())
 // @ ensures  dc.Mem()
 // @ ensures  err == nil ==> dc.getState() == Initialized
 func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId string) (err error) {
 	// @ unfold dc.Mem()
+	// @ unfold dc.MemInternal(Uninitialized)
 	dc.dataStream = dataStream
 	dc.encryptionEnabled = false
 	dc.hs.error = nil
@@ -912,6 +1250,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	dc.hs.handshakeStartTime = time.Now()
 	dc.state.kmsService, err = dc.dataStream.GetKMSService( /*@ perm(1/2) @*/ )
 	if err != nil {
+		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
 		return fmtErrorf("failed to initialize KMS service: %v", err /*@, perm(1/2) @*/)
 	}
@@ -932,12 +1271,14 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	if err != nil {
 		// @ fold iospec.phiRF_Agent_17(t0, rid, s0)
 		// @ fold iospec.P_Agent(t0, rid, s0)
+		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
 		return fmtErrorf("failed to initialize KMS service: %v", err /*@, perm(1/2) @*/)
 	}
 
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
-	// @ unfold dc.IoSpecMem()
+	// @ unfold dc.IoSpecMemMain()
+	// @ unfold dc.IoSpecMemPartial()
 	// @ dc.setToken(t1)
 	// @ dc.setAbsState(s1)
 	// @ dc.setAgentIdT(agentIdT)
@@ -945,9 +1286,13 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ dc.setClientIdT(clientIdT)
 	// @ dc.setReaderIdT(readerIdT)
 	// @ dc.setLogLTPkT(logLTPkT)
-	// @ fold dc.IoSpecMem()
+	// @ fold dc.IoSpecMemPartial()
+	// @ fold dc.IoSpecMemMain()
 	dc.logReaderId = logReaderId
+	// @ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = Initialized
+	// @ fold acc(dc.MemChannelState(), 1/2)
+	// @ fold dc.MemInternal(Initialized)
 	// @ fold dc.Mem()
 	return
 }
@@ -1010,7 +1355,7 @@ func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId st
 // @ preserves acc(log.Mem(), _)
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error) {
-	if dc.getState() < HandshakeCompleted {
+	if dc.getState() != IODistributed {
 		return fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 	}
 
@@ -1019,14 +1364,15 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	}
 
 	//@ unfold dc.Mem()
+	//@ unfold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+
+	// ----- start local receive I/O operation -----
+	//@ dc.ioLock.Lock()
+	//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+
 	//@ t0 := dc.getToken()
 	//@ s0 := dc.getAbsState()
-	//@ sharedSecretT := dc.getSharedSecretT()
-	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
-	//@ clientSecretT := dc.getClientShareT()
-	//@ sigYT := dc.getClientShareSignatureT()
-	//@ sigSessionKeysT := dc.getSigSessionKeysT()
 
 	// receive `inputData` from environment:
 	//@ unfold iospec.P_Agent(t0, rid, s0)
@@ -1036,6 +1382,28 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ unfold QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
 	//@ unfold SendStreamDataMessageWand(t0, rid, inputData, inputDataT, p)
 	//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData) && inputDataT == old[#lhs](iospec.get_e_InFact_r1(t0, rid)) && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
+
+	//@ unfold dc.IoSpecMemMain()
+	//@ dc.setToken(t1)
+	//@ dc.setAbsState(s1)
+	//@ dc.setLocalInFactT(inputDataT)
+	//@ dc.ioLockDidLocalReceive = true
+	//@ fold dc.IoSpecMemMain()
+
+	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ dc.ioLock.Unlock()
+	// ----- end local receive I/O operation -----
+
+	// ----- start internal I/O operation -----
+	//@ dc.ioLock.Lock()
+	//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ t1 = dc.getToken()
+	//@ s1 = dc.getAbsState()
+	//@ sharedSecretT := dc.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
+	//@ clientSecretT := dc.getClientShareT()
+	//@ sigYT := dc.getClientShareSignatureT()
+	//@ sigSessionKeysT := dc.getSigSessionKeysT()	
 
 	// obtain permission to send the ciphertext containing `inputData`:
 	/*@
@@ -1054,42 +1422,51 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	@*/
 	//@ unfold iospec.P_Agent(t1, rid, s1)
 	//@ unfold iospec.phiR_Agent_11(t1, rid, s1)
-	//@ t2 := iospec.get_e_Agent_SendMessages_placeDst(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
+	//@ t2 := iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
 	//@ s2 := ft.U(l, r, s1)
-	//@ unfold dc.IoSpecMem()
+
+	//@ unfold dc.IoSpecMemMain()
 	//@ dc.setToken(t2)
 	//@ dc.setAbsState(s2)
-	//@ fold dc.IoSpecMem()
-	//@ iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
+	//@ dc.ioLockDidLocalReceive = false
+	//@ dc.setRemoteOutFactT(tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT))))
+	//@ dc.ioLockCanRemoteSend = true
+	//@ fold dc.IoSpecMemMain()
+
+	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ dc.ioLock.Unlock()
+	// ----- end internal I/O operation -----
+
+	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ fold dc.Mem()
 
-	if len(inputData) == 0 {
-		logDebugfPayloadType(log, "Ignoring empty stream data payload. PayloadType: %d", payloadType)
-		return nil
-	}
-
-	return dc.sendData(log, payloadType, inputData /*@, p/2, inputDataT @*/)
+	return dc.sendData(log, payloadType, inputData /*@, p/2, inputDataT, true, true @*/)
 }
 
 // @ requires log != nil && noPerm < p && p <= writePerm
 // @ requires dc.Mem()
-// @ requires dc.getState() >= (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete ? BlockCipherReady : BlockCipherInitialized)
-// @ requires acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData)
-// @ requires (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) ?
+// @ requires requiresEncryption == (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete)
+// @ requires dc.getState() >= (requiresEncryption ? BlockCipherReady : BlockCipherInitialized)
+// @ requires requiresLock ==> dc.getState() == IODistributed && requiresEncryption
+// @ requires requiresLock ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.getRemoteOutFactTInternal() == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
+// @ requires !requiresLock ==> dc.getState() < IODistributed
+// @ requires !requiresLock ==> (requiresEncryption ?
 // @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))) # dc.GetAbsState() > 0 :
-// @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)) # dc.GetAbsState() > 0
+// @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)) # dc.GetAbsState() > 0)
+// @ requires acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData)
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem() && dc.getState() == old(dc.getState())
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error) {
-	// @ oldState := dc.getState()
+func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
+	// @ ghost state := dc.getState()
 	// @ unfold dc.Mem()
-	// @ channelId := dc.dataStream.GetChannelId()
+	// @ unfold acc(dc.MemInternal(state), 1/2)
 
 	// If encryption has been enabled, encrypt the payload
 	if dc.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
-		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, p/2 @*/); err != nil {
-			err = fmtErrorfInt64Err("error encrypting stream data message sequence %d, err: %v", dc.dataStream.GetStreamDataSequenceNumber( /*@ p/2 @*/ ), err /*@, perm(1/1) @*/)
+		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, p/4 @*/); err != nil {
+			err = fmtErrorfInt64Err("error encrypting stream data message sequence %d, err: %v", dc.dataStream.GetStreamDataSequenceNumber( /*@ p/4 @*/ ), err /*@, perm(1/1) @*/)
+			// @ fold acc(dc.MemInternal(state), 1/2)
 			// @ fold dc.Mem()
 			return
 		}
@@ -1097,6 +1474,14 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	}
 
 	/*@
+	// ----- start external send I/O operation -----
+	ghost if requiresLock {
+		dc.ioLock.Lock()
+		unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	} else {
+		unfold acc(dc.MemInternal(state), 1/2)
+	}
+
 	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	t0 := dc.getToken()
 	s0 := dc.getAbsState()
@@ -1111,19 +1496,40 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	@*/
 
 	//@ ghost var t1 pl.Place
-	err /*@, t1 @*/ = dc.dataStream.Send(log, payloadType, inputData /*@, p/2, t0, rid, inputDataT, m @*/)
+	err /*@, t1 @*/ = dc.dataStream.Send(log, payloadType, inputData /*@, p/4, t0, rid, inputDataT, m @*/)
 	if err != nil {
-		// @ fold iospec.phiRG_Agent_13(t0, rid, s0)
-		// @ fold iospec.P_Agent(t0, rid, s0)
-		// @ fold dc.Mem()
+		/*@
+		fold iospec.phiRG_Agent_13(t0, rid, s0)
+		fold iospec.P_Agent(t0, rid, s0)
+		ghost if requiresLock {
+			fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+			dc.ioLock.Unlock()
+			fold acc(dc.MemInternal(state), 1/2)
+		} else {
+			fold dc.MemInternal(state)
+		}
+		fold dc.Mem()
+		@*/
 		return err
 	}
-	// @ unfold dc.IoSpecMem()
-	// @ dc.setToken(t1)
-	// @ s1 := s0 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, m) }
-	// @ dc.setAbsState(s1)
-	// @ fold dc.IoSpecMem()
-	// @ fold dc.Mem()
+	
+	/*@
+	unfold dc.IoSpecMemMain()
+	dc.setToken(t1)
+	s1 := s0 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, m) }
+	dc.setAbsState(s1)
+	fold dc.IoSpecMemMain()
+	ghost if requiresLock {
+		dc.ioLockCanRemoteSend = false
+		fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		dc.ioLock.Unlock()
+		fold acc(dc.MemInternal(state), 1/2)
+	} else {
+		fold dc.MemInternal(state)
+	}
+	// ----- end external send I/O operation -----
+	fold dc.Mem()
+	@*/
 	return nil
 }
 
@@ -1255,9 +1661,11 @@ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) tryReceiveResponseModel(timeout time.Duration, ghost p perm) (payload ResponseChanPayload, err error) {
 	if nonDeterministicChoice() {
 		unfold acc(dc.Mem(), p)
+		unfold acc(dc.MemInternal(dc.dataChannelState), p)
 		fold PredTrue!<!>()
 		var ok bool
 		payload, ok = <-dc.hs.responseChan
+		fold acc(dc.MemInternal(dc.dataChannelState), p)
 		fold acc(dc.Mem(), p)
 		if !ok {
 			err = fmtError("Channel has been closed")
@@ -1342,11 +1750,13 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
 		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
 		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
-		//@ unfold dc.IoSpecMem()
+		//@ unfold dc.IoSpecMemMain()
+		//@ unfold dc.IoSpecMemPartial()
 		//@ dc.setToken(t1)
 		//@ dc.setAbsState(s1)
 		//@ dc.setInFactT(receivedMsgT)
-		//@ fold dc.IoSpecMem()
+		//@ fold dc.IoSpecMemPartial()
+		//@ fold dc.IoSpecMemMain()
 		//@ assert by.gamma(receivedMsgT) == streamDataMessage.Abs()
 		//@ fold dc.MemTransfer(HandshakeRequestSent, true)
 		payloadType := /*@ unfolding streamDataMessage.Mem() in @*/ streamDataMessage.PayloadType
@@ -1379,23 +1789,51 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			return fmtError("received message with unexpected payload type")
 		}
 	case ReceiveOtherResponse:
-		// the problem is that dc.Mem() is shared between the two threads
-		// thus, we have to remove IO spec from Mem at the end of the handshake and share it
-		// with both threads using a ghost lock
-		//@ unfold acc(dc.Mem(), 1/2)
+		//@ unfold dc.MemRecv()
+
+		// ----- start remote receive I/O operation -----
+		//@ dc.ioLock.Lock()
+		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		
+		//@ t0 := dc.getToken()
+		//@ rid := dc.getRid()
+		//@ s0 := dc.getAbsState()
+		//@ unfold iospec.P_Agent(t0, rid, s0)
+		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
+		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
+		//@ receivedMsgT := iospec.get_e_InFact_r1(t0, rid)
+		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
+		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
+		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
+		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
+
+		//@ unfold dc.IoSpecMemMain()
+		//@ dc.setToken(t1)
+		//@ dc.setAbsState(s1)
+		//@ dc.setRemoteInFactT(receivedMsgT)
+		//@ dc.ioLockDidRemoteReceive = true
+		//@ fold dc.IoSpecMemMain()
+		
+		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ dc.ioLock.Unlock()
+		// ----- end remote receive I/O operation -----
+
 		//@ unfold streamDataMessage.Mem()
-		if dc.encryptionEnabled && streamDataMessage.PayloadType == uint32(mgsContracts.Output) {
-			plaintext, err := dc.blockCipher.DecryptWithAESGCM(streamDataMessage.Payload /*@, perm(1/2) @*/)
+		if dc.encryptionEnabled && mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.Output {
+			plaintext, err := dc.blockCipher.DecryptWithAESGCM(streamDataMessage.Payload /*@, perm(1/4) @*/)
 			if err != nil {
 				// send a message to the channel to prepare for next message reception:
-				//@ fold acc(dc.Mem(), 1/2)
+				//@ fold dc.MemRecv()
 				dc.resendReceiveOtherResponse()
 				err = fmtErrorfInt64Err("Error decrypting stream data message sequence %d, err: %v", streamDataMessage.SequenceNumber, err /*@, perm(1/1) @*/)
 				//@ fold streamDataMessage.Mem()
 				return err
 			}
 			streamDataMessage.Payload = plaintext
+		} else {
+			assume false // TODO what should we do here?
 		}
+		//@ plaintextB := abs.Abs(streamDataMessage.Payload)
 		//@ fold streamDataMessage.Mem()
 
 		// Ignore stream data message if handshake is neither skipped nor completed
@@ -1403,31 +1841,110 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			// this case should provably not occur as status `ReceiveOtherResponse`
 			// is supposed to be sent on the `startReceivingChan` channel AFTER the
 			// handshake has completed.
-			// We can indeed proof the inexistence of this branch:
+			// While this branch existed in the original implementation, we can actually
+			// prove that this branch cannot exist:
 			// @ assert false
 		}
 
-		//@ fold acc(dc.Mem(), 1/2)
+		// ----- start internal I/O operation -----
+		//@ dc.ioLock.Lock()
+		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ t1 = dc.getToken()
+		//@ s1 = dc.getAbsState()
+		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+		//@ sharedSecretT := dc.getSharedSecretT()
+		//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
+		//@ clientSecretT := dc.getClientShareT()
+		//@ sigYT := dc.getClientShareSignatureT()
+		//@ sigSessionKeysT := dc.getSigSessionKeysT()
+		// temporarily unfolding the block cipher's memory to learn the relation between the decryption term and its byte representation:
+		//@ assert unfolding acc(dc.blockCipher.Mem(), _) in dc.blockCipher.GetDecKeyB() == by.gamma(dc.blockCipher.GetDecKeyT())
+		//@ payloadT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t1, s1)
+		//@ outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)
+		// obtain permission to send the ciphertext containing `inputData`:
+		/*@
+		l := mset[ft.Fact] {
+			ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+			ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
+		}
+		a := mset[cl.Claim] {
+			cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
+		}
+		r := mset[ft.Fact] {
+	    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+			ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
+		}
+		@*/
+		//@ unfold iospec.P_Agent(t1, rid, s1)
+		//@ unfold iospec.phiR_Agent_10(t1, rid, s1)
+		//@ t2 := iospec.internBIO_e_Agent_ReceiveMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
+		//@ s2 := ft.U(l, r, s1)
+
+		//@ unfold dc.IoSpecMemMain()
+		//@ dc.setToken(t2)
+		//@ dc.setAbsState(s2)
+		//@ dc.ioLockDidRemoteReceive = false
+		//@ dc.setLocalOutFactT(outMsgT)
+		//@ dc.ioLockCanLocalSend = true
+		//@ fold dc.IoSpecMemMain()
+
+		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ dc.ioLock.Unlock()
+		// ----- end internal I/O operation -----
+
+		// ----- start internal send I/O operation -----
+		//@ dc.ioLock.Lock()
+		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+
+		//@ t2 = dc.getToken()
+		//@ s2 = dc.getAbsState()
+		//@ unfold iospec.P_Agent(t2, rid, s2)
+		//@ unfold iospec.phiRG_Agent_13(t2, rid, s2)
+		//@ t3 := iospec.get_e_OutFact_placeDst(t2, rid, outMsgT)
+		//@ s3 := s2 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, outMsgT) }
+
+		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = dc.inputStreamMessageHandler(log, streamDataMessage) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
+		err = dc.inputStreamMessageHandler(log, streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
 		//@ fold dc.RecvRoutineMem()
+
 		if err != nil {
+			//@ unfold acc(dc.MemRecv(), 1/2)
+			//@ fold iospec.phiRG_Agent_13(t2, rid, s2)
+			//@ fold iospec.P_Agent(t2, rid, s2)
+			//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+			//@ dc.ioLock.Unlock()
+			//@ fold acc(dc.MemRecv(), 1/2)
 			dc.resendReceiveOtherResponse()
 			return err
 		}
+
+		//@ unfold dc.MemRecv()
+		//@ unfold dc.IoSpecMemMain()
+		//@ dc.setToken(t3)
+		//@ dc.setAbsState(s3)
+		//@ dc.ioLockCanLocalSend = false
+		//@ fold dc.IoSpecMemMain()
+
+		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ dc.ioLock.Unlock()
+		// ----- end internal send I/O operation -----
+
+		//@ fold dc.MemRecv()
 		dc.resendReceiveOtherResponse()
 	}
 
 	return nil
 }
 
-// @ requires acc(dc.Mem(), 1/2) && dc.getState() == AgentSecretCreatedAndSigned && unfolding acc(dc.Mem(), 1/2) in dc.hs.complete
+// requires acc(dc.Mem(), 1/2) && dc.getState() == AgentSecretCreatedAndSigned && unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in dc.hs.complete
+// @ requires dc.MemRecv() && unfolding acc(dc.MemRecv(), _) in dc.dataChannelState == IODistributed && dc.hs.complete
 // @ preserves dc.RecvRoutineMem()
 func (dc *dataChannel) resendReceiveOtherResponse() {
-	//@ unfold acc(dc.Mem(), 1/2)
+	//@ unfold acc(dc.MemRecv(), 1/2)
 	//@ unfold dc.RecvRoutineMem()
-	//@ fold acc(dc.Mem(), 1/2)
-	payload := MessageReceptionPayload{
+	//@ fold acc(dc.MemRecv(), 1/2)
+	payload := MessageReceptionPayload {
 		status: ReceiveOtherResponse,
 	}
 	//@ fold StartReceivingChanInv!<dc, _!>(payload)
@@ -1717,14 +2234,16 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ unfold iospec.phiR_Agent_3(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_RecvSecureSessionResponse(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientSecretT, sigYT, clientLtKeyIdT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMem()
+	//@ unfold dc.IoSpecMemMain()
+	//@ unfold dc.IoSpecMemPartial()
 	//@ dc.setToken(t1)
 	//@ dc.setAbsState(s1)
 	//@ dc.setSharedSecretT(sharedSecretT)
 	//@ dc.setClientLtKeyIdT(clientLtKeyIdT)
 	//@ dc.setClientShareT(clientSecretT)
 	//@ dc.setClientShareSignatureT(sigYT)
-	//@ fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemPartial()
+	//@ fold dc.IoSpecMemMain()
 	state = HandshakeResponseReceived
 
 	// verify client signature
@@ -1807,10 +2326,12 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ unfold iospec.phiR_Agent_5(t4, rid, s4)
 	//@ t5 := iospec.internBIO_e_Agent_RecvVerifyResponse(t4, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, l3, a3, r3)
 	//@ s5 := ft.U(l3, r3, s4)
-	//@ unfold dc.IoSpecMem()
+	//@ unfold dc.IoSpecMemMain()
+	//@ unfold dc.IoSpecMemPartial()
 	//@ dc.setToken(t5)
 	//@ dc.setAbsState(s5)
-	//@ fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemPartial()
+	//@ fold dc.IoSpecMemMain()
 	state = HandshakeResponseVerified
 	//@ fold dc.MemTransfer(state, true)
 	return
@@ -1980,11 +2501,13 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 		return
 	}
 
-	//@ unfold dc.IoSpecMem()
+	//@ unfold dc.IoSpecMemMain()
+	//@ unfold dc.IoSpecMemPartial()
 	//@ dc.setToken(t5)
 	//@ dc.setAbsState(s5)
 	//@ dc.setSigSessionKeysT(sigSessionKeysT)
-	//@ fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemPartial()
+	//@ fold dc.IoSpecMemMain()
 	state = BlockCipherReady
 	dc.encryptionEnabled = true
 	//@ fold dc.MemTransfer(state, true)
@@ -2033,8 +2556,12 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	}
 	logInfo(log, "Skipping handshake.")
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(Initialized)
 	dc.hs.skipped = true
+	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = HandshakeSkipped
+	//@ fold acc(dc.MemChannelState(), 1/2)
+	//@ fold dc.MemInternal(HandshakeSkipped)
 	//@ fold dc.Mem()
 	return
 }
@@ -2046,7 +2573,7 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 // @ requires log != nil
 // @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures err == nil ==> dc.getState() == HandshakeCompleted
+// @ ensures err == nil ==> dc.getState() == IODistributed
 func (dc *dataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
@@ -2060,6 +2587,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	logDebug(log, "PerformHandshake")
 
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(Initialized)
 
 	if encryptionEnabled {
 		// if dc.blockCipher, err = newBlockCipher(dc.context, kmsKeyId); err != nil {
@@ -2076,7 +2604,10 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 
 	dc.hs.handshakeStartTime = time.Now()
 	dc.encryptionEnabled = encryptionEnabled
+	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = BlockCipherInitialized
+	//@ fold acc(dc.MemChannelState(), 1/2)
+	//@ fold dc.MemInternal(BlockCipherInitialized)
 	//@ fold dc.Mem()
 
 	logInfo(log, "Initiating Handshake")
@@ -2091,6 +2622,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 
 	// notify Go routing handling received messages that it can process a message:
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(HandshakeRequestSent)
 	startReceivingChan := dc.hs.startReceivingChan
 	responseChan := dc.hs.responseChan
 	//@ fold dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
@@ -2110,7 +2642,10 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	// Block until handshake response is received or handshake times out
 	res, err := dc.tryReceiveResponseAlt(responseChan, handshakeTimeout)
 	if err != nil {
+		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
+		//@ fold acc(dc.MemChannelState(), 1/2)
+		//@ fold dc.MemInternal(Erroneous)
 		//@ fold dc.Mem()
 		// If handshake times out here this usually means that the client does not understand handshake or something
 		// failed critically when processing handshake request.
@@ -2119,7 +2654,10 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	// we send the flag `encryptionEnabled` back via the channel such that we are able to express the data channel's
 	// state. This flag is expected to be identical to `encryptionEnabled`:
 	if res.encryptionEnabled != encryptionEnabled {
+		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
+		//@ fold acc(dc.MemChannelState(), 1/2)
+		//@ fold dc.MemInternal(Erroneous)
 		//@ fold dc.Mem()
 		return errors.New("Unexpected result from processing handshake response")
 	}
@@ -2127,15 +2665,21 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	//@ unfold dc.MemTransfer(res.state, encryptionEnabled)
 	err = dc.hs.error
 	if err != nil {
+		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
+		//@ fold acc(dc.MemChannelState(), 1/2)
+		//@ fold dc.MemInternal(Erroneous)
 		//@ fold dc.Mem()
 		return err
 	}
 	logDebug(log, "Handshake response received")
 
 	//@ assert res.state == BlockCipherReady
+	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = res.state
+	//@ fold acc(dc.MemChannelState(), 1/2)
 	dc.hs.handshakeEndTime = time.Now()
+	//@ fold dc.MemInternal(res.state)
 	//@ fold dc.Mem()
 	handshakeCompletePayload, err := dc.buildHandshakeCompletePayload(log)
 	if err != nil {
@@ -2145,175 +2689,32 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 		return err
 	}
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(HandshakeCompleted)
 	logInfo(log, "Handshake successfully completed.")
+
+	//@ unfold acc(dc.MemChannelState(), 1/2)
+	dc.dataChannelState = IODistributed
+	// do not fold `MemChannelState` since we split the permission to `dataChannelState` for
+	// the threads next.
+
+	dc.ioLock = &sync.Mutex{}
+	//@ dc.ioLockDidLocalReceive = false
+	//@ dc.ioLockCanRemoteSend = false
+	//@ dc.ioLockDidRemoteReceive = false
+	//@ dc.ioLockCanLocalSend = false
+	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+
+	payload = MessageReceptionPayload{
+		status: ReceiveOtherResponse,
+	}
+	//@ fold dc.MemRecv()
+	//@ fold StartReceivingChanInv!<dc, _!>(payload)
+	startReceivingChan <- payload
+
+	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ fold dc.Mem()
 	return
-}
-
-// buildHandshakeRequestPayload builds payload for HandshakeRequest
-// @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized
-// @ preserves acc(log.Mem(), _)
-// @ ensures  dc.Mem()
-// @ ensures  err == nil ==> payload.Mem()
-// @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
-// @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
-// @ ensures  err == nil && encryptionRequested ==> unfolding dc.Mem() in (
-// @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))))
-func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
-	encryptionRequested bool,
-	request mgsContracts.SessionTypeRequest) (payload *mgsContracts.HandshakeRequestPayload, err error) {
-
-	handshakeRequest := &mgsContracts.HandshakeRequestPayload{}
-	handshakeRequest.AgentVersion = version.Version
-	sessionTypeAction := mgsContracts.RequestedClientAction{
-		ActionType:       mgsContracts.SessionType,
-		ActionParameters: request,
-	}
-
-	if encryptionRequested {
-		// Generate the secret using secure randomness from rand
-		//@ cryptoRand.GetReaderMem()
-		//@ unfold dc.Mem()
-		//@ t0 := dc.getToken()
-		//@ rid := dc.getRid()
-		//@ s0 := dc.getAbsState()
-		//@ unfold iospec.P_Agent(t0, rid, s0)
-		//@ unfold iospec.phiRF_Agent_14(t0, rid, s0)
-		//@ agentSecretT := iospec.get_e_FrFact_r1(t0, rid)
-		agentSecret, compressedPublic, err /*@, t1 @*/ := generateAndEncodeEllipticKey( /*@ t0, rid @*/ )
-		if err != nil {
-			//@ fold iospec.phiRF_Agent_14(t0, rid, s0)
-			//@ fold iospec.P_Agent(t0, rid, s0)
-			//@ fold dc.Mem()
-			logErrorf(log, "failed to generate client secret: %v", err /*@, perm(1/2) @*/)
-			return nil, err
-		}
-		//@ s1 := s0 union mset[ft.Fact]{ ft.FrFact_Agent(rid, agentSecretT) }
-		//@ unfold dc.IoSpecMem()
-		//@ dc.setToken(t1)
-		//@ dc.setAbsState(s1)
-		//@ fold dc.IoSpecMem()
-
-		dc.state.agentSecret = agentSecret
-
-		clientId := dc.dataStream.GetClientId()
-		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, clientId, dc.logReaderId)
-		if err != nil {
-			//@ fold dc.Mem()
-			err = fmtErrorf("failed to encode sign payload: %v", err /*@, perm(1/2) @*/)
-			logError(log, err /*@, perm(1/2) @*/)
-			return nil, err
-		}
-		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(clientId))))
-
-		// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
-		/*@
-			agentIdT := dc.getAgentIdT()
-			kmsIdT := dc.getKMSIdT()
-			clientIdT := dc.getClientIdT()
-			readerIdT := dc.getReaderIdT()
-			agentLtKeyIdT := tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN))
-			logPkT := dc.getLogLTPkT()
-			m := tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
-			l := mset[ft.Fact] {
-				ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT),
-				ft.FrFact_Agent(rid, agentSecretT),
-			}
-			a := mset[cl.Claim] {
-				cl.AgentStarted(),
-			}
-			r := mset[ft.Fact] {
-		    	ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
-		        ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m),
-			}
-			@*/
-		//@ unfold iospec.P_Agent(t1, rid, s1)
-		//@ unfold iospec.phiR_Agent_0(t1, rid, s1)
-		//@ t2 := iospec.internBIO_e_Agent_SendSignRequest(t1, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, l, a, r)
-		//@ s2 := ft.U(l, r, s1)
-
-		// unfold phiRG_Agent_12 to obtain e_Out_KMS permission
-		//@ unfold iospec.P_Agent(t2, rid, s2)
-		//@ unfold iospec.phiRG_Agent_12(t2, rid, s2)
-		//@ t3 := iospec.get_e_Out_KMS_placeDst(t2, rid, agentIdT, kmsIdT, rid, m)
-		//@ s3 := s2 setminus mset[ft.Fact] { ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m) }
-
-		// unfold phiRF_Agent_15 to obtain e_In_KMS permission since `signAndEncode` performs a send and receive operation
-		//@ unfold iospec.P_Agent(t3, rid, s3)
-		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
-		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
-
-		sig, err /*@, signatureT @*/ := signAndEncode(dc.state.kmsService, dc.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
-		if err != nil {
-			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
-			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
-			// folding I/O predicates. This is in accordance to the Tamarin model, which also does not foresee a participant
-			// instance to retry certain steps
-			dc.dataChannelState = Erroneous
-			//@ fold dc.Mem()
-			err = fmtErrorf("failed to sign agent sign payload: %v", err /*@, perm(1/2) @*/)
-			logError(log, err /*@, perm(1/2) @*/)
-			return nil, err
-		}
-
-		//@ s4 := s3 union mset[ft.Fact] { ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) }
-
-		// unfold phiR_Agent_1 to transition to St_Agent_2
-		/*@
-			l2 := mset[ft.Fact] {
-				ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
-				ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
-			}
-			a2 := mset[cl.Claim] {
-				cl.AgentSignResponse(kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
-			}
-			r2 := mset[ft.Fact] {
-		    	ft.St_Agent_2(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT),
-			}
-			@*/
-		//@ unfold iospec.P_Agent(t4, rid, s4)
-		//@ unfold iospec.phiR_Agent_1(t4, rid, s4)
-		//@ t5 := iospec.internBIO_e_Agent_RecvSignResponse(t4, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l2, a2, r2)
-		//@ s5 := ft.U(l2, r2, s4)
-
-		//@ unfold dc.IoSpecMem()
-		//@ dc.setToken(t5)
-		//@ dc.setAbsState(s5)
-		//@ dc.setAgentShareT(agentSecretT)
-		//@ dc.setAgentShareSignatureT(signatureT)
-		//@ fold dc.IoSpecMem()
-		dc.dataChannelState = AgentSecretCreatedAndSigned
-
-		logDebugfString(log, "agent signed sign payload: %x", sig)
-
-		req := &mgsContracts.SecureSessionRequest{
-			Version:        1,
-			ShareAlgorithm: "P384",
-			AgentShare:     compressedPublic,
-			Signature:      sig,
-			AgentLTKeyARN:  dc.agentLTKeyARN,
-			LogReaderId:    dc.logReaderId,
-		}
-		//@ fold acc(req.Mem(), 1/2)
-		//@ fold dc.Mem()
-
-		logDebugfSecureSessionRequest(log, "client generated SecureSessionRequest: %+v", req /*@, perm(1/2) @*/)
-
-		secureSessionAction := mgsContracts.RequestedClientAction{
-			ActionType:       mgsContracts.SecureSession,
-			ActionParameters: *req,
-		}
-		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction, secureSessionAction}
-		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
-		//@ fold handshakeRequest.RequestedClientActions[1].Mem()
-		//@ fold handshakeRequest.Mem()
-	} else {
-		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction}
-		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
-		//@ fold handshakeRequest.Mem()
-	}
-
-	return handshakeRequest, nil
 }
 
 // @ trusted
@@ -2462,93 +2863,208 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 	return
 }
 
-// buildHandshakeCompletePayload builds payload for HandshakeComplete
-// @ requires log != nil && dc.Mem() && dc.getState() >= Initialized
-// @ requires unfolding dc.Mem() in dc.encryptionEnabled ==> dc.dataChannelState == BlockCipherReady
-// @ preserves acc(log.Mem(), _)
-// @ ensures dc.Mem() && dc.getState() == old(dc.getState())
-// @ ensures err == nil ==> payload.Mem() && payload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
-// @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
-// @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
-	clientVersion, err := dc.GetClientVersion( /*@ perm(1/2) @*/ )
-	if err != nil {
-		return
-	}
-
-	//@ unfold dc.Mem()
-	//@ t0 := dc.getToken()
-	//@ rid := dc.getRid()
-	//@ s0 := dc.getAbsState()
-	//@ unfold iospec.P_Agent(t0, rid, s0)
-	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
-	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-
-	duration := dc.hs.handshakeEndTime.Sub(dc.hs.handshakeStartTime)
-	customerMessage, err /*@, payloadT @*/ := getHandshakeCompletePayload(duration, dc.separateOutputPayload, dc.encryptionEnabled, clientVersion /*@, t0, rid @*/)
-	if err != nil {
-		// @ fold iospec.phiRF_Agent_16(t0, rid, s0)
-		// @ fold iospec.P_Agent(t0, rid, s0)
-		// @ fold dc.Mem()
-		return
-	}
-	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, payloadT) }
-	//@ unfold dc.IoSpecMem()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ dc.setInFactT(payloadT)
-	//@ fold dc.IoSpecMem()
-	//@ fold dc.Mem()
-
-	payload = &mgsContracts.HandshakeCompletePayload{
-		HandshakeTimeToComplete: duration,
-		CustomerMessage: customerMessage,
-	}
-	//@ fold payload.Mem()
-	return
+// @ trusted
+// @ requires noPerm < p
+// @ requires acc(handshakeRequestPayload.Mem(), p)
+// @ requires handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
+// @ ensures  acc(handshakeRequestPayload.Mem(), p)
+// @ ensures  handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
+// @ ensures  err == nil ==> bytes.SliceMem(handshakeRequestPayloadBytes)
+// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == secActionB
+// @ ensures  err != nil ==> err.ErrorMem()
+func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost p perm, ghost secActionB by.Bytes @*/) (handshakeRequestPayloadBytes []byte, err error) {
+	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)
 }
 
 
-// We model is function as receiving the payload with the corresponding term representation from the
-// environment because we model in Tamarin that the payload is under full adversarial control.
-// Conceptually, we receive an arbitrary payload from the environment and check whether it's equal to
-// the tuple of duration and customer message (on the byte-level). Otherwise, we reject the message and
-// return an error.
-// @ trusted
-// @ requires pl.token(t) && iospec.e_InFact(t, rid)
-// @ ensures  err == nil ==> pl.token(old(iospec.get_e_InFact_placeDst(t, rid))) &&
-// @	payloadT == old(iospec.get_e_InFact_r1(t, rid))
-// @ ensures err == nil ==> by.gamma(payloadT) == by.pairB(by.durationB(handshakeDuration), by.msgB(customerMessage))
-// @ ensures err != nil ==> err.ErrorMem()
-// @ ensures err != nil ==> pl.token(t) && iospec.e_InFact(t, rid) &&
-// @ 	iospec.get_e_InFact_placeDst(t, rid) == old(iospec.get_e_InFact_placeDst(t, rid)) &&
-// @ 	iospec.get_e_InFact_r1(t, rid) == old(iospec.get_e_InFact_r1(t, rid))
-func getHandshakeCompletePayload(handshakeDuration time.Duration, separateOutputPayload, encryptionEnabled bool, clientVersion string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (customerMessage string, err error /*@, ghost payloadT tm.Term @*/) {
-	customerMessage = ""
-	if separateOutputPayload == true && versionutil.Compare(clientVersion, clientVersionWithoutOutputSeparation, true) <= 0 {
-		customerMessage += "Please update session manager plugin version (minimum required version " +
-			firstVersionWithOutputSeparationFeature +
-			") for fully support of separate StdOut/StdErr output.\r\n"
+// buildHandshakeRequestPayload builds payload for HandshakeRequest
+// @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized
+// @ preserves acc(log.Mem(), _)
+// @ ensures  dc.Mem()
+// @ ensures  err == nil ==> payload.Mem()
+// @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
+// @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
+// @ ensures  err == nil && encryptionRequested ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in (
+// @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))))
+func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
+	encryptionRequested bool,
+	request mgsContracts.SessionTypeRequest) (payload *mgsContracts.HandshakeRequestPayload, err error) {
+
+	handshakeRequest := &mgsContracts.HandshakeRequestPayload{}
+	handshakeRequest.AgentVersion = version.Version
+	sessionTypeAction := mgsContracts.RequestedClientAction{
+		ActionType:       mgsContracts.SessionType,
+		ActionParameters: request,
 	}
 
-	if encryptionEnabled {
-		customerMessage += "This session is encrypted using AWS KMS."
+	if encryptionRequested {
+		// Generate the secret using secure randomness from rand
+		//@ cryptoRand.GetReaderMem()
+		//@ unfold dc.Mem()
+		//@ unfold dc.MemInternal(BlockCipherInitialized)
+		//@ t0 := dc.getToken()
+		//@ rid := dc.getRid()
+		//@ s0 := dc.getAbsState()
+		//@ unfold iospec.P_Agent(t0, rid, s0)
+		//@ unfold iospec.phiRF_Agent_14(t0, rid, s0)
+		//@ agentSecretT := iospec.get_e_FrFact_r1(t0, rid)
+		agentSecret, compressedPublic, err /*@, t1 @*/ := generateAndEncodeEllipticKey( /*@ t0, rid @*/ )
+		if err != nil {
+			//@ fold iospec.phiRF_Agent_14(t0, rid, s0)
+			//@ fold iospec.P_Agent(t0, rid, s0)
+			//@ fold dc.MemInternal(BlockCipherInitialized)
+			//@ fold dc.Mem()
+			logErrorf(log, "failed to generate client secret: %v", err /*@, perm(1/2) @*/)
+			return nil, err
+		}
+		//@ s1 := s0 union mset[ft.Fact]{ ft.FrFact_Agent(rid, agentSecretT) }
+		//@ unfold dc.IoSpecMemMain()
+		//@ dc.setToken(t1)
+		//@ dc.setAbsState(s1)
+		//@ fold dc.IoSpecMemMain()
+
+		dc.state.agentSecret = agentSecret
+
+		clientId := dc.dataStream.GetClientId()
+		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, clientId, dc.logReaderId)
+		if err != nil {
+			//@ fold dc.MemInternal(BlockCipherInitialized)
+			//@ fold dc.Mem()
+			err = fmtErrorf("failed to encode sign payload: %v", err /*@, perm(1/2) @*/)
+			logError(log, err /*@, perm(1/2) @*/)
+			return nil, err
+		}
+		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(clientId))))
+
+		// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
+		/*@
+			agentIdT := dc.getAgentIdT()
+			kmsIdT := dc.getKMSIdT()
+			clientIdT := dc.getClientIdT()
+			readerIdT := dc.getReaderIdT()
+			agentLtKeyIdT := tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN))
+			logPkT := dc.getLogLTPkT()
+			m := tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
+			l := mset[ft.Fact] {
+				ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT),
+				ft.FrFact_Agent(rid, agentSecretT),
+			}
+			a := mset[cl.Claim] {
+				cl.AgentStarted(),
+			}
+			r := mset[ft.Fact] {
+		    	ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
+		        ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m),
+			}
+			@*/
+		//@ unfold iospec.P_Agent(t1, rid, s1)
+		//@ unfold iospec.phiR_Agent_0(t1, rid, s1)
+		//@ t2 := iospec.internBIO_e_Agent_SendSignRequest(t1, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, l, a, r)
+		//@ s2 := ft.U(l, r, s1)
+
+		// unfold phiRG_Agent_12 to obtain e_Out_KMS permission
+		//@ unfold iospec.P_Agent(t2, rid, s2)
+		//@ unfold iospec.phiRG_Agent_12(t2, rid, s2)
+		//@ t3 := iospec.get_e_Out_KMS_placeDst(t2, rid, agentIdT, kmsIdT, rid, m)
+		//@ s3 := s2 setminus mset[ft.Fact] { ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m) }
+
+		// unfold phiRF_Agent_15 to obtain e_In_KMS permission since `signAndEncode` performs a send and receive operation
+		//@ unfold iospec.P_Agent(t3, rid, s3)
+		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
+		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
+
+		sig, err /*@, signatureT @*/ := signAndEncode(dc.state.kmsService, dc.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
+		if err != nil {
+			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
+			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
+			// folding I/O predicates. This is in accordance to the Tamarin model, which also does not foresee a participant
+			// instance to retry certain steps
+			//@ unfold acc(dc.MemChannelState(), 1/2)
+			dc.dataChannelState = Erroneous
+			//@ fold acc(dc.MemChannelState(), 1/2)
+			//@ fold dc.MemInternal(Erroneous)
+			//@ fold dc.Mem()
+			err = fmtErrorf("failed to sign agent sign payload: %v", err /*@, perm(1/2) @*/)
+			logError(log, err /*@, perm(1/2) @*/)
+			return nil, err
+		}
+
+		//@ s4 := s3 union mset[ft.Fact] { ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) }
+
+		// unfold phiR_Agent_1 to transition to St_Agent_2
+		/*@
+			l2 := mset[ft.Fact] {
+				ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
+				ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
+			}
+			a2 := mset[cl.Claim] {
+				cl.AgentSignResponse(kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
+			}
+			r2 := mset[ft.Fact] {
+		    	ft.St_Agent_2(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT),
+			}
+			@*/
+		//@ unfold iospec.P_Agent(t4, rid, s4)
+		//@ unfold iospec.phiR_Agent_1(t4, rid, s4)
+		//@ t5 := iospec.internBIO_e_Agent_RecvSignResponse(t4, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l2, a2, r2)
+		//@ s5 := ft.U(l2, r2, s4)
+
+		//@ unfold dc.IoSpecMemMain()
+		//@ unfold dc.IoSpecMemPartial()
+		//@ dc.setToken(t5)
+		//@ dc.setAbsState(s5)
+		//@ dc.setAgentShareT(agentSecretT)
+		//@ dc.setAgentShareSignatureT(signatureT)
+		//@ fold dc.IoSpecMemPartial()
+		//@ fold dc.IoSpecMemMain()
+		//@ unfold acc(dc.MemChannelState(), 1/2)
+		dc.dataChannelState = AgentSecretCreatedAndSigned
+		//@ fold acc(dc.MemChannelState(), 1/2)
+
+		logDebugfString(log, "agent signed sign payload: %x", sig)
+
+		req := &mgsContracts.SecureSessionRequest{
+			Version:        1,
+			ShareAlgorithm: "P384",
+			AgentShare:     compressedPublic,
+			Signature:      sig,
+			AgentLTKeyARN:  dc.agentLTKeyARN,
+			LogReaderId:    dc.logReaderId,
+		}
+		//@ fold acc(req.Mem(), 1/2)
+		//@ fold dc.MemInternal(AgentSecretCreatedAndSigned)
+		//@ fold dc.Mem()
+
+		logDebugfSecureSessionRequest(log, "client generated SecureSessionRequest: %+v", req /*@, perm(1/2) @*/)
+
+		secureSessionAction := mgsContracts.RequestedClientAction{
+			ActionType:       mgsContracts.SecureSession,
+			ActionParameters: *req,
+		}
+		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction, secureSessionAction}
+		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
+		//@ fold handshakeRequest.RequestedClientActions[1].Mem()
+		//@ fold handshakeRequest.Mem()
+	} else {
+		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction}
+		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
+		//@ fold handshakeRequest.Mem()
 	}
 
-	return
+	return handshakeRequest, nil
 }
 
 // sendHandshakeRequest sends handshake request
 // @ requires log != nil && handshakeRequestPayload.Mem()
 // @ requires dc.Mem() && dc.getState() >= BlockCipherInitialized
-// @ requires unfolding dc.Mem() in dc.encryptionEnabled ==>
+// @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==>
 // @	dc.dataChannelState == AgentSecretCreatedAndSigned &&
 // @	handshakeRequestPayload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId)))
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem()
 // @ ensures err == nil ==> dc.getState() == HandshakeRequestSent
 func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload) (err error) {
-	//@ secActionB := unfolding dc.Mem() in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))
+	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {
 		return fmtErrorfHandshakeRequestErr("Could not serialize HandshakeRequest message %v, err: %s", handshakeRequestPayload, err /*@, perm(1/2) @*/)
@@ -2556,9 +3072,11 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 
 	logDebug(log, "Sending Handshake Request.")
 	logTracefHandshakeRequestPayload(log, "Sending HandshakeRequest message with content %v", handshakeRequestPayload /*@, perm(1/2) @*/)
-	//@ secActionT := unfolding dc.Mem() in tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getAgentShareT()), tm.pair(dc.getAgentShareSignatureT(), tm.pair(tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), tm.pubTerm(pub.pub_msg(dc.logReaderId)))))
 
 	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold dc.MemInternal(state)
+	//@ secActionT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getAgentShareT()), tm.pair(dc.getAgentShareSignatureT(), tm.pair(tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), tm.pubTerm(pub.pub_msg(dc.logReaderId)))))
 	//@ t0 := dc.getToken()
 	//@ rid := dc.getRid()
 	//@ s0 := dc.getAbsState()
@@ -2587,30 +3105,72 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ unfold iospec.phiR_Agent_2(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_SendSecureSessionRequest(t0, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMem()
+	//@ unfold dc.IoSpecMemMain()
 	//@ dc.setToken(t1)
 	//@ dc.setAbsState(s1)
-	//@ fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemMain()
+	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = HandshakeRequestSent
+	//@ fold acc(dc.MemChannelState(), 1/2)
+	//@ fold dc.MemInternal(HandshakeRequestSent)
 	//@ fold dc.Mem()
 
-	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, perm(1/2), secActionT @*/); err != nil {
+	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, perm(1/2), secActionT, false, false @*/); err != nil {
 		return fmtErrorf("Failed sending of HandshakeRequest message, err: %s", err /*@, perm(1/2) @*/)
 	}
 	return nil
 }
 
-// @ trusted
-// @ requires noPerm < p
-// @ requires acc(handshakeRequestPayload.Mem(), p)
-// @ requires handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
-// @ ensures  acc(handshakeRequestPayload.Mem(), p)
-// @ ensures  handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
-// @ ensures  err == nil ==> bytes.SliceMem(handshakeRequestPayloadBytes)
-// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == secActionB
-// @ ensures  err != nil ==> err.ErrorMem()
-func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost p perm, ghost secActionB by.Bytes @*/) (handshakeRequestPayloadBytes []byte, err error) {
-	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)
+// buildHandshakeCompletePayload builds payload for HandshakeComplete
+// @ requires log != nil && dc.Mem() && dc.getState() >= Initialized
+// @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==> dc.dataChannelState == BlockCipherReady
+// @ preserves acc(log.Mem(), _)
+// @ ensures dc.Mem() && dc.getState() == old(dc.getState())
+// @ ensures err == nil ==> payload.Mem() && payload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
+// @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
+// @ ensures err != nil ==> err.ErrorMem()
+func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
+	clientVersion, err := dc.GetClientVersion( /*@ perm(1/2) @*/ )
+	if err != nil {
+		return
+	}
+
+	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold dc.MemInternal(state)
+	//@ t0 := dc.getToken()
+	//@ rid := dc.getRid()
+	//@ s0 := dc.getAbsState()
+	//@ unfold iospec.P_Agent(t0, rid, s0)
+	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
+	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
+
+	duration := dc.hs.handshakeEndTime.Sub(dc.hs.handshakeStartTime)
+	customerMessage, err /*@, payloadT @*/ := getHandshakeCompletePayload(duration, dc.separateOutputPayload, dc.encryptionEnabled, clientVersion /*@, t0, rid @*/)
+	if err != nil {
+		//@ fold iospec.phiRF_Agent_16(t0, rid, s0)
+		//@ fold iospec.P_Agent(t0, rid, s0)
+		//@ fold dc.MemInternal(state)
+		//@ fold dc.Mem()
+		return
+	}
+	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, payloadT) }
+	//@ unfold dc.IoSpecMemMain()
+	//@ unfold dc.IoSpecMemPartial()
+	//@ dc.setToken(t1)
+	//@ dc.setAbsState(s1)
+	//@ dc.setInFactT(payloadT)
+	//@ fold dc.IoSpecMemPartial()
+	//@ fold dc.IoSpecMemMain()
+	//@ fold dc.MemInternal(state)
+	//@ fold dc.Mem()
+
+	payload = &mgsContracts.HandshakeCompletePayload{
+		HandshakeTimeToComplete: duration,
+		CustomerMessage: customerMessage,
+	}
+	//@ fold payload.Mem()
+	return
 }
 
 // sendHandshakeComplete sends handshake complete
@@ -2620,7 +3180,7 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 // @ requires ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem()
-// @ ensures err == nil ==> dc.getState() == HandshakeCompleted
+// @ ensures err == nil ==> dc.getState() == HandshakeCompleted && unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(HandshakeCompleted), _) in dc.hs.complete
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
 	handshakeCompletePayloadBytes, err := marshalHandshakeComplete(handshakeCompletePayload /*@, perm(1/2) @*/)
@@ -2635,6 +3195,7 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	//@ inputDataT := tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), payloadT)
 
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(BlockCipherReady)
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ t0 := dc.getToken()
 	//@ s0 := dc.getAbsState()
@@ -2668,22 +3229,56 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	//@ unfold iospec.phiR_Agent_9(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_SendHandshakeComplete(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMem()
+	//@ unfold dc.IoSpecMemMain()
 	//@ dc.setToken(t1)
 	//@ dc.setAbsState(s1)
-	//@ fold dc.IoSpecMem()
+	//@ fold dc.IoSpecMemMain()
+	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = HandshakeCompleted
+	//@ fold acc(dc.MemChannelState(), 1/2)
+	//@ fold dc.MemInternal(HandshakeCompleted)
 	//@ fold dc.Mem()
 
-	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, perm(1/2), inputDataT @*/); err != nil {
+	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, perm(1/2), inputDataT, true, false @*/); err != nil {
 		return err
 	}
 
 	//@ unfold dc.Mem()
+	//@ unfold dc.MemInternal(HandshakeCompleted)
 	dc.hs.complete = true
+	//@ fold dc.MemInternal(HandshakeCompleted)
 	//@ fold dc.Mem()
 
 	return nil
+}
+
+// We model is function as receiving the payload with the corresponding term representation from the
+// environment because we model in Tamarin that the payload is under full adversarial control.
+// Conceptually, we receive an arbitrary payload from the environment and check whether it's equal to
+// the tuple of duration and customer message (on the byte-level). Otherwise, we reject the message and
+// return an error.
+// @ trusted
+// @ requires pl.token(t) && iospec.e_InFact(t, rid)
+// @ ensures  err == nil ==> pl.token(old(iospec.get_e_InFact_placeDst(t, rid))) &&
+// @	payloadT == old(iospec.get_e_InFact_r1(t, rid))
+// @ ensures err == nil ==> by.gamma(payloadT) == by.pairB(by.durationB(handshakeDuration), by.msgB(customerMessage))
+// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures err != nil ==> pl.token(t) && iospec.e_InFact(t, rid) &&
+// @ 	iospec.get_e_InFact_placeDst(t, rid) == old(iospec.get_e_InFact_placeDst(t, rid)) &&
+// @ 	iospec.get_e_InFact_r1(t, rid) == old(iospec.get_e_InFact_r1(t, rid))
+func getHandshakeCompletePayload(handshakeDuration time.Duration, separateOutputPayload, encryptionEnabled bool, clientVersion string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (customerMessage string, err error /*@, ghost payloadT tm.Term @*/) {
+	customerMessage = ""
+	if separateOutputPayload == true && versionutil.Compare(clientVersion, clientVersionWithoutOutputSeparation, true) <= 0 {
+		customerMessage += "Please update session manager plugin version (minimum required version " +
+			firstVersionWithOutputSeparationFeature +
+			") for fully support of separate StdOut/StdErr output.\r\n"
+	}
+
+	if encryptionEnabled {
+		customerMessage += "This session is encrypted using AWS KMS."
+	}
+
+	return
 }
 
 // @ trusted
@@ -2706,7 +3301,7 @@ func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string,
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in @*/ dc.hs.clientVersion, nil
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.hs.clientVersion, nil
 }
 
 // GetInstanceId returns id of the target
@@ -2717,7 +3312,7 @@ func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string,
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in @*/ dc.dataStream.GetInstanceId(), nil
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetInstanceId(), nil
 }
 
 // GetRegion returns aws region of the target
@@ -2728,7 +3323,7 @@ func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err err
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in @*/ dc.dataStream.GetRegion(), nil
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetRegion(), nil
 }
 
 // IsActive returns a boolean value indicating the datachannel is actively listening
@@ -2740,7 +3335,7 @@ func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err erro
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in @*/ dc.dataStream.IsActive(), nil
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.IsActive(), nil
 }
 
 // GetSeparateOutputPayload returns boolean value indicating separate
@@ -2752,19 +3347,22 @@ func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res boo
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.separateOutputPayload, nil
+	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
 }
 
 // SetSeparateOutputPayload set separateOutputPayload value
 // @ preserves dc.Mem()
 // @ ensures dc.getState() == old(dc.getState())
 func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
-	if dc.getState() == Erroneous {
+	if dc.getState() == Erroneous || dc.getState() == IODistributed {
 		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
 		return
 	}
 	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold dc.MemInternal(state)
 	dc.separateOutputPayload = separateOutputPayload
+	//@ fold dc.MemInternal(state)
 	//@ fold dc.Mem()
 	return
 }
@@ -2778,7 +3376,10 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 		return
 	}
 	//@ unfold dc.Mem()
-	dc.dataStream.PrepareToCloseChannel(log)
+	//@ state := dc.dataChannelState
+	//@ unfold acc(dc.MemInternal(state), 1/4)
+	dc.dataStream.PrepareToCloseChannel(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.MemInternal(state), 1/4)
 	//@ fold dc.Mem()
 	return
 }
@@ -2792,7 +3393,10 @@ func (dc *dataChannel) Close(log logger.T) (err error) {
 		return
 	}
 	//@ unfold dc.Mem()
-	err = dc.dataStream.Close(log)
+	//@ state := dc.dataChannelState
+	//@ unfold acc(dc.MemInternal(state), 1/4)
+	err = dc.dataStream.Close(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.MemInternal(state), 1/4)
 	//@ fold dc.Mem()
 	return
 }

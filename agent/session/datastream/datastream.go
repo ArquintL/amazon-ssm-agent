@@ -345,8 +345,14 @@ func (dataStream *DataStream) Close(log log.T) error {
 func (dataStream *DataStream) PrepareToCloseChannel(log log.T) {
 	done := make(chan bool)
 	go func() {
-		for dataStream.OutgoingMessageBuffer.Messages.Len() > 0 {
+		dataStream.OutgoingMessageBuffer.Lock()
+		len := dataStream.OutgoingMessageBuffer.Messages.Len()
+		dataStream.OutgoingMessageBuffer.Unlock()
+		for len > 0 {
 			time.Sleep(10 * time.Millisecond)
+			dataStream.OutgoingMessageBuffer.Lock()
+			len = dataStream.OutgoingMessageBuffer.Messages.Len()
+			dataStream.OutgoingMessageBuffer.Unlock()
 		}
 		done <- true
 	}()
@@ -423,8 +429,10 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 				log.Tracef("Resend stream data message has been paused")
 				continue
 			}
+			dataStream.OutgoingMessageBuffer.Lock()
 			streamMessageElement := dataStream.OutgoingMessageBuffer.Messages.Front()
 			if streamMessageElement == nil {
+				dataStream.OutgoingMessageBuffer.Unlock()
 				continue
 			}
 
@@ -437,6 +445,7 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 				streamMessage.LastSentTime = time.Now()
 				streamMessageElement.Value = streamMessage
 			}
+			dataStream.OutgoingMessageBuffer.Unlock()
 		}
 	}()
 	return nil
@@ -445,6 +454,8 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 // ProcessAcknowledgedMessage processes acknowledge messages by deleting them from OutgoingMessageBuffer.
 func (dataStream *DataStream) ProcessAcknowledgedMessage(log log.T, acknowledgeMessageContent mgsContracts.AcknowledgeContent) {
 	acknowledgeSequenceNumber := acknowledgeMessageContent.SequenceNumber
+	dataStream.OutgoingMessageBuffer.Lock()
+	defer dataStream.OutgoingMessageBuffer.Unlock()
 	for streamMessageElement := dataStream.OutgoingMessageBuffer.Messages.Front(); streamMessageElement != nil; streamMessageElement = streamMessageElement.Next() {
 		streamMessage := streamMessageElement.Value.(StreamingMessage)
 		if streamMessage.SequenceNumber == acknowledgeSequenceNumber {
@@ -453,7 +464,7 @@ func (dataStream *DataStream) ProcessAcknowledgedMessage(log log.T, acknowledgeM
 			dataStream.calculateRetransmissionTimeout(log, streamMessage)
 
 			log.Tracef("Delete stream data from OutgoingMessageBuffer. Sequence Number: %d", streamMessage.SequenceNumber)
-			dataStream.RemoveDataFromOutgoingMessageBuffer(streamMessageElement)
+			dataStream.OutgoingMessageBuffer.Messages.Remove(streamMessageElement)
 			break
 		}
 	}
@@ -512,12 +523,13 @@ func (dataStream *DataStream) SendAgentMessage(log log.T, messageType string, me
 
 // AddDataToOutgoingMessageBuffer adds given message at the end of OutputMessageBuffer if it has capacity.
 func (dataStream *DataStream) AddDataToOutgoingMessageBuffer(streamMessage StreamingMessage) {
+	dataStream.OutgoingMessageBuffer.Mutex.Lock()
+	defer dataStream.OutgoingMessageBuffer.Mutex.Unlock()
+
 	if dataStream.OutgoingMessageBuffer.Messages.Len() == dataStream.OutgoingMessageBuffer.Capacity {
 		return
 	}
-	dataStream.OutgoingMessageBuffer.Mutex.Lock()
 	dataStream.OutgoingMessageBuffer.Messages.PushBack(streamMessage)
-	dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 }
 
 // RemoveDataFromOutgoingMessageBuffer removes given element from OutgoingMessageBuffer.
@@ -525,23 +537,6 @@ func (dataStream *DataStream) RemoveDataFromOutgoingMessageBuffer(streamMessageE
 	dataStream.OutgoingMessageBuffer.Mutex.Lock()
 	dataStream.OutgoingMessageBuffer.Messages.Remove(streamMessageElement)
 	dataStream.OutgoingMessageBuffer.Mutex.Unlock()
-}
-
-// AddDataToIncomingMessageBuffer adds given message to IncomingMessageBuffer if it has capacity.
-func (dataStream *DataStream) AddDataToIncomingMessageBuffer(streamMessage StreamingMessage) {
-	if len(dataStream.IncomingMessageBuffer.Messages) == dataStream.IncomingMessageBuffer.Capacity {
-		return
-	}
-	dataStream.IncomingMessageBuffer.Mutex.Lock()
-	dataStream.IncomingMessageBuffer.Messages[streamMessage.SequenceNumber] = streamMessage
-	dataStream.IncomingMessageBuffer.Mutex.Unlock()
-}
-
-// RemoveDataFromIncomingMessageBuffer removes given sequence number message from IncomingMessageBuffer.
-func (dataStream *DataStream) RemoveDataFromIncomingMessageBuffer(sequenceNumber int64) {
-	dataStream.IncomingMessageBuffer.Mutex.Lock()
-	delete(dataStream.IncomingMessageBuffer.Messages, sequenceNumber)
-	dataStream.IncomingMessageBuffer.Mutex.Unlock()
 }
 
 // dataChannelIncomingMessageHandler deserialize incoming message and
@@ -636,7 +631,9 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 		// add message to IncomingMessageBuffer and send acknowledgement
 		log.Debugf("Unexpected sequence message received. Received Sequence Number: %d. Expected Sequence Number: %d",
 			streamDataMessage.SequenceNumber, dataStream.ExpectedSequenceNumber)
-
+		
+		dataStream.IncomingMessageBuffer.mutex.Lock()
+		defer dataStream.IncomingMessageBuffer.mutex.Unlock()
 		if len(dataStream.IncomingMessageBuffer.Messages) < dataStream.IncomingMessageBuffer.Capacity {
 			if err = dataStream.SendAcknowledgeMessage(log, streamDataMessage); err != nil {
 				return err
@@ -650,7 +647,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 
 			//Add message to buffer for future processing
 			log.Debugf("Add stream data to IncomingMessageBuffer. Sequence Number: %d", streamDataMessage.SequenceNumber)
-			dataStream.AddDataToIncomingMessageBuffer(streamingMessage)
+			dataStream.IncomingMessageBuffer.Messages[streamingMessage.SequenceNumber] = streamingMessage
 		}
 	} else {
 		log.Tracef("Discarding already processed message. Received Sequence Number: %d. Expected Sequence Number: %d",
@@ -702,6 +699,9 @@ func (dataStream *DataStream) handleStartPublicationMessage(log log.T, streamDat
 // If so process it and increment expected sequence number.
 // Repeat until expected sequence stream data is not found in IncomingMessageBuffer.
 func (dataStream *DataStream) processIncomingMessageBufferItems(log log.T) (err error) {
+	dataStream.IncomingMessageBuffer.Mutex.Lock()
+	defer dataStream.IncomingMessageBuffer.Mutex.Unlock()
+
 	for {
 		bufferedStreamMessage := dataStream.IncomingMessageBuffer.Messages[dataStream.ExpectedSequenceNumber]
 		if bufferedStreamMessage.Content != nil {
@@ -722,7 +722,7 @@ func (dataStream *DataStream) processIncomingMessageBufferItems(log log.T) (err 
 			dataStream.ExpectedSequenceNumber = dataStream.ExpectedSequenceNumber + 1
 
 			log.Debugf("Delete stream data from IncomingMessageBuffer. Sequence Number: %d", bufferedStreamMessage.SequenceNumber)
-			dataStream.RemoveDataFromIncomingMessageBuffer(bufferedStreamMessage.SequenceNumber)
+			delete(dataStream.IncomingMessageBuffer.Messages, sequenceNumber)
 		} else {
 			break
 		}

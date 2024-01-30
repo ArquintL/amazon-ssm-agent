@@ -99,18 +99,22 @@ requires noPerm < p
 preserves acc(datastream.Mem(), p)
 func (datastream *DataStream) CancelSession(ghost p perm)
 
-preserves datastream.Mem()
+// we assume that `Close` is thread-safe
+requires noPerm < p
+preserves acc(datastream.Mem(), p)
 ensures err != nil ==> err.ErrorMem()
-ensures datastream.GetChannelId() == old(datastream.GetChannelId())
-ensures datastream.GetClientId() == old(datastream.GetClientId())
-ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
-func (datastream *DataStream) Close(log logger.T) (err error)
+// ensures datastream.GetChannelId() == old(datastream.GetChannelId())
+// ensures datastream.GetClientId() == old(datastream.GetClientId())
+// ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
+func (datastream *DataStream) Close(log logger.T, ghost p perm) (err error)
 
-preserves datastream.Mem()
-ensures datastream.GetChannelId() == old(datastream.GetChannelId())
-ensures datastream.GetClientId() == old(datastream.GetClientId())
-ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
-func (datastream *DataStream) PrepareToCloseChannel(log logger.T)
+// we assume that `PrepareToCloseChannel` is thread-safe
+requires noPerm < p
+preserves acc(datastream.Mem(), p)
+// ensures datastream.GetChannelId() == old(datastream.GetChannelId())
+// ensures datastream.GetClientId() == old(datastream.GetClientId())
+// ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
+func (datastream *DataStream) PrepareToCloseChannel(log logger.T, ghost p perm)
 
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
