@@ -1223,7 +1223,7 @@ func NewDataChannel(context contextPkg.T,
 		// we return a non-nil dc such that we can ensure `dc.Mem()`
 		// independent of `err`. However, clients should check whether
 		// `err` is nil.
-		return dc, fmtErrorf("failed to create data stream with error: %s", err /*@, perm(1/2) @*/)
+		return dc, fmtErrorf("failed to create data stream with error", err /*@, perm(1/2) @*/)
 	}
 
 	err = dc.initialize(dataStream, logReaderId)
@@ -1253,7 +1253,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	if err != nil {
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
-		return fmtErrorf("failed to initialize KMS service: %v", err /*@, perm(1/2) @*/)
+		return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
 	// @ t0 := dc.getToken()
@@ -1274,7 +1274,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 		// @ fold iospec.P_Agent(t0, rid, s0)
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
-		return fmtErrorf("failed to initialize KMS service: %v", err /*@, perm(1/2) @*/)
+		return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
@@ -1327,20 +1327,20 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId string, logReaderId string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
 	metadata, err := kmsService.CreateKeyAssymetric()
 	if err != nil {
-		err = fmtErrorf("failed to create agent LTK: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
 		return "", nil, err /*@, t @*/
 	}
 
 	//@ unfold metadata.Mem()
 	if metadata.Arn == nil {
-		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata: %+v", metadata /*@, perm(1/2) @*/)
+		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata", metadata /*@, perm(1/2) @*/)
 		return "", nil, err /*@, t @*/
 	}
 	agentLTKeyARN = *metadata.Arn
 	//@ cryptoRand.GetReaderMem()
 	sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096 /*@, perm(1/2) @*/)
 	if err != nil {
-		err = fmtErrorf("failed to create log secret key: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to create log secret key", err /*@, perm(1/1) @*/)
 		return "", nil, err /*@, t @*/
 	}
 	//@ unfold sk.Mem()
@@ -1357,11 +1357,11 @@ func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId st
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error) {
 	if dc.getState() != IODistributed {
-		return fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		return fmtErrorInvalidState(dc.getState())
 	}
 
 	if payloadType != mgsContracts.Output && payloadType != mgsContracts.StdErr && payloadType != mgsContracts.ExitCode {
-		return fmtErrorfPayloadType("Rejecting stream data message with payload type %d as it would otherwise be sent in plaintext", payloadType)
+		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType)
 	}
 
 	//@ unfold dc.Mem()
@@ -1466,7 +1466,7 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	// If encryption has been enabled, encrypt the payload
 	if dc.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
 		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, p/4 @*/); err != nil {
-			err = fmtErrorfInt64Err("error encrypting stream data message sequence %d, err: %v", dc.dataStream.GetStreamDataSequenceNumber( /*@ p/4 @*/ ), err /*@, perm(1/1) @*/)
+			err = fmtErrorfInt64Err("error encrypting stream data message sequence", dc.dataStream.GetStreamDataSequenceNumber( /*@ p/4 @*/ ), err /*@, perm(1/1) @*/)
 			// @ fold acc(dc.MemInternal(state), 1/2)
 			// @ fold dc.Mem()
 			return
@@ -1766,7 +1766,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			{
 				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
 				if err = dc.handleHandshakeResponse(log, streamDataMessage, true); err != nil {
-					return fmtErrorf("processing of HandshakeResponse message failed, %v", err /*@, perm(1/1) @*/)
+					return fmtErrorf("processing of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 				}
 			}
 		default:
@@ -1783,7 +1783,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			{
 				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
 				if err = dc.handleHandshakeResponse(log, streamDataMessage, false); err != nil {
-					return fmtErrorf("processing of HandshakeResponse message failed, %v", err /*@, perm(1/1) @*/)
+					return fmtErrorf("processing of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 				}
 			}
 		default:
@@ -1826,7 +1826,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 				// send a message to the channel to prepare for next message reception:
 				//@ fold dc.MemRecv()
 				dc.resendReceiveOtherResponse()
-				err = fmtErrorfInt64Err("Error decrypting stream data message sequence %d, err: %v", streamDataMessage.SequenceNumber, err /*@, perm(1/1) @*/)
+				err = fmtErrorfInt64Err("Error decrypting stream data message sequence", streamDataMessage.SequenceNumber, err /*@, perm(1/1) @*/)
 				//@ fold streamDataMessage.Mem()
 				return err
 			}
@@ -1835,7 +1835,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 			// send a message to the channel to prepare for next message reception:
 			//@ fold dc.MemRecv()
 			dc.resendReceiveOtherResponse()
-			err = fmtErrorfInt64("Unknown payload type of stream data message sequence %d", streamDataMessage.SequenceNumber)
+			err = fmtErrorfInt64("Unknown payload type of stream data message sequence", streamDataMessage.SequenceNumber)
 			//@ fold streamDataMessage.Mem()
 			return err
 		}
@@ -2020,7 +2020,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	handshakeResponse, err := unmarshalHandshakeResponse(streamDataMessage.Payload /*@, perm(1/2) @*/)
 	//@ fold streamDataMessage.Mem()
 	if err != nil {
-		return fmtErrorf("Unmarshalling of HandshakeResponse message failed, %s", err /*@, perm(1/1) @*/)
+		return fmtErrorf("Unmarshalling of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 	}
 
 	//@ unfold acc(handshakeResponse.Mem(), 1/2)
@@ -2049,8 +2049,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 		//@ unfold acc(actions[i].Mem(), 1/2)
 		action := actions[i]
 		if action.ActionStatus != mgsContracts.Success {
-			err = fmtErrorfActionTypeActionStatusActionError("%s failed on client with status %v error: %s",
-				action.ActionType, action.ActionStatus, action.Error)
+			err = fmtErrorActionFailure(action.ActionType, action.ActionStatus, action.Error)
 			//@ fold acc(actions[i].Mem(), 1/2)
 			//@ fold acc(handshakeResponse.Mem(), 1/2)
 		} else {
@@ -2078,7 +2077,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 			default:
 				//@ fold acc(actions[i].Mem(), 1/2)
 				//@ fold acc(handshakeResponse.Mem(), 1/2)
-				logWarnfActionType(log, "Unknown handshake client action found, %s", action.ActionType)
+				logUnknownActionType(log, action.ActionType)
 			}
 		}
 		if err != nil {
@@ -2109,7 +2108,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	//@ unfold dc.MemTransfer(state, encryptionEnabled)
 	//@ unfold acc(handshakeResponse.Mem(), 1/2)
 	dc.hs.clientVersion = handshakeResponse.ClientVersion
-	logInfofString(log, "Client side session manager plugin version is: %s", handshakeResponse.ClientVersion)
+	logInfoString(log, "Client side session manager plugin version is", handshakeResponse.ClientVersion)
 	//@ fold acc(handshakeResponse.Mem(), 1/2)
 	//@ fold dc.MemTransfer(state, encryptionEnabled)
 	payload := ResponseChanPayload{ encryptionEnabled, state }
@@ -2175,7 +2174,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	resp, err := unmarshalSecureSessionResponse(action.ActionResult /*@, perm(1/16) @*/)
 	//@ fold acc(action.Mem(), 1/8)
 	if err != nil {
-		err = fmtErrorf("failed to unmarshal action to SecureSessionResponse: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to unmarshal action to SecureSessionResponse", err /*@, perm(1/1) @*/)
 		return
 	}
 
@@ -2193,19 +2192,19 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 
 	// hash the shared secret to obtain the session identifier
 	dc.state.sessionID = computeSHA384(sharedSecret /*@, 1/2 @*/)
-	logDebugfString(log, "agent computed session ID: %v", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
+	logDebugHex(log, "agent computed session ID", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to decode server session id: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to decode server session id", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
 
 	if !equal(dc.state.sessionID, sessionIDBytes) {
-		err = fmtErrorfBytes2("session ID mismatch: session ID %s does not match client session ID %s", sessionIDBytes, dc.state.sessionID /*@, perm(1/1) @*/)
+		err = fmtErrorSessionMismatch(sessionIDBytes, dc.state.sessionID /*@, perm(1/1) @*/)
 		//@ fold dc.MemTransfer(state, true)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
@@ -2256,7 +2255,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	sig, err := base64.StdEncoding.DecodeString(resp.Signature)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to decode signature: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to decode signature", err /*@, perm(1/1) @*/)
 		return
 	}
 
@@ -2265,7 +2264,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
 	if err != nil {
-		err = fmtErrorf("failed to encode client sign payload: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encode client sign payload", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
@@ -2310,7 +2309,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to verify signature: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to verify signature", err /*@, perm(1/1) @*/)
 		return
 	}
 
@@ -2375,13 +2374,13 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 
 	agentReadKey := dc.state.agentReadKey
 	agentWriteKey := dc.state.agentWriteKey
-	logDebugfBytes(log, "agent read key: %s", agentReadKey /*@, perm(1/2) @*/)
-	logDebugfBytes(log, "agent write key: %s", agentWriteKey /*@, perm(1/2) @*/)
+	logDebugBytes(log, "agent read key", agentReadKey /*@, perm(1/2) @*/)
+	logDebugBytes(log, "agent write key", agentWriteKey /*@, perm(1/2) @*/)
 	
 	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/2) @*/)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to encode session keys: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encode session keys", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
@@ -2391,10 +2390,10 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	encodedEncryptedSessionKeys, err := encryptAndEncode(sessionKeysBytes, dc.logLTPk /*@, perm(1/2) @*/)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to encrypt session keys: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encrypt session keys", err /*@, perm(1/1) @*/)
 		return
 	}
-	logInfofString(log, "encrypted base-64-encoded session keys: %s", encodedEncryptedSessionKeys)
+	logInfoString(log, "encrypted base-64-encoded session keys", encodedEncryptedSessionKeys)
 	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.getLogLTPkT())
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
@@ -2402,7 +2401,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.dataStream.GetClientId())
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to encode sign session keys payload: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encode sign session keys payload", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
@@ -2443,7 +2442,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to sign session keys payload: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to sign session keys payload", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
@@ -2486,11 +2485,11 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to encode encrypted session keys payload: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encode encrypted session keys payload", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
-	logInfofString(log, "encrypted session keys payload that should be sent to log server: %s", encodedEncryptedSessionKeysPayloadBytes)
+	logInfoString(log, "encrypted session keys payload that should be sent to log server", encodedEncryptedSessionKeysPayloadBytes)
 
 	//@ encryptedSessionKeysPayloadT := ut.tuple5(encodedEncryptedSessionKeysT, sigSessionKeysT, AgentId, AgentLtKeyId, ClientId)
 	//@ assert by.msgB(encodedEncryptedSessionKeysPayloadBytes) == by.gamma(encryptedSessionKeysPayloadT)
@@ -2502,7 +2501,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	if err = dc.blockCipher.UpdateEncryptionKeys(log, dc.state.agentReadKey, dc.state.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtErrorf("failed to update block cipher: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to update block cipher", err /*@, perm(1/1) @*/)
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
@@ -2534,7 +2533,7 @@ func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p 
 	var clientShareBytes []byte
 	clientShareBytes, err = base64.StdEncoding.DecodeString(clientShare)
 	if err != nil {
-		err = fmtErrorf("failed to decode server share: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to decode server share", err /*@, perm(1/1) @*/)
 		return
 	}
 
@@ -2557,7 +2556,7 @@ func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p 
 // @ ensures err == nil ==> dc.getState() == HandshakeSkipped
 func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	if dc.getState() != Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	logInfo(log, "Skipping handshake.")
@@ -2586,7 +2585,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
 
 	if dc.getState() != Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 
@@ -2597,7 +2596,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 
 	if encryptionEnabled {
 		// if dc.blockCipher, err = newBlockCipher(dc.context, kmsKeyId); err != nil {
-		// 	return fmtErrorf("Initializing BlockCipher failed: %s", err)
+		// 	return fmtErrorf("Initializing BlockCipher failed", err)
 		// }
 		logInfo(log, "Encryption enabled: initializing block cipher")
 		// dc.blockCipher = &cryptolib.BlockCipherT{}
@@ -2862,7 +2861,7 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 	//@ cryptoRand.GetReaderMem()
 	ciphertext, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, pk, payload /*@, p > writePerm ? perm(1/1) : p/2 @*/)
 	if err != nil {
-		err = fmtErrorf("failed to encrypt session keys: %v", err /*@, perm(1/1) @*/)
+		err = fmtErrorf("failed to encrypt session keys", err /*@, perm(1/1) @*/)
 		return
 	}
 	encodedCiphertext = base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
@@ -2920,7 +2919,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			//@ fold iospec.P_Agent(t0, rid, s0)
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
-			logErrorf(log, "failed to generate client secret: %v", err /*@, perm(1/2) @*/)
+			logErrorf(log, "failed to generate client secret", err /*@, perm(1/2) @*/)
 			return nil, err
 		}
 		//@ s1 := s0 union mset[ft.Fact]{ ft.FrFact_Agent(rid, agentSecretT) }
@@ -2936,7 +2935,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		if err != nil {
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
-			err = fmtErrorf("failed to encode sign payload: %v", err /*@, perm(1/2) @*/)
+			err = fmtErrorf("failed to encode sign payload", err /*@, perm(1/2) @*/)
 			logError(log, err /*@, perm(1/2) @*/)
 			return nil, err
 		}
@@ -2990,7 +2989,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			//@ fold acc(dc.MemChannelState(), 1/2)
 			//@ fold dc.MemInternal(Erroneous)
 			//@ fold dc.Mem()
-			err = fmtErrorf("failed to sign agent sign payload: %v", err /*@, perm(1/2) @*/)
+			err = fmtErrorf("failed to sign agent sign payload", err /*@, perm(1/2) @*/)
 			logError(log, err /*@, perm(1/2) @*/)
 			return nil, err
 		}
@@ -3027,7 +3026,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		dc.dataChannelState = AgentSecretCreatedAndSigned
 		//@ fold acc(dc.MemChannelState(), 1/2)
 
-		logDebugfString(log, "agent signed sign payload: %x", sig)
+		logDebugHex(log, "agent signed sign payload", sig)
 
 		req := &mgsContracts.SecureSessionRequest{
 			Version:        1,
@@ -3041,7 +3040,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ fold dc.MemInternal(AgentSecretCreatedAndSigned)
 		//@ fold dc.Mem()
 
-		logDebugfSecureSessionRequest(log, "client generated SecureSessionRequest: %+v", req /*@, perm(1/2) @*/)
+		logSecureSessionRequest(log, req /*@, perm(1/2) @*/)
 
 		secureSessionAction := mgsContracts.RequestedClientAction{
 			ActionType:       mgsContracts.SecureSession,
@@ -3073,11 +3072,11 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {
-		return fmtErrorfHandshakeRequestErr("Could not serialize HandshakeRequest message %v, err: %s", handshakeRequestPayload, err /*@, perm(1/2) @*/)
+		return fmtErrorSerializeHandshakeRequest(handshakeRequestPayload, err /*@, perm(1/2) @*/)
 	}
 
 	logDebug(log, "Sending Handshake Request.")
-	logTracefHandshakeRequestPayload(log, "Sending HandshakeRequest message with content %v", handshakeRequestPayload /*@, perm(1/2) @*/)
+	logHandshakeRequest(log, handshakeRequestPayload /*@, perm(1/2) @*/)
 
 	//@ unfold dc.Mem()
 	//@ state := dc.dataChannelState
@@ -3122,7 +3121,7 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ fold dc.Mem()
 
 	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, perm(1/2), secActionT, false, false @*/); err != nil {
-		return fmtErrorf("Failed sending of HandshakeRequest message, err: %s", err /*@, perm(1/2) @*/)
+		return fmtErrorf("Failed sending of HandshakeRequest message, err", err /*@, perm(1/2) @*/)
 	}
 	return nil
 }
@@ -3191,11 +3190,11 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
 	handshakeCompletePayloadBytes, err := marshalHandshakeComplete(handshakeCompletePayload /*@, perm(1/2) @*/)
 	if err != nil {
-		return fmtErrorfHandshakeCompleteErr("Could not serialize HandshakeComplete message %v, err: %s", handshakeCompletePayload, err /*@, perm(1/1) @*/)
+		return fmtErrorSerializeHandshakeComplete(handshakeCompletePayload, err /*@, perm(1/1) @*/)
 	}
 
 	logDebug(log, "Sending HandshakeComplete.")
-	logTracefHandshakeCompletePayload(log, "Sending HandshakeComplete message with content %v", handshakeCompletePayload /*@, perm(1/2) @*/)
+	logHandshakeComplete(log, handshakeCompletePayload /*@, perm(1/2) @*/)
 	//@ payloadT := dc.GetInFactT()
 	//@ inputDataT := tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), payloadT)
 
@@ -3303,7 +3302,7 @@ func marshalHandshakeComplete(handshakeCompletePayload *mgsContracts.HandshakeCo
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
 	if dc.getState() == Erroneous {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.hs.clientVersion, nil
@@ -3314,7 +3313,7 @@ func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string,
 // @ preserves acc(dc.Mem(), p)
 func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error) {
 	if dc.getState() < Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetInstanceId(), nil
@@ -3325,7 +3324,7 @@ func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string,
 // @ preserves acc(dc.Mem(), p)
 func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err error) {
 	if dc.getState() < Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetRegion(), nil
@@ -3337,7 +3336,7 @@ func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err err
 // @ preserves acc(dc.Mem(), p)
 func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error) {
 	if dc.getState() < Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.IsActive(), nil
@@ -3349,7 +3348,7 @@ func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err erro
 // @ preserves acc(dc.Mem(), p)
 func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error) {
 	if dc.getState() == Erroneous {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
@@ -3360,7 +3359,7 @@ func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res boo
 // @ ensures dc.getState() == old(dc.getState())
 func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
 	if dc.getState() == Erroneous || dc.getState() == IODistributed {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	//@ unfold dc.Mem()
@@ -3377,7 +3376,7 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 // @ ensures dc.getState() == old(dc.getState())
 func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 	if dc.getState() < Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	//@ unfold dc.Mem()
@@ -3394,7 +3393,7 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 // @ ensures dc.getState() == old(dc.getState())
 func (dc *dataChannel) Close(log logger.T) (err error) {
 	if dc.getState() < Initialized {
-		err = fmtErrorfState("DataChannel is in an invalid state %d", dc.getState())
+		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
 	//@ unfold dc.Mem()
@@ -3409,15 +3408,15 @@ func (dc *dataChannel) Close(log logger.T) (err error) {
 // @ trusted
 // @ requires acc(log.Mem(), _) && noPerm < p
 // @ preserves acc(param.Mem(), p)
-func logTracefHandshakeRequestPayload(log logger.T, formatStr string, param *mgsContracts.HandshakeRequestPayload /*@, ghost p perm @*/) {
-	log.Tracef(formatStr, param)
+func logHandshakeRequest(log logger.T, param *mgsContracts.HandshakeRequestPayload /*@, ghost p perm @*/) {
+	log.Tracef("Sending HandshakeRequest message with content %v", param)
 }
 
 // @ trusted
 // @ requires acc(log.Mem(), _) && noPerm < p
 // @ preserves acc(param.Mem(), p)
-func logTracefHandshakeCompletePayload(log logger.T, formatStr string, param *mgsContracts.HandshakeCompletePayload /*@, ghost p perm @*/) {
-	log.Tracef(formatStr, param)
+func logHandshakeComplete(log logger.T, param *mgsContracts.HandshakeCompletePayload /*@, ghost p perm @*/) {
+	log.Tracef("Sending HandshakeComplete message with content %v", param)
 }
 
 // @ trusted
@@ -3428,29 +3427,23 @@ func logDebug(log logger.T, str string) {
 
 // @ trusted
 // @ requires acc(log.Mem(), _)
-func logDebugfPayloadType(log logger.T, formatStr string, param mgsContracts.PayloadType) {
-	log.Debugf(formatStr, param)
-}
-
-// @ trusted
-// @ requires acc(log.Mem(), _)
-func logDebugfString(log logger.T, formatStr string, param string) {
-	log.Debugf(formatStr, param)
+func logDebugHex(log logger.T, prefix string, param string) {
+	log.Debugf(prefix + ": %x", param)
 }
 
 // @ requires noPerm < p
 // @ requires acc(log.Mem(), _) && acc(bytes.SliceMem(param), p)
 // @ ensures  acc(bytes.SliceMem(param), p)
-func logDebugfBytes(log logger.T, formatStr string, param []byte /*@, ghost p perm @*/) {
+func logDebugBytes(log logger.T, prefix string, param []byte /*@, ghost p perm @*/) {
 	strParam := base64.RawStdEncoding.EncodeToString(param /*@, perm(p/2) @*/)
-	logDebugfString(log, formatStr, strParam)
+	logDebugHex(log, prefix, strParam)
 }
 
 // @ trusted
 // @ requires acc(log.Mem(), _) && noPerm < p
 // @ preserves acc(param.Mem(), p)
-func logDebugfSecureSessionRequest(log logger.T, formatStr string, param *mgsContracts.SecureSessionRequest /*@, ghost p perm @*/) {
-	log.Debugf(formatStr, param)
+func logSecureSessionRequest(log logger.T, param *mgsContracts.SecureSessionRequest /*@, ghost p perm @*/) {
+	log.Debugf("client generated SecureSessionRequest: %+v", param)
 }
 
 // @ trusted
@@ -3461,14 +3454,14 @@ func logInfo(log logger.T, str string) {
 
 // @ trusted
 // @ requires acc(log.Mem(), _)
-func logInfofString(log logger.T, formatStr string, param string) {
-	log.Infof(formatStr, param)
+func logInfoString(log logger.T, prefix string, param string) {
+	log.Infof(prefix + ": %s", param)
 }
 
 // @ trusted
 // @ requires acc(log.Mem(), _)
-func logWarnfActionType(log logger.T, formatStr string, param mgsContracts.ActionType) {
-	log.Warnf(formatStr, param)
+func logUnknownActionType(log logger.T, param mgsContracts.ActionType) {
+	log.Warnf("Unknown handshake client action found, %s", param)
 }
 
 // @ trusted
@@ -3481,15 +3474,15 @@ func logError(log logger.T, param error /*@, ghost p perm @*/) {
 // @ trusted
 // @ requires acc(log.Mem(), _) && noPerm < p
 // @ preserves acc(param.ErrorMem(), p)
-func logErrorf(log logger.T, formatStr string, param error /*@, ghost p perm @*/) {
-	log.Errorf(formatStr, param)
+func logErrorf(log logger.T, prefix string, param error /*@, ghost p perm @*/) {
+	log.Errorf(prefix + ": %v", param)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorf(format string, param error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param)
+func fmtErrorf(prefix string, param error /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf(prefix + ": %v", param)
 }
 
 // @ trusted
@@ -3500,59 +3493,59 @@ func fmtError(str string) (err error) {
 
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
-func fmtErrorfState(format string, param DataChannelState) (err error) {
-	return fmt.Errorf(format, param)
+func fmtErrorInvalidState(param DataChannelState) (err error) {
+	return fmt.Errorf("DataChannel is in an invalid state %d", param)
 }
 
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
-func fmtErrorfPayloadType(format string, param mgsContracts.PayloadType) (err error) {
-	return fmt.Errorf(format, param)
+func fmtErrorfPayloadType(prefix string, param mgsContracts.PayloadType) (err error) {
+	return fmt.Errorf(prefix + ": %d", param)
 }
 
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
-func fmtErrorfInt64(format string, param1 int64) (err error) {
-	return fmt.Errorf(format, param1)
+func fmtErrorfInt64(prefix string, param1 int64) (err error) {
+	return fmt.Errorf(prefix + ": %d", param1)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param2.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorfInt64Err(format string, param1 int64, param2 error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param1, param2)
+func fmtErrorfInt64Err(prefix string, param1 int64, param2 error /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf(prefix + ": %d, err: %v", param1, param2)
 }
 
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
-func fmtErrorfActionTypeActionStatusActionError(format string, param1 mgsContracts.ActionType, param2 mgsContracts.ActionStatus, param3 string) (err error) {
-	return fmt.Errorf(format, param1, param2, param3)
+func fmtErrorActionFailure(param1 mgsContracts.ActionType, param2 mgsContracts.ActionStatus, param3 string) (err error) {
+	return fmt.Errorf("%s failed on client with status %v error: %s", param1, param2, param3)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(bytes.SliceMem(param1), p) && acc(bytes.SliceMem(param2), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorfBytes2(format string, param1 []byte, param2 []byte /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param1, param2)
+func fmtErrorSessionMismatch(param1 []byte, param2 []byte /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf("session ID mismatch: session ID %s does not match client session ID %s", param1, param2)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param.Mem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorfMetadata(format string, param *kms.KeyMetadata /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param)
+func fmtErrorfMetadata(prefix string, param *kms.KeyMetadata /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf(prefix + ": %+v", param)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param1.Mem(), p) && acc(param2.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorfHandshakeRequestErr(format string, param1 *mgsContracts.HandshakeRequestPayload, param2 error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param1, param2)
+func fmtErrorSerializeHandshakeRequest(param1 *mgsContracts.HandshakeRequestPayload, param2 error /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf("Could not serialize HandshakeRequest message %v, err: %s", param1, param2)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param1.Mem(), p) && acc(param2.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorfHandshakeCompleteErr(format string, param1 *mgsContracts.HandshakeCompletePayload, param2 error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(format, param1, param2)
+func fmtErrorSerializeHandshakeComplete(param1 *mgsContracts.HandshakeCompletePayload, param2 error /*@, ghost p perm @*/) (err error) {
+	return fmt.Errorf("Could not serialize HandshakeComplete message %v, err: %s", param1, param2)
 }
