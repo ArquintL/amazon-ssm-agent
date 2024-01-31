@@ -19,5 +19,5 @@
     },
     "gobraSettings.loglevel": "DEBUG",
     "gobraSettings.autoVerify": false,
-    "gobraSettings.verifyPackage": false,
+    "gobraSettings.verifyPackage": true,
 }
