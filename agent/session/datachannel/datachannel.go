@@ -412,7 +412,7 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 // 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
 // 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
 // 		//tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
-// 		true/*by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()*/) &&
+// 		by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()) &&
 // 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
 // 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
 // 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
@@ -477,6 +477,7 @@ pred (dc *dataChannel) MemRecv() {
 	acc(&dc.hs.handshakeStartTime, 1/2) &&
 	acc(&dc.hs.handshakeEndTime, 1/2) &&
 	acc(&dc.encryptionEnabled, 1/2) &&
+	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
 	acc(&dc.blockCipher, 1/2) &&
 	acc(dc.blockCipher.Mem(), 1/2) &&
 	(dc.encryptionEnabled ==> dc.blockCipher.IsReady()) &&
@@ -1830,8 +1831,13 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 				return err
 			}
 			streamDataMessage.Payload = plaintext
-		} else {
-			assume false // TODO what should we do here?
+		} else if dc.encryptionEnabled {
+			// send a message to the channel to prepare for next message reception:
+			//@ fold dc.MemRecv()
+			dc.resendReceiveOtherResponse()
+			err = fmtErrorfInt64("Unknown payload type of stream data message sequence %d", streamDataMessage.SequenceNumber)
+			//@ fold streamDataMessage.Mem()
+			return err
 		}
 		//@ plaintextB := abs.Abs(streamDataMessage.Payload)
 		//@ fold streamDataMessage.Mem()
@@ -2153,6 +2159,7 @@ func (dc *dataChannel) processSecureSessionResponse(log logger.T, action *mgsCon
 		return
 	}
 	state, err = dc.completeSecureSessionResponseProcessing(log)
+	return
 }
 
 // @ requires log != nil
@@ -2171,7 +2178,6 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 		err = fmtErrorf("failed to unmarshal action to SecureSessionResponse: %v", err /*@, perm(1/1) @*/)
 		return
 	}
-	respAbs := resp.Abs()
 
 	// decode the client share
 	//@ unfold resp.Mem()
@@ -2214,7 +2220,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ s0 := dc.getAbsState()
 
 	// retrieve the term representation of `clientSecretT`, `sigYT`, and `clientLtKeyIdT` by applying our term-uniqueness assumption of the received message:
-	clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), by.oneTerm(clientLtKeyIdB), receivedMsgT, t0, s0)
+	//@ clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), by.oneTerm(clientLtKeyIdB), receivedMsgT, t0, s0)
 	//@ sharedSecretT := tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT)
 	//@ assert abs.Abs(sharedSecret) == by.gamma(sharedSecretT)
 
@@ -2697,7 +2703,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	// do not fold `MemChannelState` since we split the permission to `dataChannelState` for
 	// the threads next.
 
-	dc.ioLock = &sync.Mutex{}
+	//@ dc.ioLock = &sync.Mutex{}
 	//@ dc.ioLockDidLocalReceive = false
 	//@ dc.ioLockCanRemoteSend = false
 	//@ dc.ioLockDidRemoteReceive = false
@@ -2800,13 +2806,13 @@ func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /
 // @ ensures err == nil ==> abs.Abs(clientSignPayload) == by.pairB(by.msgB(clientShare), by.msgB(agentId))
 // @ ensures err != nil ==> err.ErrorMem()
 func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayload []byte, err error) {
-	clientSignPayload := &mgsContracts.SignClientSharePayload{
+	payload := &mgsContracts.SignClientSharePayload{
 		ClientShare: clientShare,
 		AgentId:     agentId,
 	}
 
-	//@ fold clientSignPayload.Mem()
-	return json.Marshal(clientSignPayload /*@, perm(1/2) @*/)
+	//@ fold payload.Mem()
+	return json.Marshal(payload /*@, perm(1/2) @*/)
 }
 
 // @ trusted
@@ -2859,7 +2865,7 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 		err = fmtErrorf("failed to encrypt session keys: %v", err /*@, perm(1/1) @*/)
 		return
 	}
-	encodedCiphertext := base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
+	encodedCiphertext = base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
 	return
 }
 
@@ -3187,7 +3193,6 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	if err != nil {
 		return fmtErrorfHandshakeCompleteErr("Could not serialize HandshakeComplete message %v, err: %s", handshakeCompletePayload, err /*@, perm(1/1) @*/)
 	}
-	assert abs.Abs(handshakeCompletePayloadBytes) == handshakeCompletePayload.Abs()
 
 	logDebug(log, "Sending HandshakeComplete.")
 	logTracefHandshakeCompletePayload(log, "Sending HandshakeComplete message with content %v", handshakeCompletePayload /*@, perm(1/2) @*/)
@@ -3503,6 +3508,12 @@ func fmtErrorfState(format string, param DataChannelState) (err error) {
 // @ ensures err != nil && err.ErrorMem()
 func fmtErrorfPayloadType(format string, param mgsContracts.PayloadType) (err error) {
 	return fmt.Errorf(format, param)
+}
+
+// @ trusted
+// @ ensures err != nil && err.ErrorMem()
+func fmtErrorfInt64(format string, param1 int64) (err error) {
+	return fmt.Errorf(format, param1)
 }
 
 // @ trusted

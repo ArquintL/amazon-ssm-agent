@@ -345,14 +345,14 @@ func (dataStream *DataStream) Close(log log.T) error {
 func (dataStream *DataStream) PrepareToCloseChannel(log log.T) {
 	done := make(chan bool)
 	go func() {
-		dataStream.OutgoingMessageBuffer.Lock()
+		dataStream.OutgoingMessageBuffer.Mutex.Lock()
 		len := dataStream.OutgoingMessageBuffer.Messages.Len()
-		dataStream.OutgoingMessageBuffer.Unlock()
+		dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 		for len > 0 {
 			time.Sleep(10 * time.Millisecond)
-			dataStream.OutgoingMessageBuffer.Lock()
+			dataStream.OutgoingMessageBuffer.Mutex.Lock()
 			len = dataStream.OutgoingMessageBuffer.Messages.Len()
-			dataStream.OutgoingMessageBuffer.Unlock()
+			dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 		}
 		done <- true
 	}()
@@ -429,10 +429,10 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 				log.Tracef("Resend stream data message has been paused")
 				continue
 			}
-			dataStream.OutgoingMessageBuffer.Lock()
+			dataStream.OutgoingMessageBuffer.Mutex.Lock()
 			streamMessageElement := dataStream.OutgoingMessageBuffer.Messages.Front()
 			if streamMessageElement == nil {
-				dataStream.OutgoingMessageBuffer.Unlock()
+				dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 				continue
 			}
 
@@ -445,7 +445,7 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 				streamMessage.LastSentTime = time.Now()
 				streamMessageElement.Value = streamMessage
 			}
-			dataStream.OutgoingMessageBuffer.Unlock()
+			dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 		}
 	}()
 	return nil
@@ -454,8 +454,8 @@ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error 
 // ProcessAcknowledgedMessage processes acknowledge messages by deleting them from OutgoingMessageBuffer.
 func (dataStream *DataStream) ProcessAcknowledgedMessage(log log.T, acknowledgeMessageContent mgsContracts.AcknowledgeContent) {
 	acknowledgeSequenceNumber := acknowledgeMessageContent.SequenceNumber
-	dataStream.OutgoingMessageBuffer.Lock()
-	defer dataStream.OutgoingMessageBuffer.Unlock()
+	dataStream.OutgoingMessageBuffer.Mutex.Lock()
+	defer dataStream.OutgoingMessageBuffer.Mutex.Unlock()
 	for streamMessageElement := dataStream.OutgoingMessageBuffer.Messages.Front(); streamMessageElement != nil; streamMessageElement = streamMessageElement.Next() {
 		streamMessage := streamMessageElement.Value.(StreamingMessage)
 		if streamMessage.SequenceNumber == acknowledgeSequenceNumber {
@@ -632,8 +632,8 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 		log.Debugf("Unexpected sequence message received. Received Sequence Number: %d. Expected Sequence Number: %d",
 			streamDataMessage.SequenceNumber, dataStream.ExpectedSequenceNumber)
 		
-		dataStream.IncomingMessageBuffer.mutex.Lock()
-		defer dataStream.IncomingMessageBuffer.mutex.Unlock()
+		dataStream.IncomingMessageBuffer.Mutex.Lock()
+		defer dataStream.IncomingMessageBuffer.Mutex.Unlock()
 		if len(dataStream.IncomingMessageBuffer.Messages) < dataStream.IncomingMessageBuffer.Capacity {
 			if err = dataStream.SendAcknowledgeMessage(log, streamDataMessage); err != nil {
 				return err
