@@ -23,6 +23,7 @@ import (
 
 	"github.com/aws/amazon-ssm-agent/agent/context"
 	"github.com/aws/amazon-ssm-agent/agent/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/log"
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/interactor"
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/interactor/mdsinteractor"
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/interactor/mgsinteractor"
@@ -30,6 +31,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/messagehandler/processorwrappers"
 	"github.com/aws/amazon-ssm-agent/agent/messageservice/utils"
 	"github.com/aws/amazon-ssm-agent/agent/platform"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -109,53 +111,60 @@ func (msgSvc *MessageService) ModuleName() string {
 }
 
 // ModuleExecute starts the MessageService module
-func (msgSvc *MessageService) ModuleExecute() (err error) {
+func (msgSvc *MessageService) ModuleExecute() error {
 	log := msgSvc.context.Log()
 	log.Info("starting MessageService")
 	// initialize message handler
 	msgSvc.messageHandler.Initialize()
 
-	var wg sync.WaitGroup
-	errArr := make([]error, 0)
+	var eg errgroup.Group
 	for _, interactRef := range msgSvc.interactors {
+		// avoid loop capture
+		interactRef := interactRef
+
 		// this is a safety check
 		if interactRef == nil {
 			log.Error("skipping as the loaded interactor is nil")
-			return
+			return nil
 		}
-		wg.Add(1)
-		go func(interactor interactor.IInteractor) {
-			interactorName := interactor.GetName()
-			log.Infof("%v initialization started", interactorName)
-			defer func() {
-				wg.Done()
-				log.Infof("%v initialization completed", interactorName)
-				if msg := recover(); msg != nil {
-					log.Errorf("%v initialization panicked: %v", interactorName, msg)
-					log.Errorf("stacktrace:\n%s", debug.Stack())
-				}
-			}()
-			// In MGS Interactor, control channel connection may retry indefinitely
-			// This will be blocked during that case
-			if err = interactor.Initialize(); err != nil {
-				errorMsg := fmt.Errorf("error occurred while initializing Interactor %v: %v", interactorName, err)
-				log.Error(errorMsg)
-				errArr = append(errArr, errorMsg)
-				return
-			}
 
-			supportedWorkers := interactor.GetSupportedWorkers()
-			log.Infof("supported workers for the interactor %v: %v", interactorName, supportedWorkers)
+		eg.Go(func() error {
+			return msgSvc.executeModule(log, interactRef)
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("message service module execution failed: %v", err)
+	}
 
-			// initializes and registers the processor with message handler
-			msgSvc.initializeProcessor(interactor, supportedWorkers)
-		}(interactRef)
+	return nil
+}
+
+// executeModule starts initializes the processer for interactor.
+func (msgSvc *MessageService) executeModule(log log.T, interactor interactor.IInteractor) error {
+	interactorName := interactor.GetName()
+	log.Infof("%v initialization started", interactorName)
+	defer func() {
+		log.Infof("%v initialization completed", interactorName)
+		if msg := recover(); msg != nil {
+			log.Errorf("%v initialization panicked: %v", interactorName, msg)
+			log.Errorf("stacktrace:\n%s", debug.Stack())
+		}
+	}()
+	// In MGS Interactor, control channel connection may retry indefinitely
+	// This will be blocked during that case
+	if err := interactor.Initialize(); err != nil {
+		errorMsg := fmt.Errorf("error occurred while initializing Interactor %v: %v", interactorName, err)
+		log.Error(errorMsg)
+		return errorMsg
 	}
-	wg.Wait()
-	if len(errArr) != 0 {
-		return fmt.Errorf("message service module execution threw error: %v", errArr)
-	}
-	return err
+
+	supportedWorkers := interactor.GetSupportedWorkers()
+	log.Infof("supported workers for the interactor %v: %v", interactorName, supportedWorkers)
+
+	// initializes and registers the processor with message handler
+	msgSvc.initializeProcessor(interactor, supportedWorkers)
+
+	return nil
 }
 
 // initializeProcessor initializes and registers the processors with message handler required by interactors.

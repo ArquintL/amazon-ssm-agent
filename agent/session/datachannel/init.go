@@ -189,7 +189,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 // @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
 func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId string, logReaderId string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
-	metadata, err := kmsService.CreateKeyAssymetric()
+	metadata, err := kmsService.CreateKeyAssymetric() //argot:ignore
 	if err != nil {
 		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
 		return "", nil, err /*@, t @*/

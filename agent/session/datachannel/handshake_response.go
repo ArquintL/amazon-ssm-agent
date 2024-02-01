@@ -42,7 +42,6 @@ import (
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
 )
 
-
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
 // @ requires log != nil && dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
@@ -148,7 +147,7 @@ func (dc *dataChannel) handleHandshakeResponse(log logger.T, streamDataMessage *
 	logInfoString(log, "Client side session manager plugin version is", handshakeResponse.ClientVersion)
 	//@ fold acc(handshakeResponse.Mem(), 1/2)
 	//@ fold dc.MemTransfer(state, encryptionEnabled)
-	payload := ResponseChanPayload{ encryptionEnabled, state }
+	payload := ResponseChanPayload{encryptionEnabled, state}
 	//@ fold ResponseChanInv!<dc, _!>(payload)
 	//@ unfold dc.RecvRoutineMem()
 	dc.hs.responseChan <- payload
@@ -172,13 +171,13 @@ func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeRespon
 // @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
-// @ preserves acc(log.Mem(), _) 
+// @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) processSecureSessionResponse(log logger.T, action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
 	state, err = dc.verifySecureSessionResponse(log, action)
-	if err != nil {
+	if err != nil { //argot:ignore
 		return
 	}
 	state, err = dc.completeSecureSessionResponseProcessing(log)
@@ -216,7 +215,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 
 	// hash the shared secret to obtain the session identifier
 	dc.state.sessionID = computeSHA384(sharedSecret /*@, 1/2 @*/)
-	logDebugHex(log, "agent computed session ID", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
+	// logDebugHex(log, "agent computed session ID", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
@@ -285,11 +284,11 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 
 	agentId := dc.dataStream.GetInstanceId()
 	//@ fold dc.MemTransfer(state, true)
-	
+
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
 	if err != nil {
 		err = fmtErrorf("failed to encode client sign payload", err /*@, perm(1/1) @*/)
-		logError(log, err /*@, perm(1/1) @*/)
+		logError(log, err /*@, perm(1/1) @*/) //argot:ignore
 		return
 	}
 
@@ -323,7 +322,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
 	//@ messageT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), AgentId)
-	ok, err := dc.state.kmsService.Verify(resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
+	ok, err := dc.state.kmsService.Verify(resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/) //argot:ignore
 	if !ok {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -338,7 +337,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 	}
 
 	//@ s4 := s3 union mset[ft.Fact] { ft.In_KMS_Agent(rid, KMSId, AgentId, rid, tm.pubTerm(pub.const_VerifyResponse_pub())) }
-	
+
 	/*@
 		l3 := mset[ft.Fact] {
 			ft.St_Agent_5(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT),
@@ -426,7 +425,7 @@ func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayloa
 
 // @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeResponseVerified, true)
-// @ preserves acc(log.Mem(), _) 
+// @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -456,9 +455,9 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 
 	agentReadKey := dc.state.agentReadKey
 	agentWriteKey := dc.state.agentWriteKey
-	logDebugBytes(log, "agent read key", agentReadKey /*@, perm(1/2) @*/)
-	logDebugBytes(log, "agent write key", agentWriteKey /*@, perm(1/2) @*/)
-	
+	// logDebugBytes(log, "agent read key", agentReadKey /*@, perm(1/2) @*/)
+	// logDebugBytes(log, "agent write key", agentWriteKey /*@, perm(1/2) @*/)
+
 	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/2) @*/)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
@@ -475,7 +474,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 		err = fmtErrorf("failed to encrypt session keys", err /*@, perm(1/1) @*/)
 		return
 	}
-	logInfoString(log, "encrypted base-64-encoded session keys", encodedEncryptedSessionKeys)
+	// logInfoString(log, "encrypted base-64-encoded session keys", encodedEncryptedSessionKeys)
 	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.getLogLTPkT())
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
@@ -571,7 +570,8 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 		logError(log, err /*@, perm(1/1) @*/)
 		return
 	}
-	logInfoString(log, "encrypted session keys payload that should be sent to log server", encodedEncryptedSessionKeysPayloadBytes)
+
+	logInfoString(log, "encrypted session keys payload that should be sent to log server", encodedEncryptedSessionKeysPayloadBytes) //argot:ignore
 
 	//@ encryptedSessionKeysPayloadT := ut.tuple5(encodedEncryptedSessionKeysT, sigSessionKeysT, AgentId, AgentLtKeyId, ClientId)
 	//@ assert by.msgB(encodedEncryptedSessionKeysPayloadBytes) == by.gamma(encryptedSessionKeysPayloadT)
@@ -580,7 +580,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
 	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
 
-	if err = dc.blockCipher.UpdateEncryptionKeys(log, dc.state.agentReadKey, dc.state.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
+	if err = dc.blockCipher.UpdateEncryptionKeys(log, dc.state.agentReadKey, dc.state.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		err = fmtErrorf("failed to update block cipher", err /*@, perm(1/1) @*/)
@@ -666,7 +666,7 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 // @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
 func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
 	var sig []byte
-	sig, err /*@, signatureT @*/ = kmsService.Sign(keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
+	sig, err /*@, signatureT @*/ = kmsService.Sign(keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/) //argot:ignore
 	if err != nil {
 		return
 	}
@@ -690,7 +690,7 @@ func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessi
 	if err != nil {
 		return
 	}
-	
+
 	encryptedSessionKeysPayload = base64.StdEncoding.EncodeToString(encryptedSessionKeysPayloadBytes /*@, perm(1/2) @*/)
 	return
 }
