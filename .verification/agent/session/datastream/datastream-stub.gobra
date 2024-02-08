@@ -63,9 +63,10 @@ requires log != nil && noPerm < p && acc(bytes.SliceMem(inputData), p)
 requires m == tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)
 requires pl.token(t) && io.e_OutFact(t, rid, m) && by.gamma(inputDataT) == abs.Abs(inputData)
 preserves acc(datastream.Mem(), p) && acc(log.Mem(), _)
-ensures err != nil ==> err.ErrorMem()
-ensures err == nil ==> pl.token(t1) && t1 == old(io.get_e_OutFact_placeDst(t, rid, m))
-ensures err != nil ==> t1 == t && pl.token(t) && io.e_OutFact(t, rid, m) && io.get_e_OutFact_placeDst(t, rid, m) == old(io.get_e_OutFact_placeDst(t, rid, m))
+ensures  acc(bytes.SliceMem(inputData), p)
+ensures  err != nil ==> err.ErrorMem()
+ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_OutFact_placeDst(t, rid, m))
+ensures  err != nil ==> t1 == t && pl.token(t) && io.e_OutFact(t, rid, m) && io.get_e_OutFact_placeDst(t, rid, m) == old(io.get_e_OutFact_placeDst(t, rid, m))
 func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost inputDataT tm.Term, ghost m tm.Term) (err error, ghost t1 pl.Place)
 
 // a fractional permission is sufficient as a lock is internally acquired
