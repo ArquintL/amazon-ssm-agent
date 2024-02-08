@@ -34,6 +34,7 @@ import (
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
 // @ ensures err == nil ==> dc.getState() == HandshakeSkipped
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	if dc.getState() != Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -57,8 +58,9 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 // restricting the current client of `DataChannel`.
 // @ requires log != nil
 // @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
-// @ preserves dc.Mem() && acc(log.Mem(), _)
+// @ preserves dc.Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
 // @ ensures err == nil ==> dc.getState() == IODistributed
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
@@ -101,7 +103,10 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	if err != nil {
 		return err
 	}
-	if err := dc.sendHandshakeRequest(log, handshakeRequestPayload); err != nil {
+	err = dc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
+	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
+	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
+	if err != nil {
 		return err
 	}
 

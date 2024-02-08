@@ -50,55 +50,68 @@ type IDataChannel interface {
 
 	//@ pred Mem()
 
-	// @ requires log != nil
+	// @ requires log != nil && noPerm < p
 	// @ requires QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
 	// @ preserves Mem()
 	// @ preserves acc(log.Mem(), _)
-	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ ensures  inputProcessed ? acc(bytes.SliceMem(inputData), p) : QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
+	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error /*@, ghost inputProcessed bool @*/)
 
 	// @ requires log != nil
 	// @ preserves Mem() && acc(log.Mem(), _)
-	SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error)
 
 	// @ requires log != nil
 	// @ preserves Mem() && acc(log.Mem(), _)
-	SkipHandshake(log logger.T) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	SkipHandshake(log logger.T) (err error)
 
 	// @ requires log != nil
 	// @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
-	// @ preserves Mem() && acc(log.Mem(), _)
+	// @ preserves Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
+	// @ ensures  err != nil ==> err.ErrorMem()
 	PerformHandshake(log logger.T, kmsKeyId string, encryptionEnabled bool, sessionTypeRequest mgsContracts.SessionTypeRequest) (err error)
 
 	// @ requires noPerm < p
 	// @ preserves acc(Mem(), p)
-	GetClientVersion( /*@ ghost p perm @*/ ) (string, error)
+	// @ ensures  err != nil ==> err.ErrorMem()
+	GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error)
 
 	// @ requires noPerm < p
 	// @ preserves acc(Mem(), p)
-	GetInstanceId( /*@ ghost p perm @*/ ) (string, error)
+	// @ ensures  err != nil ==> err.ErrorMem()
+	GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error)
 
 	// @ requires noPerm < p
 	// @ preserves acc(Mem(), p)
-	GetRegion( /*@ ghost p perm @*/ ) (string, error)
+	// @ ensures  err != nil ==> err.ErrorMem()
+	GetRegion( /*@ ghost p perm @*/ ) (region string, err error)
 
 	// @ requires noPerm < p
 	// @ preserves acc(Mem(), p)
-	IsActive( /*@ ghost p perm @*/ ) (bool, error)
+	// @ ensures  err != nil ==> err.ErrorMem()
+	IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error)
 
 	// @ requires noPerm < p
 	// @ preserves acc(Mem(), p)
-	GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (bool, error)
+	// @ ensures  err != nil ==> err.ErrorMem()
+	GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error)
 
 	// @ preserves Mem()
-	SetSeparateOutputPayload(separateOutputPayload bool) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	SetSeparateOutputPayload(separateOutputPayload bool) (err error)
 
 	// @ requires log != nil
 	// @ preserves Mem() && acc(log.Mem(), _)
-	PrepareToCloseChannel(log logger.T) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	PrepareToCloseChannel(log logger.T) (err error)
 
 	// @ requires log != nil
 	// @ preserves Mem() && acc(log.Mem(), _)
-	Close(log logger.T) error
+	// @ ensures  err != nil ==> err.ErrorMem()
+	Close(log logger.T) (err error)
 }
 
 type DataChannelState int
@@ -291,7 +304,7 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 	(state != Erroneous ==>
 		acc(&dc.dataStream) &&
 		acc(&dc.hs.clientVersion) &&
-		acc(&dc.hs.error) &&
+		acc(&dc.hs.error) && dc.hs.error == nil &&
 		acc(&dc.hs.complete) &&
 		acc(&dc.hs.skipped) &&
 		acc(&dc.hs.handshakeStartTime) &&
@@ -472,6 +485,7 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
 	acc(&dc.hs.error) &&
+	(dc.hs.error != nil ==> dc.hs.error.ErrorMem()) &&
 	acc(&dc.hs.complete) &&
 	acc(&dc.hs.skipped) &&
 	acc(&dc.hs.handshakeStartTime) &&

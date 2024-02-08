@@ -54,14 +54,16 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 
 
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
-// @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized
+// @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized && request.Mem()
 // @ preserves acc(log.Mem(), _)
 // @ ensures  dc.Mem()
-// @ ensures  err == nil ==> payload.Mem()
+// @ ensures  err == nil ==> payload.Mem() && payload.ContainsSessionTypeAction(request)
+// @ ensures  err == nil ==> ((payload.Mem() && payload.ContainsSessionTypeAction(request)) --* request.Mem())
 // @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
 // @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
 // @ ensures  err == nil && encryptionRequested ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in (
 // @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))))
+// @ ensures  err != nil ==> err.ErrorMem() && request.Mem()
 func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
 	request mgsContracts.SessionTypeRequest) (payload *mgsContracts.HandshakeRequestPayload, err error) {
@@ -106,7 +108,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		if err != nil {
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
-			err = fmtErrorf("failed to encode sign payload", err /*@, perm(1/2) @*/)
+			err = fmtErrorf("failed to encode sign payload", err /*@, perm(1/1) @*/)
 			logError(log, err /*@, perm(1/2) @*/)
 			return nil, err
 		}
@@ -160,7 +162,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			//@ fold acc(dc.MemChannelState(), 1/2)
 			//@ fold dc.MemInternal(Erroneous)
 			//@ fold dc.Mem()
-			err = fmtErrorf("failed to sign agent sign payload", err /*@, perm(1/2) @*/)
+			err = fmtErrorf("failed to sign agent sign payload", err /*@, perm(1/1) @*/)
 			logError(log, err /*@, perm(1/2) @*/)
 			return nil, err
 		}
@@ -199,7 +201,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 		logDebugHex(log, "agent signed sign payload", sig)
 
-		req := &mgsContracts.SecureSessionRequest{
+		req := mgsContracts.SecureSessionRequest{
 			Version:        1,
 			ShareAlgorithm: "P384",
 			AgentShare:     compressedPublic,
@@ -207,15 +209,13 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			AgentLTKeyARN:  dc.agentLTKeyARN,
 			LogReaderId:    dc.logReaderId,
 		}
-		//@ fold acc(req.Mem(), 1/2)
+		//@ fold req.Mem()
 		//@ fold dc.MemInternal(AgentSecretCreatedAndSigned)
 		//@ fold dc.Mem()
 
-		logSecureSessionRequest(log, req /*@, perm(1/2) @*/)
-
 		secureSessionAction := mgsContracts.RequestedClientAction{
 			ActionType:       mgsContracts.SecureSession,
-			ActionParameters: *req,
+			ActionParameters: req,
 		}
 		handshakeRequest.RequestedClientActions = []mgsContracts.RequestedClientAction{sessionTypeAction, secureSessionAction}
 		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
@@ -226,6 +226,13 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ fold handshakeRequest.RequestedClientActions[0].Mem()
 		//@ fold handshakeRequest.Mem()
 	}
+	/*@ package (handshakeRequest.Mem() && handshakeRequest.ContainsSessionTypeAction(request)) --* request.Mem() {
+		unfold handshakeRequest.Mem()
+		unfold handshakeRequest.RequestedClientActions[0].Mem()
+		assert handshakeRequest.RequestedClientActions[0].ActionType == mgsContracts.SessionType
+		assert handshakeRequest.RequestedClientActions[0].ActionParameters == request
+		assert handshakeRequest.RequestedClientActions[0].ActionParameters.(mgsContracts.SessionTypeRequest).Mem()
+	} @*/
 
 	return handshakeRequest, nil
 }
@@ -269,19 +276,20 @@ func getSignAgentSharePayloadBytes(compressedPublic string, clientId string, log
 }
 
 // sendHandshakeRequest sends handshake request
-// @ requires log != nil && handshakeRequestPayload.Mem()
+// @ requires log != nil && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
 // @ requires dc.Mem() && dc.getState() >= BlockCipherInitialized
 // @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==>
 // @	dc.dataChannelState == AgentSecretCreatedAndSigned &&
 // @	handshakeRequestPayload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId)))
 // @ preserves acc(log.Mem(), _)
-// @ ensures dc.Mem()
-// @ ensures err == nil ==> dc.getState() == HandshakeRequestSent
-func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload) (err error) {
+// @ ensures  dc.Mem() && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
+// @ ensures  err == nil ==> dc.getState() == HandshakeRequestSent
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost request mgsContracts.SessionTypeRequest @*/) (err error) {
 	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.agentLTKeyARN), by.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {
-		return fmtErrorSerializeHandshakeRequest(handshakeRequestPayload, err /*@, perm(1/2) @*/)
+		return fmtErrorf("Could not serialize HandshakeRequest message", err /*@, perm(1/1) @*/)
 	}
 
 	logDebug(log, "Sending Handshake Request.")
@@ -330,7 +338,7 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ fold dc.Mem()
 
 	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, perm(1/2), secActionT, false, false @*/); err != nil {
-		return fmtErrorf("Failed sending of HandshakeRequest message, err", err /*@, perm(1/2) @*/)
+		return fmtErrorf("Failed sending of HandshakeRequest message, err", err /*@, perm(1/1) @*/)
 	}
 	return nil
 }

@@ -399,9 +399,19 @@ type KMSEncryptionResponse struct {
 }
 
 type SessionTypeRequest struct {
-	SessionType string      `json:"SessionType"`
-	Properties  interface{} `json:"Properties"`
+	SessionType string      	  `json:"SessionType"`
+	Properties  RequestProperties `json:"Properties"`
 }
+
+type RequestProperties interface {
+	//@ pred Mem()
+}
+
+/*@
+pred (str SessionTypeRequest) Mem() {
+	str.Properties.Mem()
+}
+@*/
 
 // SignAgentSharePayload is the payload sent by the agent to KMS for signing
 type SignAgentSharePayload struct {
@@ -437,8 +447,8 @@ type SecureSessionRequest struct {
 }
 
 /*@
-pred (secureSessionRequest *SecureSessionRequest) Mem() {
-	acc(secureSessionRequest)
+pred (secureSessionRequest SecureSessionRequest) Mem() {
+	true
 }
 @*/
 
@@ -499,6 +509,15 @@ pred (handshakeRequestPayload *HandshakeRequestPayload) Mem() {
 
 ghost
 requires acc(handshakeRequestPayload.Mem(), _)
+pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSessionTypeAction(request SessionTypeRequest) bool {
+	return unfolding acc(handshakeRequestPayload.Mem(), _) in (
+		1 <= len(handshakeRequestPayload.RequestedClientActions) &&
+		handshakeRequestPayload.RequestedClientActions[0].Type() == SessionType &&
+		unfolding acc(handshakeRequestPayload.RequestedClientActions[0].Mem(), _) in handshakeRequestPayload.RequestedClientActions[0].ActionParameters == request)
+}
+
+ghost
+requires acc(handshakeRequestPayload.Mem(), _)
 pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSecureSessionAction(secActionB by.Bytes) bool {
 	return unfolding acc(handshakeRequestPayload.Mem(), _) in (
 		2 <= len(handshakeRequestPayload.RequestedClientActions) &&
@@ -517,7 +536,12 @@ type RequestedClientAction struct {
 /*@
 pred (action *RequestedClientAction) Mem() {
 	acc(action) &&
-	(action.ActionType == SecureSession ==> typeOf(action.ActionParameters) == SecureSessionRequest)
+	(action.ActionType == SessionType ==>
+		typeOf(action.ActionParameters) == SessionTypeRequest &&
+		action.ActionParameters.(SessionTypeRequest).Mem()) &&
+	(action.ActionType == SecureSession ==>
+		typeOf(action.ActionParameters) == SecureSessionRequest &&
+		action.ActionParameters.(SecureSessionRequest).Mem())
 }
 
 ghost

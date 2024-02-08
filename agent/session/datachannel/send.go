@@ -38,18 +38,19 @@ import (
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
-// @ requires log != nil
+// @ requires log != nil && noPerm < p
 // @ requires QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
 // @ preserves dc.Mem()
 // @ preserves acc(log.Mem(), _)
-// @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error) {
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  inputProcessed ? acc(bytes.SliceMem(inputData), p) : QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
+func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error /*@, ghost inputProcessed bool @*/) {
 	if dc.getState() != IODistributed {
-		return fmtErrorInvalidState(dc.getState())
+		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
 	}
 
 	if payloadType != mgsContracts.Output && payloadType != mgsContracts.StdErr && payloadType != mgsContracts.ExitCode {
-		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType)
+		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType) /*@, false @*/
 	}
 
 	//@ unfold dc.Mem()
@@ -129,7 +130,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ fold dc.Mem()
 
-	return dc.sendData(log, payloadType, inputData /*@, p/2, inputDataT, true, true @*/)
+	return dc.sendData(log, payloadType, inputData /*@, p/2, inputDataT, true, true @*/) /*@, true @*/
 }
 
 // @ requires log != nil && noPerm < p && p <= writePerm
@@ -144,7 +145,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 // @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)) # dc.GetAbsState() > 0)
 // @ requires acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData)
 // @ preserves acc(log.Mem(), _)
-// @ ensures dc.Mem() && dc.getState() == old(dc.getState())
+// @ ensures dc.Mem() && dc.getState() == old(dc.getState()) && acc(bytes.SliceMem(inputData), p)
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
 	// @ ghost state := dc.getState()
@@ -229,8 +230,8 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 // @ trusted
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures dc.getState() == old(dc.getState())
-// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
 	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
 		SchemaVersion: schemaVersion,

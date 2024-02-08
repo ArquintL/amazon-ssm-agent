@@ -132,7 +132,7 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 // GetClientVersion returns version of the client
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
-// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
 	if dc.getState() == Erroneous {
 		err = fmtErrorInvalidState(dc.getState())
@@ -144,6 +144,7 @@ func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string,
 // GetInstanceId returns id of the target
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error) {
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -155,6 +156,7 @@ func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string,
 // GetRegion returns aws region of the target
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err error) {
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -167,6 +169,7 @@ func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err err
 // and communicating with service
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error) {
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -179,6 +182,7 @@ func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err erro
 // stdout/stderr output for non-interactive session or not
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error) {
 	if dc.getState() == Erroneous {
 		err = fmtErrorInvalidState(dc.getState())
@@ -189,6 +193,7 @@ func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res boo
 
 // SetSeparateOutputPayload set separateOutputPayload value
 // @ preserves dc.Mem()
+// @ ensures  err != nil ==> err.ErrorMem()
 // @ ensures dc.getState() == old(dc.getState())
 func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
 	if dc.getState() == Erroneous || dc.getState() == IODistributed {
@@ -206,7 +211,8 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures dc.getState() == old(dc.getState())
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
 func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -223,7 +229,8 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures dc.getState() == old(dc.getState())
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
 func (dc *dataChannel) Close(log logger.T) (err error) {
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -270,13 +277,6 @@ func logDebugHex(log logger.T, prefix string, param string) {
 func logDebugBytes(log logger.T, prefix string, param []byte /*@, ghost p perm @*/) {
 	strParam := base64.RawStdEncoding.EncodeToString(param /*@, perm(p/2) @*/)
 	logDebugHex(log, prefix, strParam)
-}
-
-// @ trusted
-// @ requires acc(log.Mem(), _) && noPerm < p
-// @ preserves acc(param.Mem(), p)
-func logSecureSessionRequest(log logger.T, param *mgsContracts.SecureSessionRequest /*@, ghost p perm @*/) {
-	log.Debugf("client generated SecureSessionRequest: %+v", param)
 }
 
 // @ trusted
@@ -367,13 +367,6 @@ func fmtErrorSessionMismatch(param1 []byte, param2 []byte /*@, ghost p perm @*/)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
 func fmtErrorfMetadata(prefix string, param *kms.KeyMetadata /*@, ghost p perm @*/) (err error) {
 	return fmt.Errorf(prefix + ": %+v", param)
-}
-
-// @ trusted
-// @ requires noPerm < p && acc(param1.Mem(), p) && acc(param2.ErrorMem(), p)
-// @ ensures err != nil && acc(err.ErrorMem(), p)
-func fmtErrorSerializeHandshakeRequest(param1 *mgsContracts.HandshakeRequestPayload, param2 error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf("Could not serialize HandshakeRequest message %v, err: %s", param1, param2)
 }
 
 // @ trusted
