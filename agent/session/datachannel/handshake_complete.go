@@ -77,7 +77,7 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 
 	payload = &mgsContracts.HandshakeCompletePayload{
 		HandshakeTimeToComplete: duration,
-		CustomerMessage: customerMessage,
+		CustomerMessage:         customerMessage,
 	}
 	//@ fold payload.Mem()
 	return

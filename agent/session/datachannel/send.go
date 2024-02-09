@@ -35,7 +35,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
 // @ requires log != nil
@@ -92,7 +91,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
 	//@ clientSecretT := dc.getClientShareT()
 	//@ sigYT := dc.getClientShareSignatureT()
-	//@ sigSessionKeysT := dc.getSigSessionKeysT()	
+	//@ sigSessionKeysT := dc.getSigSessionKeysT()
 
 	// obtain permission to send the ciphertext containing `inputData`:
 	/*@
@@ -201,7 +200,7 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 		@*/
 		return err
 	}
-	
+
 	/*@
 	unfold dc.IoSpecMemMain()
 	dc.setToken(t1)
@@ -246,7 +245,7 @@ func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus 
 
 	sessionStatusStr := string(sessionStatus)
 	//@ fold sessionStatusStr.Mem()
-	logDebug(log, "Send AgentSessionState message with session status" + sessionStatusStr)
+	logDebug(log, "Send AgentSessionState message with session status"+sessionStatusStr)
 	if err := dc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes); err != nil {
 		return err
 	}

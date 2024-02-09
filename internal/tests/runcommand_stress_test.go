@@ -104,7 +104,7 @@ func (suite *AgentStressTestSuite) SetupTest() {
 	suite.ssmAgent.SetCoreManager(cpm)
 }
 
-//TestCoreAgent tests the agent by mocking MDS to send N messages to the agent and start the execution of those messages
+// TestCoreAgent tests the agent by mocking MDS to send N messages to the agent and start the execution of those messages
 func (suite *AgentStressTestSuite) TestCoreAgent() {
 	// This is the number of MDS messages that should be sent to the core agent
 	numberOfMessages := 100

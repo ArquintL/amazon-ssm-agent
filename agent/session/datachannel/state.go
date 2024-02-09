@@ -1,6 +1,5 @@
 package datachannel
 
-
 import (
 	"crypto/rsa"
 	"time"
@@ -115,7 +114,7 @@ const (
 	HandshakeResponseVerified   DataChannelState = 8
 	BlockCipherReady            DataChannelState = 9
 	HandshakeCompleted          DataChannelState = 10
-	IODistributed				DataChannelState = 11
+	IODistributed               DataChannelState = 11
 )
 
 // dataChannel used for session communication between the message gateway service and the agent.
@@ -130,14 +129,14 @@ type dataChannel struct {
 	hs handshake
 	//blockCipher stores encrytion keys and provides interface for encryption/decryption functions
 	blockCipher *cryptolib.BlockCipherT
+	// kmsService is the KMS service used to sign and verify the handshake keyshare
+	kmsService *crypto.KMSService
 	// Indicates whether encryption was enabled
 	encryptionEnabled     bool
 	separateOutputPayload bool
-	state                 agentHandshakeState
-	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
-	agentLTKeyARN string
-	logReaderId   string
-	logLTPk       *rsa.PublicKey
+	secrets               agentHandshakeSecrets
+	logReaderId           string
+	logLTPk               *rsa.PublicKey
 
 	// TODO: mark the following fields as ghost as soon as Gobra supports ghost fields
 	//@ msgHandlerCtx StreamDataHandlerContext
@@ -148,18 +147,25 @@ type dataChannel struct {
 	//@ ioLockCanLocalSend bool
 }
 
-// AgentHandshakeState represents the state of the handshake.
-type agentHandshakeState struct {
-	// kmsService is the KMS service used to sign and verify the handshake keyshare
-	kmsService    *crypto.KMSService
+// agentHandshakeSecrets represents the secrets used in the handshake.
+type agentHandshakeSecrets struct {
 	agentSecret   []byte
 	sharedSecret  []byte
 	sessionID     []byte
 	agentWriteKey []byte
 	agentReadKey  []byte
+	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
+	agentLTKeyARN string
 }
 
-type InputStreamMessageHandler = func(log logger.T, streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
+// sanitizeStr sanitizes a secret that is a string.
+// This is used to ignore safe calls to I/O-performing functions when applying the taint analysis.
+// NOTE Currently it is impossible to sanitize slices because they are reference types.
+func sanitizeStr(s string) string {
+	return s
+}
+
+type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
 
 type MessageReceptionStatus int
 type MessageReceptionPayload struct {
@@ -169,7 +175,7 @@ type MessageReceptionPayload struct {
 
 type ResponseChanPayload struct {
 	encryptionEnabled bool
-	state DataChannelState
+	state             DataChannelState
 }
 
 const (
@@ -212,7 +218,7 @@ requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agen
 preserves ctx.Inv() && acc(log.Mem(), _)
 ensures err == nil ==> agentMessage.Mem()
 ensures err != nil ==> err.ErrorMem()
-ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))) 
+ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
 ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
 func StreamDataHandlerSpec(ghost ctx StreamDataHandlerContext, log logger.T, agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
 

@@ -135,10 +135,10 @@ func cleanUpCrashWorkerTest(suite *CrashWorkerTestSuite) {
 	suite.log.Flush()
 }
 
-//TestDocumentWorkerCrash tests the agent processes documents in isolation
-//the test sends a document that's expected to crash and another that's expected to succeed
-//then verify the first document fails when document worker crashes and sends valid results
-//and second document succeeds and sends the valid output
+// TestDocumentWorkerCrash tests the agent processes documents in isolation
+// the test sends a document that's expected to crash and another that's expected to succeed
+// then verify the first document fails when document worker crashes and sends valid results
+// and second document succeeds and sends the valid output
 func (suite *CrashWorkerTestSuite) TestDocumentWorkerCrash() {
 	//send MDS message that's expected to crash document worker
 	var idOfCrashMessage string

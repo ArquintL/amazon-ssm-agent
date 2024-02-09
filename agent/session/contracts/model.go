@@ -655,8 +655,8 @@ type EncryptedSessionKeysPayload struct {
 	Signature            string `json:"Signature"`
 	AgentId              string `json:"AgentId"`
 	// AgentLTKeyARN is Agent's long-term key ARN used to verify the signature.
-	AgentLTKeyARN        string `json:"AgentLTKeyARN"`
-	ClientId             string `json:"ClientId"`
+	AgentLTKeyARN string `json:"AgentLTKeyARN"`
+	ClientId      string `json:"ClientId"`
 }
 
 /*@

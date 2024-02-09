@@ -22,7 +22,7 @@ import (
 	mds "github.com/aws/amazon-ssm-agent/agent/runcommand/mds"
 )
 
-//NewRuncommandService creates actual runcommand coremodule with mock mds service injected
+// NewRuncommandService creates actual runcommand coremodule with mock mds service injected
 func NewRuncommandService(context context.T, mdsService mds.Service) *runcommand.RunCommandService {
 	mdsName := "MessagingDeliveryService"
 	CancelWorkersLimit := 3

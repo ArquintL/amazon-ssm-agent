@@ -132,7 +132,7 @@ func cleanUpTest(suite *SendFailedReplyTestSuite) {
 	suite.context.Log().Flush()
 }
 
-//TestSaveFailedReply tests the agent saves mds reply to disk if it failed sending it
+// TestSaveFailedReply tests the agent saves mds reply to disk if it failed sending it
 func (suite *SendFailedReplyTestSuite) TestSaveFailedReply() {
 
 	// Mock MDs service so it returns only one messages, it'll return empty messages after that.
@@ -195,7 +195,7 @@ func (suite *SendFailedReplyTestSuite) TestSaveFailedReply() {
 	suite.ssmAgent.Stop()
 }
 
-//TestSendFailedReply tests the agent sends back to the service the saved mds reply on disk
+// TestSendFailedReply tests the agent sends back to the service the saved mds reply on disk
 func (suite *SendFailedReplyTestSuite) TestSendFailedReply() {
 	//Save test send reply input on disk
 	t := time.Now().UTC()
@@ -238,7 +238,7 @@ func (suite *SendFailedReplyTestSuite) TestSendFailedReply() {
 	suite.ssmAgent.Stop()
 }
 
-//TestSendFailedReply tests the agent sends back to the service the saved mds reply on disk
+// TestSendFailedReply tests the agent sends back to the service the saved mds reply on disk
 func (suite *SendFailedReplyTestSuite) TestDeleteOldFailedReply() {
 	//Save test send reply input on disk
 	fileName := fmt.Sprintf("%v_%v", testdata.TestReplyId, "2006-01-02T15-04-05")

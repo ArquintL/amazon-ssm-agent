@@ -52,7 +52,6 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)
 }
 
-
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
 // @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized
 // @ preserves acc(log.Mem(), _)

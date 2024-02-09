@@ -40,7 +40,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // We model is function as receiving the payload with the corresponding term representation from the
 // environment because we model in Tamarin that the payload is under full adversarial control.
 // Conceptually, we receive an arbitrary payload from the environment and check whether it's equal to
@@ -261,7 +260,7 @@ func logDebug(log logger.T, str string) {
 // @ trusted
 // @ requires acc(log.Mem(), _)
 func logDebugHex(log logger.T, prefix string, param string) {
-	log.Debugf(prefix + ": %x", param)
+	log.Debugf(prefix+": %x", param)
 }
 
 // @ requires noPerm < p
@@ -288,7 +287,7 @@ func logInfo(log logger.T, str string) {
 // @ trusted
 // @ requires acc(log.Mem(), _)
 func logInfoString(log logger.T, prefix string, param string) {
-	log.Infof(prefix + ": %s", param)
+	log.Infof(prefix+": %s", param)
 }
 
 // @ trusted
@@ -308,14 +307,14 @@ func logError(log logger.T, param error /*@, ghost p perm @*/) {
 // @ requires acc(log.Mem(), _) && noPerm < p
 // @ preserves acc(param.ErrorMem(), p)
 func logErrorf(log logger.T, prefix string, param error /*@, ghost p perm @*/) {
-	log.Errorf(prefix + ": %v", param)
+	log.Errorf(prefix+": %v", param)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
 func fmtErrorf(prefix string, param error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(prefix + ": %v", param)
+	return fmt.Errorf(prefix+": %v", param)
 }
 
 // @ trusted
@@ -333,20 +332,20 @@ func fmtErrorInvalidState(param DataChannelState) (err error) {
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
 func fmtErrorfPayloadType(prefix string, param mgsContracts.PayloadType) (err error) {
-	return fmt.Errorf(prefix + ": %d", param)
+	return fmt.Errorf(prefix+": %d", param)
 }
 
 // @ trusted
 // @ ensures err != nil && err.ErrorMem()
 func fmtErrorfInt64(prefix string, param1 int64) (err error) {
-	return fmt.Errorf(prefix + ": %d", param1)
+	return fmt.Errorf(prefix+": %d", param1)
 }
 
 // @ trusted
 // @ requires noPerm < p && acc(param2.ErrorMem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
 func fmtErrorfInt64Err(prefix string, param1 int64, param2 error /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(prefix + ": %d, err: %v", param1, param2)
+	return fmt.Errorf(prefix+": %d, err: %v", param1, param2)
 }
 
 // @ trusted
@@ -366,7 +365,7 @@ func fmtErrorSessionMismatch(param1 []byte, param2 []byte /*@, ghost p perm @*/)
 // @ requires noPerm < p && acc(param.Mem(), p)
 // @ ensures err != nil && acc(err.ErrorMem(), p)
 func fmtErrorfMetadata(prefix string, param *kms.KeyMetadata /*@, ghost p perm @*/) (err error) {
-	return fmt.Errorf(prefix + ": %+v", param)
+	return fmt.Errorf(prefix+": %+v", param)
 }
 
 // @ trusted

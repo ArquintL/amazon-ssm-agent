@@ -107,7 +107,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
-		
+
 		//@ t0 := dc.getToken()
 		//@ rid := dc.getRid()
 		//@ s0 := dc.getAbsState()
@@ -126,7 +126,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ dc.setRemoteInFactT(receivedMsgT)
 		//@ dc.ioLockDidRemoteReceive = true
 		//@ fold dc.IoSpecMemMain()
-		
+
 		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
@@ -181,18 +181,18 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)
 		// obtain permission to send the ciphertext containing `inputData`:
 		/*@
-		l := mset[ft.Fact] {
-			ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-			ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
-		}
-		a := mset[cl.Claim] {
-			cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
-		}
-		r := mset[ft.Fact] {
-	    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-			ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
-		}
-		@*/
+			l := mset[ft.Fact] {
+				ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+				ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
+			}
+			a := mset[cl.Claim] {
+				cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
+			}
+			r := mset[ft.Fact] {
+		    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+				ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
+			}
+			@*/
 		//@ unfold iospec.P_Agent(t1, rid, s1)
 		//@ unfold iospec.phiR_Agent_10(t1, rid, s1)
 		//@ t2 := iospec.internBIO_e_Agent_ReceiveMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
@@ -263,6 +263,7 @@ func (dc *dataChannel) resendReceiveOtherResponse() {
 	//@ unfold dc.RecvRoutineMem()
 	//@ fold acc(dc.MemRecv(), 1/2)
 	payload := MessageReceptionPayload {
+	payload := MessageReceptionPayload{
 		status: ReceiveOtherResponse,
 	}
 	//@ fold StartReceivingChanInv!<dc, _!>(payload)
