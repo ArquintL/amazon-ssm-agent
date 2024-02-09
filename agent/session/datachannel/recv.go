@@ -20,7 +20,6 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
-	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
@@ -40,11 +39,11 @@ import (
 // @ preserves acc(log.Mem(), _) && dc.RecvRoutineMem()
 // @ ensures err == nil ==> streamDataMessage.Mem()
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage *mgsContracts.AgentMessage) (err error) {
+func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
 	payload, err := dc.tryReceiveMessageReceptionStatus(channelStatusTimeout)
 	if err != nil {
-		logInfo(log, "Timeout while receiving channel status")
+		// logInfo(log, "Timeout while receiving channel status")
 		return err
 	}
 
@@ -77,7 +76,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		case mgsContracts.HandshakeResponse:
 			{
 				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
-				if err = dc.handleHandshakeResponse(log, streamDataMessage, true); err != nil {
+				if err = dc.handleHandshakeResponse(streamDataMessage, true); err != nil {
 					return fmtErrorf("processing of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 				}
 			}
@@ -94,7 +93,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		case mgsContracts.HandshakeResponse:
 			{
 				// PayloadType is HandshakeResponse so we call our own handler instead of the plugin handler
-				if err = dc.handleHandshakeResponse(log, streamDataMessage, false); err != nil {
+				if err = dc.handleHandshakeResponse(streamDataMessage, false); err != nil {
 					return fmtErrorf("processing of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 				}
 			}
@@ -223,7 +222,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = dc.inputStreamMessageHandler(log, streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
+		err = dc.inputStreamMessageHandler(streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
 		//@ fold dc.RecvRoutineMem()
 
 		if err != nil {
@@ -262,7 +261,6 @@ func (dc *dataChannel) resendReceiveOtherResponse() {
 	//@ unfold acc(dc.MemRecv(), 1/2)
 	//@ unfold dc.RecvRoutineMem()
 	//@ fold acc(dc.MemRecv(), 1/2)
-	payload := MessageReceptionPayload {
 	payload := MessageReceptionPayload{
 		status: ReceiveOtherResponse,
 	}

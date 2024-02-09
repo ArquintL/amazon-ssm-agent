@@ -6,7 +6,7 @@ import (
 	"time"
 
 	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
-	logger "github.com/aws/amazon-ssm-agent/agent/log"
+	"github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
@@ -41,8 +41,8 @@ func NewDataChannel(context contextPkg.T,
 		// @ preserves acc(log.Mem(), _) && tmp.RecvRoutineMem()
 		// @ ensures err == nil ==> msg.Mem()
 		// @ ensures err != nil ==> err.ErrorMem()
-		func /*@ callHandler @*/ (log logger.T, msg *mgsContracts.AgentMessage) (err error) {
-			err = tmp.processStreamDataMessage(log, msg)
+		func /*@ callHandler @*/ (_ log.T, msg *mgsContracts.AgentMessage) (err error) {
+			err = tmp.processStreamDataMessage(msg)
 			return
 		}
 	/*@
@@ -113,7 +113,9 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	dc.hs.skipped = false
 	dc.hs.handshakeEndTime = time.Now()
 	dc.hs.handshakeStartTime = time.Now()
-	dc.state.kmsService, err = dc.dataStream.GetKMSService( /*@ perm(1/2) @*/ )
+	var kms *crypto.KMSService
+	ds := dc.dataStream
+	kms, err = ds.GetKMSService()
 	if err != nil {
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
@@ -132,15 +134,19 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ readerIdT := iospec.get_e_Setup_Agent_r4(t0, rid)
 	// @ logLTPkT := iospec.get_e_Setup_Agent_r6(t0, rid)
 	// @ setupFact := ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, iospec.get_e_Setup_Agent_r5(t0, rid), logLTPkT)
-	dc.agentLTKeyARN, dc.logLTPk, err = getInitialValues(dc.state.kmsService, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), logReaderId /*@, t0, rid @*/)
+	agentLTKeyARN, logLTPk, err := getInitialValues(kms, ds.GetInstanceId(), ds.GetClientId(), logReaderId /*@, t0, rid @*/)
+	dc.secrets.agentLTKeyARN = agentLTKeyARN
+	dc.logLTPk = logLTPk
 	if err != nil {
 		// @ fold iospec.phiRF_Agent_17(t0, rid, s0)
 		// @ fold iospec.P_Agent(t0, rid, s0)
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
-		return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
+		return fmtError("failed to initialize KMS service")
+		// return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
+	dc.kmsService = kms
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
 	// @ unfold dc.IoSpecMemMain()
 	// @ unfold dc.IoSpecMemPartial()
@@ -159,7 +165,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ fold acc(dc.MemChannelState(), 1/2)
 	// @ fold dc.MemInternal(Initialized)
 	// @ fold dc.Mem()
-	return
+	return nil
 }
 
 // we assume that this function returns the initial values used by this agent session
@@ -189,7 +195,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 // @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
 func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId string, logReaderId string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
-	metadata, err := kmsService.CreateKeyAssymetric() //argot:ignore
+	metadata, err := kmsService.CreateKeyAssymetric()
 	if err != nil {
 		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
 		return "", nil, err /*@, t @*/

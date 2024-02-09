@@ -98,7 +98,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ dc.setAbsState(s1)
 		//@ fold dc.IoSpecMemMain()
 
-		dc.state.agentSecret = agentSecret
+		dc.secrets.agentSecret = agentSecret
 
 		clientId := dc.dataStream.GetClientId()
 		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, clientId, dc.logReaderId)
@@ -148,7 +148,8 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
 		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
-		sig, err /*@, signatureT @*/ := signAndEncode(dc.state.kmsService, dc.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
+		signPayloadBytesStr := string(signPayloadBytes)
+		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), []byte(sanitizeStr(signPayloadBytesStr)) /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
 		if err != nil {
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
@@ -196,14 +197,14 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		dc.dataChannelState = AgentSecretCreatedAndSigned
 		//@ fold acc(dc.MemChannelState(), 1/2)
 
-		logDebugHex(log, "agent signed sign payload", sig)
+		// logDebugHex(log, "agent signed sign payload", sig)
 
 		req := &mgsContracts.SecureSessionRequest{
 			Version:        1,
 			ShareAlgorithm: "P384",
 			AgentShare:     compressedPublic,
 			Signature:      sig,
-			AgentLTKeyARN:  dc.agentLTKeyARN,
+			AgentLTKeyARN:  dc.secrets.agentLTKeyARN,
 			LogReaderId:    dc.logReaderId,
 		}
 		//@ fold acc(req.Mem(), 1/2)

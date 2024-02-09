@@ -60,11 +60,11 @@ func (p *SessionPlugin) Execute(
 	cancelFlag task.CancelFlag,
 	output iohandler.IOHandler) {
 
-	wrapperFn := func(log log.T, streamDataMessage *mgsContracts.AgentMessage) error {
+	log := p.context.Log()
+	wrapperFn := func(streamDataMessage *mgsContracts.AgentMessage) error {
 		return p.sessionPlugin.InputStreamMessageHandler(log, *streamDataMessage)
 	}
 
-	log := p.context.Log()
 	kmsKeyId := config.KmsKeyId
 
 	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn)

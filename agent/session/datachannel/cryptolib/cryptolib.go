@@ -6,8 +6,6 @@ import (
 	cryptoRand "crypto/rand"
 	"fmt"
 	"io"
-
-	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	//@ "bytes"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -99,14 +97,14 @@ func (bc *BlockCipherT) IsReady() bool {
 // @ ensures  bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
 // @ ensures  err == nil ==> bc.IsReady() && bc.GetEncKeyT() == writeKeyT && bc.GetDecKeyT() == readKeyT
 // @ ensures  err != nil ==> err.ErrorMem()
-func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []byte /*@, ghost p perm, ghost readKeyT tm.Term, ghost writeKeyT tm.Term @*/) (err error) {
+func (bc *BlockCipherT) UpdateEncryptionKeys(readKey, writeKey []byte /*@, ghost p perm, ghost readKeyT tm.Term, ghost writeKeyT tm.Term @*/) (err error) {
 	if len(readKey) != 32 || len(writeKey) != 32 {
 		return fmt.Errorf("read or write key have invalid length")
 	}
 	newEncryptionKey := make([]byte, 2*32)
 	copy(newEncryptionKey[:32], readKey)
 	copy(newEncryptionKey[32:], writeKey)
-	return bc.UpdateEncryptionKey(log, newEncryptionKey, "", "" /*@, p @*/)
+	return bc.UpdateEncryptionKey(newEncryptionKey, "", "" /*@, p @*/)
 }
 
 // @ trusted
@@ -114,13 +112,13 @@ func (bc *BlockCipherT) UpdateEncryptionKeys(log logger.T, readKey, writeKey []b
 // @ requires acc(bytes.SliceMem(cipherTextBlob), p)
 // @ preserves bc.Mem() && acc(log.Mem(), _)
 // @ ensures err != nil ==> err.ErrorMem()
-func (bc *BlockCipherT) UpdateEncryptionKey(log logger.T, cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) (err error) {
+func (bc *BlockCipherT) UpdateEncryptionKey(cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) (err error) {
 	const keyLen = 32 // key length in bytes
 	bc.cipherTextKey = cipherTextBlob
 	bc.decryptionKey = cipherTextBlob[:keyLen]
 	bc.encryptionKey = cipherTextBlob[keyLen:]
-	log.Debugf("ENCRYPTION KEY: %x", bc.encryptionKey)
-	log.Debugf("DECRYPTION KEY: %x", bc.decryptionKey)
+	// log.Debugf("ENCRYPTION KEY: %x", bc.encryptionKey)
+	// log.Debugf("DECRYPTION KEY: %x", bc.decryptionKey)
 	enc, err := getAEAD(bc.encryptionKey)
 	bc.encryptionCipher = enc
 	if err != nil {
