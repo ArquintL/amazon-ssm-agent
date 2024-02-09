@@ -36,7 +36,8 @@ func NewDataChannel(context contextPkg.T,
 
 	tmp /*@ @ @*/ := dataChannel{}
 	dc := &tmp
-	cl := // @ requires log != nil
+	cl :=
+		// @ requires log != nil
 		// @ requires datastream.QuantifiedStreamDataHandlerSpecWand(msg)
 		// @ preserves acc(log.Mem(), _) && tmp.RecvRoutineMem()
 		// @ ensures err == nil ==> msg.Mem()

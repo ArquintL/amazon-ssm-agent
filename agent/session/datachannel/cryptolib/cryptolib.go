@@ -41,10 +41,12 @@ pred (bc *BlockCipherT) Mem() {
 pred (bc *BlockCipherT) EncKeyTMem()
 
 ghost
+decreases _
 requires acc(bc.EncKeyTMem(), _)
 pure func (bc *BlockCipherT) getEncKeyT() tm.Term
 
 ghost
+decreases
 requires acc(bc.Mem(), _)
 ensures  bc.IsReady() ==> by.gamma(res) == bc.GetEncKeyB()
 pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
@@ -52,12 +54,14 @@ pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
 }
 
 ghost
+decreases
 requires acc(bc.Mem(), _) && bc.IsReady()
 pure func (bc *BlockCipherT) GetEncKeyB() by.Bytes {
 	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.encryptionKey)
 }
 
 ghost
+decreases _
 preserves bc.EncKeyTMem()
 ensures bc.getEncKeyT() == encKeyT
 func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
@@ -65,27 +69,32 @@ func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
 pred (bc *BlockCipherT) DecKeyTMem()
 
 ghost
+decreases _
 requires acc(bc.DecKeyTMem(), _)
 pure func (bc *BlockCipherT) getDecKeyT() tm.Term
 
 ghost
+decreases
 requires acc(bc.Mem(), _)
 pure func (bc *BlockCipherT) GetDecKeyT() tm.Term {
 	return unfolding acc(bc.Mem(), _) in bc.getDecKeyT()
 }
 
 ghost
+decreases
 requires acc(bc.Mem(), _) && bc.IsReady()
 pure func (bc *BlockCipherT) GetDecKeyB() by.Bytes {
 	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.decryptionKey)
 }
 
 ghost
+decreases _
 preserves bc.DecKeyTMem()
 ensures bc.getDecKeyT() == decKeyT
 func (bc *BlockCipherT) setDecKeyT(decKeyT tm.Term)
 @*/
 
+// @ decreases
 // @ requires acc(bc.Mem(), _)
 // @ pure
 func (bc *BlockCipherT) IsReady() bool {

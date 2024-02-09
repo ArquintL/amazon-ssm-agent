@@ -38,7 +38,6 @@ pred QuantifiedStreamDataHandlerSpecWand(msg *mgsContracts.AgentMessage) {
 	forall t pl.Place, rid tm.Term :: { StreamDataHandlerSpecWand(t, rid, msg) } StreamDataHandlerSpecWand(t, rid, msg)
 }
 
-ghost
 requires cs != nil && log != nil
 requires QuantifiedStreamDataHandlerSpecWand(msg)
 preserves cs.Inv() && acc(log.Mem(), _)
@@ -68,31 +67,45 @@ ensures  err != nil ==> err.ErrorMem()
 ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_OutFact_placeDst(t, rid, m))
 ensures  err != nil ==> t1 == t && pl.token(t) && io.e_OutFact(t, rid, m) && io.get_e_OutFact_placeDst(t, rid, m) == old(io.get_e_OutFact_placeDst(t, rid, m))
 func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost inputDataT tm.Term, ghost m tm.Term) (err error, ghost t1 pl.Place)
+/*
+// represents the permission to apply the `ReceiveViewShift` view shift, i.e.
+// exchange receive I/O permissions with the permissions to access `msg`.
+// This predicate's footprint is p permissions to `msg`.
+pred ReceiveViewShiftToken(msg *mgsContracts.AgentMessage, p perm)
 
+ghost
+decreases _
+requires ReceiveViewShiftToken(msg, p)
+requires pl.token(t) && io.e_InFact(t, rid)
+ensures  acc(msg.Mem(), p)
+ensures  pl.token(old(io.get_e_InFact_placeDst(t, rid)))
+ensures  msg.Abs() == by.gamma(old(io.get_e_InFact_r1(t, rid)))
+func ReceiveViewShift(msg *mgsContracts.AgentMessage, t pl.Place, rid tm.Term, p perm)
+*/
 // a fractional permission is sufficient as a lock is internally acquired
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
 func (datastream *DataStream) GetStreamDataSequenceNumber(ghost p perm) int64
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetChannelId() string
+pure func (datastream *DataStream) GetChannelId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetInstanceId() string
+pure func (datastream *DataStream) GetInstanceId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetClientId() string
+pure func (datastream *DataStream) GetClientId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetRegion() string
+pure func (datastream *DataStream) GetRegion() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) IsActive() bool
+pure func (datastream *DataStream) IsActive() bool
 
 // the cancel flag internally acquires a lock thus making read-only
 // permissions sufficient

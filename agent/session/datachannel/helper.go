@@ -82,6 +82,7 @@ func marshalHandshakeComplete(handshakeCompletePayload *mgsContracts.HandshakeCo
 }
 
 // @ trusted
+// @ decreases
 // @ pure
 // @ requires acc(bytes.SliceMem(a), _) && acc(bytes.SliceMem(b), _)
 // @ ensures res == (abs.Abs(a) == abs.Abs(b))

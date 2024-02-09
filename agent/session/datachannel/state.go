@@ -207,6 +207,7 @@ type handshake struct {
 	handshakeEndTime   time.Time
 }
 
+// @ decreases
 // @ requires acc(dc.Mem(), _)
 // @ pure
 func (dc *dataChannel) getState() DataChannelState {
@@ -218,7 +219,7 @@ type StreamDataHandlerContext interface {
 	pred Inv()
 }
 
-ghost
+// this is non-ghost because it's the spec for a non-ghost closure implementation
 requires ctx != nil && log != nil
 requires agentMessage.Mem()
 requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
@@ -649,22 +650,26 @@ pred (dc *dataChannel) IoSpecMemPartial() {
 pred (dc *dataChannel) TokenMem()
 
 ghost
+decreases _
 requires acc(dc.TokenMem(), _)
 pure func (dc *dataChannel) getTokenInternal() pl.Place
 
 ghost
+decreases
 requires acc(dc.IoSpecMemMain(), _)
 pure func (dc *dataChannel) getToken() pl.Place {
 	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getTokenInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetToken() pl.Place {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getToken()
 }
 
 ghost
+decreases _
 preserves dc.TokenMem()
 ensures dc.getTokenInternal() == token
 func (dc *dataChannel) setToken(token pl.Place)
@@ -672,54 +677,26 @@ func (dc *dataChannel) setToken(token pl.Place)
 pred (dc *dataChannel) RidMem()
 
 ghost
+decreases _
 requires acc(dc.RidMem(), _)
 pure func (dc *dataChannel) getRidInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getRid() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRidInternal()
 }
 
-// ghost
-// requires acc(dc.IoSpecMemPartial(), _)
-// pure func (dc *dataChannel) getRidPartial() tm.Term {
-// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRidInternal()
-// }
-
-// ghost
-// requires acc(dc.MemInternal(state), _) && state >= Initialized && state < IODistributed
-// pure func (dc *dataChannel) GetRidInternal(state DataChannelState) tm.Term {
-// 	return unfolding acc(dc.MemInternal(state), _) in dc.getRid()
-// }
-
-// ghost
-// requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
-// pure func (dc *dataChannel) GetRid0() tm.Term {
-// 	return unfolding acc(dc.Mem(), _) in dc.GetRidInternal(dc.dataChannelState)
-// }
-
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetRid() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getRid()
 }
 
-// ghost
-// requires acc(dc.Mem(), _) && unfolding acc(dc.Mem(), _) in (dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed)
-// pure func (dc *dataChannel) GetRid2() tm.Term {
-// 	return unfolding acc(dc.Mem(), _) in dc.getRid()
-// }
-
-// ghost
-// requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
-// func foo(dc *dataChannel) {
-// 	assert dc.getState() >= Initialized && dc.getState() < IODistributed
-// 	unfold acc(dc.Mem(), _)
-// 	assert dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed
-// }
-
 ghost
+decreases _
 preserves dc.RidMem()
 ensures dc.getRidInternal() == rid
 func (dc *dataChannel) setRid(rid tm.Term)
@@ -727,22 +704,26 @@ func (dc *dataChannel) setRid(rid tm.Term)
 pred (dc *dataChannel) AbsStateMem()
 
 ghost
+decreases _
 requires acc(dc.AbsStateMem(), _)
 pure func (dc *dataChannel) getAbsStateInternal() mset[ft.Fact]
 
 ghost
+decreases
 requires acc(dc.IoSpecMemMain(), _)
 pure func (dc *dataChannel) getAbsState() mset[ft.Fact] {
 	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getAbsStateInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetAbsState() mset[ft.Fact] {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAbsState()
 }
 
 ghost
+decreases _
 preserves dc.AbsStateMem()
 ensures dc.getAbsStateInternal() == state
 func (dc *dataChannel) setAbsState(state mset[ft.Fact])
@@ -750,22 +731,26 @@ func (dc *dataChannel) setAbsState(state mset[ft.Fact])
 pred (dc *dataChannel) AgentIdTMem()
 
 ghost
+decreases _
 requires acc(dc.AgentIdTMem(), _)
 pure func (dc *dataChannel) getAgentIdTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentIdT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentIdTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentIdT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentIdT()
 }
 
 ghost
+decreases _
 preserves dc.AgentIdTMem()
 ensures dc.getAgentIdTInternal() == agentIdT
 func (dc *dataChannel) setAgentIdT(agentIdT tm.Term)
@@ -773,22 +758,26 @@ func (dc *dataChannel) setAgentIdT(agentIdT tm.Term)
 pred (dc *dataChannel) KMSIdTMem()
 
 ghost
+decreases _
 requires acc(dc.KMSIdTMem(), _)
 pure func (dc *dataChannel) getKMSIdTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getKMSIdT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getKMSIdTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetKMSIdT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getKMSIdT()
 }
 
 ghost
+decreases _
 preserves dc.KMSIdTMem()
 ensures dc.getKMSIdTInternal() == kmsIdT
 func (dc *dataChannel) setKMSIdT(kmsIdT tm.Term)
@@ -796,22 +785,26 @@ func (dc *dataChannel) setKMSIdT(kmsIdT tm.Term)
 pred (dc *dataChannel) ClientIdTMem()
 
 ghost
+decreases _
 requires acc(dc.ClientIdTMem(), _)
 pure func (dc *dataChannel) getClientIdTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientIdT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientIdTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientIdT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientIdT()
 }
 
 ghost
+decreases _
 preserves dc.ClientIdTMem()
 ensures dc.getClientIdTInternal() == clientIdT
 func (dc *dataChannel) setClientIdT(clientIdT tm.Term)
@@ -819,49 +812,53 @@ func (dc *dataChannel) setClientIdT(clientIdT tm.Term)
 pred (dc *dataChannel) ReaderIdTMem()
 
 ghost
+decreases _
 requires acc(dc.ReaderIdTMem(), _)
 pure func (dc *dataChannel) getReaderIdTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getReaderIdT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getReaderIdTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetReaderIdT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getReaderIdT()
 }
 
 ghost
+decreases _
 preserves dc.ReaderIdTMem()
 ensures dc.getReaderIdTInternal() == readerIdT
 func (dc *dataChannel) setReaderIdT(readerIdT tm.Term)
 
-// ghost
-// requires acc(IoSpecMem(sessionId), _)
-// pure func getSendKeyT(sessionId string) tm.Term
-
 pred (dc *dataChannel) LogLTPkTMem()
 
 ghost
+decreases _
 requires acc(dc.LogLTPkTMem(), _)
 pure func (dc *dataChannel) getLogLTPkTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getLogLTPkT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLogLTPkTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetLogLTPkT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getLogLTPkT()
 }
 
 ghost
+decreases _
 preserves dc.LogLTPkTMem()
 ensures dc.getLogLTPkTInternal() == logLTPkT
 func (dc *dataChannel) setLogLTPkT(logLTPkT tm.Term)
@@ -869,22 +866,26 @@ func (dc *dataChannel) setLogLTPkT(logLTPkT tm.Term)
 pred (dc *dataChannel) AgentShareTMem()
 
 ghost
+decreases _
 requires acc(dc.AgentShareTMem(), _)
 pure func (dc *dataChannel) getAgentShareTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentShareT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareT()
 }
 
 ghost
+decreases _
 preserves dc.AgentShareTMem()
 ensures dc.getAgentShareTInternal() == shareT
 func (dc *dataChannel) setAgentShareT(shareT tm.Term)
@@ -892,22 +893,26 @@ func (dc *dataChannel) setAgentShareT(shareT tm.Term)
 pred (dc *dataChannel) AgentShareSignatureTMem()
 
 ghost
+decreases _
 requires acc(dc.AgentShareSignatureTMem(), _)
 pure func (dc *dataChannel) getAgentShareSignatureTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getAgentShareSignatureT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareSignatureTInternal()
 }
 
 ghost
+decreases _
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareSignatureT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareSignatureT()
 }
 
 ghost
+decreases
 preserves dc.AgentShareSignatureTMem()
 ensures dc.getAgentShareSignatureTInternal() == signatureT
 func (dc *dataChannel) setAgentShareSignatureT(signatureT tm.Term)
@@ -915,22 +920,26 @@ func (dc *dataChannel) setAgentShareSignatureT(signatureT tm.Term)
 pred (dc *dataChannel) InFactTMem()
 
 ghost
+decreases _
 requires acc(dc.InFactTMem(), _)
 pure func (dc *dataChannel) getInFactTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getInFactT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getInFactTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetInFactT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getInFactT()
 }
 
 ghost
+decreases _
 preserves dc.InFactTMem()
 ensures dc.getInFactTInternal() == inFactT
 func (dc *dataChannel) setInFactT(inFactT tm.Term)
@@ -938,22 +947,26 @@ func (dc *dataChannel) setInFactT(inFactT tm.Term)
 pred (dc *dataChannel) SharedSecretTMem()
 
 ghost
+decreases _
 requires acc(dc.SharedSecretTMem(), _)
 pure func (dc *dataChannel) getSharedSecretTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getSharedSecretT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSharedSecretTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSharedSecretT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSharedSecretT()
 }
 
 ghost
+decreases _
 preserves dc.SharedSecretTMem()
 ensures dc.getSharedSecretTInternal() == sharedSecretT
 func (dc *dataChannel) setSharedSecretT(sharedSecretT tm.Term)
@@ -961,22 +974,26 @@ func (dc *dataChannel) setSharedSecretT(sharedSecretT tm.Term)
 pred (dc *dataChannel) ClientLtKeyIdTMem()
 
 ghost
+decreases _
 requires acc(dc.ClientLtKeyIdTMem(), _)
 pure func (dc *dataChannel) getClientLtKeyIdTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientLtKeyIdT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientLtKeyIdTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientLtKeyIdT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientLtKeyIdT()
 }
 
 ghost
+decreases _
 preserves dc.ClientLtKeyIdTMem()
 ensures dc.getClientLtKeyIdTInternal() == clientLtKeyIdT
 func (dc *dataChannel) setClientLtKeyIdT(clientLtKeyIdT tm.Term)
@@ -984,22 +1001,26 @@ func (dc *dataChannel) setClientLtKeyIdT(clientLtKeyIdT tm.Term)
 pred (dc *dataChannel) ClientShareTMem()
 
 ghost
+decreases _
 requires acc(dc.ClientShareTMem(), _)
 pure func (dc *dataChannel) getClientShareTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientShareT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareT()
 }
 
 ghost
+decreases _
 preserves dc.ClientShareTMem()
 ensures dc.getClientShareTInternal() == clientShareT
 func (dc *dataChannel) setClientShareT(clientShareT tm.Term)
@@ -1007,22 +1028,26 @@ func (dc *dataChannel) setClientShareT(clientShareT tm.Term)
 pred (dc *dataChannel) ClientShareSignatureTMem()
 
 ghost
+decreases _
 requires acc(dc.ClientShareSignatureTMem(), _)
 pure func (dc *dataChannel) getClientShareSignatureTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getClientShareSignatureT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareSignatureTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareSignatureT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareSignatureT()
 }
 
 ghost
+decreases _
 preserves dc.ClientShareSignatureTMem()
 ensures dc.getClientShareSignatureTInternal() == clientShareSignatureT
 func (dc *dataChannel) setClientShareSignatureT(clientShareSignatureT tm.Term)
@@ -1030,22 +1055,26 @@ func (dc *dataChannel) setClientShareSignatureT(clientShareSignatureT tm.Term)
 pred (dc *dataChannel) SigSessionKeysTMem()
 
 ghost
+decreases _
 requires acc(dc.SigSessionKeysTMem(), _)
 pure func (dc *dataChannel) getSigSessionKeysTInternal() tm.Term
 
 ghost
+decreases
 requires acc(dc.IoSpecMemPartial(), _)
 pure func (dc *dataChannel) getSigSessionKeysT() tm.Term {
 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSigSessionKeysTInternal()
 }
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSigSessionKeysT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSigSessionKeysT()
 }
 
 ghost
+decreases _
 preserves dc.SigSessionKeysTMem()
 ensures dc.getSigSessionKeysTInternal() == sigSessionKeysT
 func (dc *dataChannel) setSigSessionKeysT(sigSessionKeysT tm.Term)
@@ -1053,16 +1082,12 @@ func (dc *dataChannel) setSigSessionKeysT(sigSessionKeysT tm.Term)
 pred (dc *dataChannel) LocalInFactTMem()
 
 ghost
+decreases _
 requires acc(dc.LocalInFactTMem(), _)
 pure func (dc *dataChannel) getLocalInFactTInternal() tm.Term
 
-// ghost
-// requires acc(dc.IoSpecMemPartial(), _)
-// pure func (dc *dataChannel) getLocalInFactT() tm.Term {
-// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLocalInFactTInternal()
-// }
-
 ghost
+decreases _
 preserves dc.LocalInFactTMem()
 ensures dc.getLocalInFactTInternal() == inFactT
 func (dc *dataChannel) setLocalInFactT(inFactT tm.Term)
@@ -1070,16 +1095,12 @@ func (dc *dataChannel) setLocalInFactT(inFactT tm.Term)
 pred (dc *dataChannel) RemoteInFactTMem()
 
 ghost
+decreases _
 requires acc(dc.RemoteInFactTMem(), _)
 pure func (dc *dataChannel) getRemoteInFactTInternal() tm.Term
 
-// ghost
-// requires acc(dc.IoSpecMemPartial(), _)
-// pure func (dc *dataChannel) getRemoteInFactT() tm.Term {
-// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRemoteInFactTInternal()
-// }
-
 ghost
+decreases _
 preserves dc.RemoteInFactTMem()
 ensures dc.getRemoteInFactTInternal() == inFactT
 func (dc *dataChannel) setRemoteInFactT(inFactT tm.Term)
@@ -1087,16 +1108,12 @@ func (dc *dataChannel) setRemoteInFactT(inFactT tm.Term)
 pred (dc *dataChannel) LocalOutFactTMem()
 
 ghost
+decreases _
 requires acc(dc.LocalOutFactTMem(), _)
 pure func (dc *dataChannel) getLocalOutFactTInternal() tm.Term
 
-// ghost
-// requires acc(dc.IoSpecMemPartial(), _)
-// pure func (dc *dataChannel) getLocalOutFactT() tm.Term {
-// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLocalOutFactTInternal()
-// }
-
 ghost
+decreases _
 preserves dc.LocalOutFactTMem()
 ensures dc.getLocalOutFactTInternal() == outFactT
 func (dc *dataChannel) setLocalOutFactT(outFactT tm.Term)
@@ -1104,21 +1121,18 @@ func (dc *dataChannel) setLocalOutFactT(outFactT tm.Term)
 pred (dc *dataChannel) RemoteOutFactTMem()
 
 ghost
+decreases _
 requires acc(dc.RemoteOutFactTMem(), _)
 pure func (dc *dataChannel) getRemoteOutFactTInternal() tm.Term
 
-// ghost
-// requires acc(dc.IoSpecMemPartial(), _)
-// pure func (dc *dataChannel) getRemoteOutFactT() tm.Term {
-// 	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRemoteOutFactTInternal()
-// }
-
 ghost
+decreases _
 preserves dc.RemoteOutFactTMem()
 ensures dc.getRemoteOutFactTInternal() == outFactT
 func (dc *dataChannel) setRemoteOutFactT(outFactT tm.Term)
 
 ghost
+decreases
 requires acc(dc.Mem(), _) && dc.getState() >= BlockCipherInitialized
 pure func (dc *dataChannel) GetEncKeyT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.blockCipher.GetEncKeyT()
@@ -1129,6 +1143,7 @@ pure func (dc *dataChannel) GetEncKeyT() tm.Term {
 // Leaving this function abstract will consider both cases, i.e.,
 // encryption being disabled or enabled.
 ghost
+decreases
 pure func assumeEncryptionEnabledForVerification() bool {
 	return true
 }

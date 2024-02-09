@@ -71,6 +71,7 @@ pred (msg *AgentMessage) Mem() {
 }
 
 ghost
+decreases
 requires acc(msg.Mem(), _)
 pure
 func (msg *AgentMessage) Abs() by.Bytes {

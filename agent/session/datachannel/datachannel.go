@@ -130,7 +130,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	startReceivingChan <- payload
 
 	// Block until handshake response is received or handshake times out
-	res, err := dc.tryReceiveResponseAlt(responseChan, handshakeTimeout)
+	res, err := dc.tryReceiveResponse(responseChan, handshakeTimeout)
 	if err != nil {
 		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
