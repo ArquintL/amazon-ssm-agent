@@ -137,7 +137,7 @@ func NewDataStream(context context.T,
 
 	streamMessageHandler := func(input []byte) {
 		if err := dataStream.dataChannelIncomingMessageHandler(log, input); err != nil {
-			log.Errorf("Invalid message %s\n", err)
+			log.Errorf("Invalid message")
 		}
 	}
 	if err := dataStream.SetWebSocket(context, mgsService, channelId, clientId, streamMessageHandler); err != nil {
@@ -233,8 +233,8 @@ func (dataStream *DataStream) SetWebSocket(context context.T,
 			MaxAttempts:         mgsConfig.DataChannelNumMaxAttempts,
 			NonRetryableErrors:  getNonRetryableDataChannelErrors(),
 		}
-		if _, err := retryer.Call(); err != nil {
-			log.Error(err)
+		if _, err := retryer.Call(); err != nil { //argot:ignore
+			log.Errorf("failed to set data stream token")
 		}
 	}
 
@@ -614,7 +614,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 			if errors.Is(err, mgsContracts.ErrHandlerNotReady) {
 				return nil
 			}
-			log.Errorf("Unable to process stream data payload %v, err: %v.", streamDataMessage, err)
+			// log.Errorf("Unable to process stream data payload %v, err: %v.", streamDataMessage, err)
 			return err
 		}
 
@@ -631,7 +631,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 		// add message to IncomingMessageBuffer and send acknowledgement
 		log.Debugf("Unexpected sequence message received. Received Sequence Number: %d. Expected Sequence Number: %d",
 			streamDataMessage.SequenceNumber, dataStream.ExpectedSequenceNumber)
-		
+
 		dataStream.IncomingMessageBuffer.Mutex.Lock()
 		defer dataStream.IncomingMessageBuffer.Mutex.Unlock()
 		if len(dataStream.IncomingMessageBuffer.Messages) < dataStream.IncomingMessageBuffer.Capacity {
@@ -705,23 +705,23 @@ func (dataStream *DataStream) processIncomingMessageBufferItems(log log.T) (err 
 	for {
 		bufferedStreamMessage := dataStream.IncomingMessageBuffer.Messages[dataStream.ExpectedSequenceNumber]
 		if bufferedStreamMessage.Content != nil {
-			log.Debugf("Process stream data message from IncomingMessageBuffer. "+
-				"Sequence Number: %d", bufferedStreamMessage.SequenceNumber)
+			// log.Debugf("Process stream data message from IncomingMessageBuffer. "+
+			// 	"Sequence Number: %d", bufferedStreamMessage.SequenceNumber)
 
 			streamDataMessage := &mgsContracts.AgentMessage{}
 
 			if err = streamDataMessage.Deserialize(log, bufferedStreamMessage.Content); err != nil {
-				log.Errorf("Cannot deserialize raw message: %d, err: %v.", bufferedStreamMessage.SequenceNumber, err)
+				// log.Errorf("Cannot deserialize raw message: %d, err: %v.", bufferedStreamMessage.SequenceNumber, err)
 				return err
 			}
 			if err = dataStream.streamDataHandler(log, streamDataMessage); err != nil {
-				log.Errorf("Unable to process stream data payload, err: %v.", err)
+				// log.Errorf("Unable to process stream data payload, err: %v.", err)
 				return err
 			}
 
 			dataStream.ExpectedSequenceNumber = dataStream.ExpectedSequenceNumber + 1
 
-			log.Debugf("Delete stream data from IncomingMessageBuffer. Sequence Number: %d", bufferedStreamMessage.SequenceNumber)
+			// log.Debugf("Delete stream data from IncomingMessageBuffer. Sequence Number: %d", bufferedStreamMessage.SequenceNumber)
 			delete(dataStream.IncomingMessageBuffer.Messages, sequenceNumber)
 		} else {
 			break

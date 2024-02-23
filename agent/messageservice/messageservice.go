@@ -152,14 +152,14 @@ func (msgSvc *MessageService) executeModule(log log.T, interactor interactor.IIn
 	}()
 	// In MGS Interactor, control channel connection may retry indefinitely
 	// This will be blocked during that case
-	if err := interactor.Initialize(); err != nil {
+	if err := interactor.Initialize(); err != nil { //argot:ignore
 		errorMsg := fmt.Errorf("error occurred while initializing Interactor %v: %v", interactorName, err)
-		log.Error(errorMsg)
+		log.Error("failed to initialize Interactor")
 		return errorMsg
 	}
 
 	supportedWorkers := interactor.GetSupportedWorkers()
-	log.Infof("supported workers for the interactor %v: %v", interactorName, supportedWorkers)
+	// log.Infof("supported workers for the interactor %v: %v", interactorName, supportedWorkers)
 
 	// initializes and registers the processor with message handler
 	msgSvc.initializeProcessor(interactor, supportedWorkers)

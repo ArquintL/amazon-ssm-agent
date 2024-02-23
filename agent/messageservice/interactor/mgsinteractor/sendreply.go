@@ -144,7 +144,7 @@ func (mgs *MGSInteractor) startSendFailedReplyJob() {
 	mgs.mutex.Lock()
 	defer mgs.mutex.Unlock()
 	if mgs.sendReplyProp.sendFailedReplyJob == nil {
-		if mgs.sendReplyProp.sendFailedReplyJob, err = scheduler.Every(utils.SendFailedReplyFrequencyMinutes).Minutes().Run(mgs.sendFailedReplies); err != nil {
+		if mgs.sendReplyProp.sendFailedReplyJob, err = scheduler.Every(utils.SendFailedReplyFrequencyMinutes).Minutes().Run(mgs.sendFailedReplies); err != nil { //argot:ignore
 			log.Errorf("unable to schedule send failed reply job. %v", err)
 		}
 	}
@@ -279,7 +279,7 @@ func (mgs *MGSInteractor) startReplyProcessingQueue() {
 		logger.Infof("ended reply processing queue")
 		if r := recover(); r != nil {
 			logger.Errorf("reply queue handler panic: \n%v", r)
-			logger.Errorf("Stacktrace:\n%s", debug.Stack())
+			// logger.Errorf("Stacktrace:\n%s", debug.Stack())
 			time.Sleep(2 * time.Second)
 			go mgs.startReplyProcessingQueue()
 		}
@@ -287,7 +287,7 @@ func (mgs *MGSInteractor) startReplyProcessingQueue() {
 exitLoopLabel:
 	for {
 		// If there are too many reply threads currently running, wait for any of them to free up
-		if replyThreadCount >= mgs.sendReplyProp.replyQueueLimit {
+		if replyThreadCount >= mgs.sendReplyProp.replyQueueLimit { //argot:ignore
 			logger.Debug("maximum reply threads are running right now. Waiting for one of them to end")
 			<-mgs.sendReplyProp.replyThreadDone
 			logger.Debug("one of the reply thread completed. proceeding to the next reply")
@@ -295,7 +295,7 @@ exitLoopLabel:
 		}
 
 		select {
-		case res, ok := <-mgs.sendReplyProp.reply:
+		case res, ok := <-mgs.sendReplyProp.reply: //argot:ignore
 			if !ok {
 				logger.Info("Reply queue has been closed")
 				break exitLoopLabel
@@ -305,9 +305,9 @@ exitLoopLabel:
 			replyThreadCount++
 			go func(resLocalContract *agentReplyLocalContract) {
 				defer func() {
-					if r := recover(); r != nil {
+					if r := recover(); r != nil { //argot:ignore
 						logger.Errorf("reply processing queue panic: \n%v", r)
-						logger.Errorf("Stacktrace:\n%s", debug.Stack())
+						// logger.Errorf("Stacktrace:\n%s", debug.Stack())
 					}
 				}()
 				defer mgs.resultProcessingDone()
@@ -320,7 +320,7 @@ exitLoopLabel:
 	}
 
 	// Wait for all replies to complete
-	for replyThreadCount != 0 {
+	for replyThreadCount != 0 { //argot:ignore
 		<-mgs.sendReplyProp.replyThreadDone
 		logger.Debug("reply completed")
 		replyThreadCount--

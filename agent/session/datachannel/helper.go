@@ -24,7 +24,6 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -112,18 +111,18 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	res = make([]byte, keySize)
 
 	var ctx string
-	if isKdf1 {
+	if isKdf1 { //argot:ignore
 		ctx = "S"
-	} else {
+	} else { //argot:ignore
 		ctx = "C"
 	}
 
 	bytesRead, err := hkdf.Expand(hash512, hkPRK, []byte(ctx)).Read(res)
-	if err != nil {
-		return nil, err
+	if err != nil { //argot:ignore
+		return nil, errHandshake
 	}
-	if bytesRead != keySize {
-		return nil, errors.New("result of applying KDF has unexpected length")
+	if bytesRead != keySize { //argot:ignore
+		return nil, errHandshake
 	}
 	return
 }

@@ -134,18 +134,18 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ readerIdT := iospec.get_e_Setup_Agent_r4(t0, rid)
 	// @ logLTPkT := iospec.get_e_Setup_Agent_r6(t0, rid)
 	// @ setupFact := ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, iospec.get_e_Setup_Agent_r5(t0, rid), logLTPkT)
-	agentLTKeyARN, logLTPk, err := getInitialValues(kms, ds.GetInstanceId(), ds.GetClientId(), logReaderId /*@, t0, rid @*/)
-	dc.secrets.agentLTKeyARN = agentLTKeyARN
-	dc.logLTPk = logLTPk
+	agentLTKeyARN, logLTPk, err := getInitialValues(kms /*@, t0, rid @*/)
 	if err != nil {
 		// @ fold iospec.phiRF_Agent_17(t0, rid, s0)
 		// @ fold iospec.P_Agent(t0, rid, s0)
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
-		return fmtError("failed to initialize KMS service")
+		return fmtError("failed to initialize KMS key values")
 		// return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
+	dc.secrets.agentLTKeyARN = agentLTKeyARN
+	dc.logLTPk = logLTPk
 	dc.kmsService = kms
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
 	// @ unfold dc.IoSpecMemMain()
@@ -194,7 +194,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 // @ 	iospec.get_e_Setup_Agent_r4(t, rid) == old(iospec.get_e_Setup_Agent_r4(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
-func getInitialValues(kmsService *crypto.KMSService, agentId string, clientId string, logReaderId string /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
+func getInitialValues(kmsService *crypto.KMSService /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
 	metadata, err := kmsService.CreateKeyAssymetric()
 	if err != nil {
 		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)

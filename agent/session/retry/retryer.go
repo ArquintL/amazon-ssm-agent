@@ -65,7 +65,7 @@ func (retryer *ExponentialRetryer) Call() (channel interface{}, err error) {
 	failedAttemptsSoFar := 0
 	for {
 		channel, err := retryer.CallableFunc()
-		if err == nil || failedAttemptsSoFar == retryer.MaxAttempts || retryer.isNonRetryableError(err) {
+		if err == nil || failedAttemptsSoFar == retryer.MaxAttempts || retryer.isNonRetryableError(err) { //argot:ignore
 			return channel, err
 		}
 		sleep, exceedMaxDelay := retryer.NextSleepTime(attempt)

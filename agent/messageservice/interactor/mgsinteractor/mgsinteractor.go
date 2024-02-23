@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -185,8 +184,8 @@ func (mgs *MGSInteractor) Initialize() (err error) {
 
 	log.Info("SSM Agent is trying to setup control channel for MGSInteractor")
 	mgs.controlChannel, err = setupControlChannel(mgs.context, mgs.mgsService, mgs.agentConfig.InstanceID, mgs.incomingAgentMessageChan)
-	if err != nil {
-		log.Errorf("Error setting up control channel: %v", err)
+	if err != nil { //argot:ignore
+		log.Errorf("Error setting up control channel")
 		return err
 	}
 	log.Info("Set up control channel successfully")
@@ -256,9 +255,9 @@ func (mgs *MGSInteractor) listenReply() {
 	log.Info("listen reply thread in MGS interactor started")
 	defer func() {
 		log.Info("listen reply thread in MGS interactor ended")
-		if r := recover(); r != nil {
+		if r := recover(); r != nil { //argot:ignro
 			log.Errorf("listen reply in mgsinteractor panicked: \n%v", r)
-			log.Errorf("Stacktrace:\n%s", debug.Stack())
+			// log.Errorf("Stacktrace:\n%s", debug.Stack())
 			time.Sleep(2 * time.Second)
 			go mgs.listenReply()
 		}
@@ -267,7 +266,7 @@ func (mgs *MGSInteractor) listenReply() {
 externalLoop:
 	for {
 		select {
-		case reply, isOpen := <-mgs.replyChan:
+		case reply, isOpen := <-mgs.replyChan: //argot:ignore
 			if !isOpen {
 				log.Info("reply channel closed")
 				break externalLoop
@@ -299,27 +298,27 @@ func (mgs *MGSInteractor) listenIncomingAgentMessages() {
 	log.Info("listen incoming messages thread in MGS interactor started")
 	defer func() {
 		log.Info("listen incoming messages thread in MGS interactor ended")
-		if r := recover(); r != nil {
+		if r := recover(); r != nil { //argot:ignore
 			log.Errorf("listen incoming messages panic: \n%v", r)
-			log.Errorf("Stacktrace:\n%s", debug.Stack())
+			// log.Errorf("Stacktrace:\n%s", debug.Stack())
 			time.Sleep(2 * time.Second)
 			go mgs.listenIncomingAgentMessages()
 		}
 	}()
 
-	for agentMessage := range mgs.incomingAgentMessageChan {
+	for agentMessage := range mgs.incomingAgentMessageChan { //argot:ignore
 		log.Infof("Processing AgentMessage: MessageType - %s, Id - %s", agentMessage.MessageType, agentMessage.MessageId)
-		switch agentMessage.MessageType {
-		case mgsContracts.AgentJobMessage:
+		switch agentMessage.MessageType { //argot:ignore
+		case mgsContracts.AgentJobMessage: //argot:ignore
 			mgs.processAgentJobMessage(agentMessage)
-		case mgsContracts.InteractiveShellMessage, mgsContracts.ChannelClosedMessage:
+		case mgsContracts.InteractiveShellMessage, mgsContracts.ChannelClosedMessage: //argot:ignore
 			mgs.processSessionRelatedMessages(agentMessage)
-		case mgsContracts.TaskAcknowledgeMessage:
+		case mgsContracts.TaskAcknowledgeMessage: //argot:ignore
 			mgs.processTaskAcknowledgeMessage(agentMessage)
-		case mgsContracts.AgentJobReplyAck:
+		case mgsContracts.AgentJobReplyAck: //argot:ignore
 			mgs.processJobReplyAck(log, agentMessage)
-		default:
-			log.Errorf("invalid message type in message: %+v", agentMessage)
+		default: //argot:ignore
+			log.Error("invalid message type in message")
 		}
 	}
 }
@@ -339,7 +338,7 @@ func (mgs *MGSInteractor) processSessionRelatedMessages(agentMessage mgsContract
 	var errorCode messagehandler.ErrorCode
 	retryLimit := 5
 	// 5 retries for ProcessorBufferFull. This should not happen most of the time as we have a higher default session limit.
-	for retryNumber := 1; retryNumber <= retryLimit; retryNumber++ {
+	for retryNumber := 1; retryNumber <= retryLimit; retryNumber++ { //argot:ignore
 		errorCode = mgs.messageHandler.Submit(docState)
 		if errorCode == messagehandler.ProcessorBufferFull && retryNumber != retryLimit {
 			log.Errorf("received error code while checking processor buffer space for session messages %v", errorCode)
@@ -393,21 +392,22 @@ func (mgs *MGSInteractor) processAgentJobMessage(agentMessage mgsContracts.Agent
 	docState, err := agentMessage.ParseAgentMessage(mgs.context, commandOrchestrationRootDir, mgs.agentConfig.InstanceID)
 	// just dropping all errors - MDS will take care of these messages
 	// we should handle few errors differently in future
-	if err != nil {
+	if err != nil { //argot:ignore
 		log.Errorf("dropping message because cannot parse AgentJob message %s to Document State, err: %v", agentMessage.MessageId.String(), err)
 		return
 	} else {
 
 		log.Debugf("pushing AgentJob message %s to MessageHandler incoming message chan", agentMessage.MessageId.String())
 		errorCode := mgs.messageHandler.Submit(docState)
-		if errorCode != "" {
-			if _, ok := mgs.ackSkipCodes[errorCode]; ok {
+		if errorCode != "" { //argot:ignore
+			if _, ok := mgs.ackSkipCodes[errorCode]; ok { //argot:ignore
 				log.Warnf("dropping message %v because of error code %v", docState.DocumentInformation.DocumentID, errorCode)
 				return
 			}
 		}
 		err = mgs.buildAgentJobAckMessageAndSend(agentMessage.MessageId, docState.DocumentInformation.MessageID, agentMessage.CreatedDate)
-		if err != nil { // proceed without returning during error as the doc would have been already persisted
+		if err != nil { //argot:ignore
+			// proceed without returning during error as the doc would have been already persisted
 			log.Errorf("could not send ack for message %v because of error: %v", docState.DocumentInformation.DocumentID, err)
 		}
 
@@ -521,7 +521,7 @@ var setupControlChannel = func(context context.T, mgsService service.Service, in
 	}
 	retryer.Init()
 	channel, err := retryer.Call()
-	if err != nil {
+	if err != nil { //argot:ignore
 		// should never happen
 		return nil, err
 	}

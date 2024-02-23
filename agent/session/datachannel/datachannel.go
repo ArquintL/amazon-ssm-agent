@@ -29,6 +29,9 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/cryptolib"
 )
 
+// errHandshake is a generic error message to avoid leaking any information to an attacker.
+var errHandshake = errors.New("failed to execute handshake operation")
+
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
