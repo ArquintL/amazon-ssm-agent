@@ -264,14 +264,6 @@ func (dataStream *DataStream) GetChannelId() string {
 	return dataStream.ChannelId
 }
 
-func (dataStream *DataStream) GetClientId() string {
-	return dataStream.ClientId
-}
-
-func (dataStream *DataStream) GetInstanceId() string {
-	return dataStream.InstanceId
-}
-
 func (dataStream *DataStream) GetRegion() string {
 	return dataStream.Service.GetRegion()
 }

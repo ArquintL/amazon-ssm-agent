@@ -148,7 +148,7 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	//@ fold dc.MemInternal(HandshakeCompleted)
 	//@ fold dc.Mem()
 
-	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, perm(1/2), inputDataT, true, false @*/); err != nil {
+	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, inputDataT, true, false @*/); err != nil {
 		return err
 	}
 

@@ -192,8 +192,8 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	//@ dc.ioLockCanRemoteSend = false
 	//@ dc.ioLockDidRemoteReceive = false
 	//@ dc.ioLockCanLocalSend = false
-	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
-	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
+	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>)
 
 	payload = MessageReceptionPayload{
 		status: ReceiveOtherResponse,

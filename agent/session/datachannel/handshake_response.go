@@ -283,7 +283,7 @@ func (dc *dataChannel) verifySecureSessionResponse(log logger.T, action *mgsCont
 		return
 	}
 
-	agentId := dc.dataStream.GetInstanceId()
+	agentId := dc.instanceId
 	//@ fold dc.MemTransfer(state, true)
 	
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
@@ -480,7 +480,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
 	// sign ciphertext containing session keys using KMS:
-	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.dataStream.GetClientId())
+	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.clientId)
 	if err != nil {
 		//@ fold dc.MemTransfer(state, true)
 		err = fmtErrorf("failed to encode sign session keys payload", err /*@, perm(1/1) @*/)
@@ -563,7 +563,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing(log logger.T) (st
 	//@ s5 := ft.U(l3, r3, s4)
 
 	// send ciphertext containing session keys and the corresponding signature to the log server:
-	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.dataStream.GetInstanceId(), dc.agentLTKeyARN, dc.dataStream.GetClientId())
+	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.instanceId, dc.agentLTKeyARN, dc.clientId)
 	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)

@@ -1,5 +1,12 @@
 package context
 
+import (
+    identity "github.com/aws/amazon-ssm-agent/common/identity"
+)
+
 type T interface {
     pred Mem()
+
+    ensures i != nil && acc(i.Mem(), _)
+    Identity() (i identity.IAgentIdentity)
 }

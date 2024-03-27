@@ -130,6 +130,20 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(s), p)
+// @ ensures  bytes.SliceMem(res) && abs.Abs(s) == abs.Abs(res)
+func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
+	res = make([]byte, len(s))
+	//@ unfold acc(bytes.SliceMem(s), p)
+	copy(res, s /*@, p/2 @*/)
+	//@ fold acc(bytes.SliceMem(s), p)
+	//@ fold bytes.SliceMem(res)
+	// TODO: since `Abs` is not axiomatized to express that it only depends
+	// on the content of a byte slice, we have to assume this equality for now:
+	//@ assume abs.Abs(s) == abs.Abs(res)
+}
+
 // GetClientVersion returns version of the client
 // @ requires noPerm < p
 // @ preserves acc(dc.Mem(), p)
@@ -151,7 +165,7 @@ func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string,
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetInstanceId(), nil
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.instanceId, nil
 }
 
 // GetRegion returns aws region of the target

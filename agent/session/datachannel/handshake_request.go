@@ -103,8 +103,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 		dc.state.agentSecret = agentSecret
 
-		clientId := dc.dataStream.GetClientId()
-		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, clientId, dc.logReaderId)
+		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
 		if err != nil {
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
@@ -112,7 +111,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			logError(log, err /*@, perm(1/2) @*/)
 			return nil, err
 		}
-		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(clientId))))
+		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(dc.clientId))))
 
 		// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
 		/*@
@@ -337,7 +336,7 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ fold dc.MemInternal(HandshakeRequestSent)
 	//@ fold dc.Mem()
 
-	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, perm(1/2), secActionT, false, false @*/); err != nil {
+	if err = dc.sendData(log, mgsContracts.HandshakeRequest, handshakeRequestPayloadBytes /*@, secActionT, false, false @*/); err != nil {
 		return fmtErrorf("Failed sending of HandshakeRequest message, err", err /*@, perm(1/1) @*/)
 	}
 	return nil

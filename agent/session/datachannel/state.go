@@ -33,30 +33,34 @@ const (
 )
 
 /*@
-// since Gobra is struggling with generating a refinement proof of the interface
-// if quantified permissions appear in specification, we wrap these permissions in
-// the following two predicates:
-pred SendStreamDataMessageWand(t pl.Place, rid tm.Term, inputData []byte, inputDataT tm.Term, p perm) {
-	noPerm < p && p <= writePerm &&
-	(pl.token(t) && iospec.e_InFact(t, rid)) --* (acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData) && inputDataT == old[#lhs](iospec.get_e_InFact_r1(t, rid)) && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t, rid))))
-}
+// the body of this predicate is only provided for illustration purposes
+// obtaining `bytes.SliceMem(inputData)` is however only possible by
+// applying `SendStreamDataMessageViewShift` and, thus, giving up the
+// corresponding token and fact.
+pred SendStreamDataMessageViewShiftFootprint(inputData []byte) // {
+// 	bytes.SliceMem(inputData)
+// }
 
-pred QuantifiedSendStreamDataMessageWand(inputData []byte, inputDataT tm.Term, p perm) {
-	forall t pl.Place, rid tm.Term :: { SendStreamDataMessageWand(t, rid, inputData, inputDataT, p) } SendStreamDataMessageWand(t, rid, inputData, inputDataT, p)
-}
+ghost
+decreases
+requires pl.token(t) && iospec.e_InFact(t, rid)
+requires SendStreamDataMessageViewShiftFootprint(inputData)
+ensures  pl.token(old(iospec.get_e_InFact_placeDst(t, rid)))
+ensures  bytes.SliceMem(inputData) && by.gamma(inputDataT) == abs.Abs(inputData)
+ensures  inputDataT == old(iospec.get_e_InFact_r1(t, rid))
+func SendStreamDataMessageViewShift(t pl.Place, rid tm.Term, inputData []byte) (inputDataT tm.Term)
 @*/
 
 type IDataChannel interface {
 
 	//@ pred Mem()
 
-	// @ requires log != nil && noPerm < p
-	// @ requires QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
-	// @ preserves Mem()
-	// @ preserves acc(log.Mem(), _)
+	// @ requires log != nil
+	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
+	// @ preserves Mem() && acc(log.Mem(), _)
 	// @ ensures  err != nil ==> err.ErrorMem()
-	// @ ensures  inputProcessed ? acc(bytes.SliceMem(inputData), p) : QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
-	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error /*@, ghost inputProcessed bool @*/)
+	// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/)
 
 	// @ requires log != nil
 	// @ preserves Mem() && acc(log.Mem(), _)
@@ -152,8 +156,10 @@ type dataChannel struct {
 	logReaderId   string
 	logLTPk       *rsa.PublicKey
 
+	instanceId string
+	clientId string
+
 	// TODO: mark the following fields as ghost as soon as Gobra supports ghost fields
-	//@ msgHandlerCtx StreamDataHandlerContext
 	//@ ioLock *sync.Mutex
 	//@ ioLockDidLocalReceive bool
 	//@ ioLockCanRemoteSend bool
@@ -215,27 +221,19 @@ func (dc *dataChannel) getState() DataChannelState {
 }
 
 /*@
-type StreamDataHandlerContext interface {
-	pred Inv()
-}
-
 // this is non-ghost because it's the spec for a non-ghost closure implementation
-requires ctx != nil && log != nil
-requires agentMessage.Mem()
+requires log != nil && agentMessage.Mem()
 requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
-preserves ctx.Inv() && acc(log.Mem(), _)
-ensures err == nil ==> agentMessage.Mem()
+preserves acc(log.Mem(), _)
 ensures err != nil ==> err.ErrorMem()
 ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))) 
 ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
-func StreamDataHandlerSpec(ghost ctx StreamDataHandlerContext, log logger.T, agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
+func StreamDataHandlerSpec(log logger.T, agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
 
 pred (dc *dataChannel) RecvRoutineMem() {
 	dc != nil &&
 	acc(&dc.inputStreamMessageHandler) &&
-	acc(&dc.msgHandlerCtx) &&
-	dc.msgHandlerCtx != nil && dc.msgHandlerCtx.Inv() &&
-	dc.inputStreamMessageHandler implements StreamDataHandlerSpec{dc.msgHandlerCtx} &&
+	dc.inputStreamMessageHandler implements StreamDataHandlerSpec{} &&
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(dc.hs.startReceivingChan.RecvChannel(), _) &&
 	dc.hs.startReceivingChan.RecvGivenPerm() == PredTrue!<!> &&
@@ -317,6 +315,8 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		acc(&dc.agentLTKeyARN) &&
 		acc(&dc.logReaderId) &&
 		acc(&dc.logLTPk) &&
+		acc(&dc.instanceId) &&
+		acc(&dc.clientId) &&
 		acc(&dc.ioLock)) &&
 	(state != Erroneous && state < IODistributed ==>
 		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
@@ -332,8 +332,8 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		dc.IoSpecMemMain() &&
 		pl.token(dc.getToken()) &&
 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
-		tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
-		tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
+		tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.getAgentIdT() &&
+		tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.getClientIdT() &&
 		tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
 		by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()) &&
 	(state == Initialized ==>
@@ -365,73 +365,10 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
 	(state == IODistributed ==>
 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
-		// acc(dc.LocalInFactTMem(), 1/2) && acc(dc.RemoteOutFactTMem(), 1/2) &&
-		// acc(dc.IoSpecMemPartial(), 1/2) &&
 		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
 		dc.LocalInFactTMem() && dc.RemoteOutFactTMem() &&
-		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>)
 }
-
-// permissions in `RecvRoutineMem` are already subtracted:
-// pred (dc *dataChannel) Mem2() {
-// 	dc != nil &&
-// 	acc(&dc.dataChannelState, 1/2) &&
-// 	(dc.dataChannelState != IODistributed ==>
-// 		acc(&dc.dataChannelState, 1/2)) &&
-// 	(dc.dataChannelState != Erroneous ==>
-// 		acc(dc.MemFields(dc.dataChannelState), 1/2)) &&
-// 	(dc.dataChannelState != Erroneous && dc.dataChannelState < IODistributed ==>
-// 		acc(dc.MemFields(dc.dataChannelState), 1/2)) &&
-// 	// (let p := (dc.dataChannelState != Erroneous && dc.dataChannelState < IODistributed) ? writePerm : (dc.dataChannelState != Erroneous ? 1/2 : noPerm) in
-// 	//	acc(dc.MemFields(dc.dataChannelState), p)) &&
-// 	(dc.dataChannelState >= Initialized && dc.dataChannelState < IODistributed ==>
-// 		dc.IoSpecMem() &&
-// 		pl.token(dc.getToken()) &&
-// 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
-// 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
-// 		//tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
-// 		//tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
-// 		by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()) &&
-// 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
-// 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
-// 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
-// 	acc(dc.hs.responseChan.RecvChannel(), _) &&
-// 	dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
-// 	dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
-// 	(dc.dataChannelState == Initialized ==>
-// 		!dc.hs.skipped) &&
-// 	(dc.dataChannelState == HandshakeSkipped ==>
-// 		dc.hs.skipped) &&
-// 	(dc.dataChannelState >= BlockCipherInitialized ==>
-// 		!dc.hs.skipped &&
-// 		dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
-// 		dc.blockCipher != nil && dc.blockCipher.Mem()) &&
-// 	(dc.dataChannelState >= AgentSecretCreatedAndSigned && dc.dataChannelState < HandshakeCompleted ==>
-// 		bytes.SliceMem(dc.state.agentSecret) &&
-// 		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.state.agentSecret)) &&
-// 	(dc.dataChannelState >= BlockCipherReady && dc.encryptionEnabled ==>
-// 		dc.blockCipher.IsReady()) &&
-// 	(dc.dataChannelState >= BlockCipherReady && dc.dataChannelState < IODistributed && dc.encryptionEnabled ==>
-// 		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-// 		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT())) &&
-// 	// relate state to abstract state:
-// 	(dc.dataChannelState == Initialized || dc.dataChannelState == BlockCipherInitialized ==>
-// 		ft.Setup_Agent(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT()) in dc.getAbsState()) &&
-// 	(dc.dataChannelState == AgentSecretCreatedAndSigned ==>
-// 		ft.St_Agent_2(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
-// 	(dc.dataChannelState == HandshakeRequestSent ==>
-// 		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
-// 	(dc.dataChannelState == BlockCipherReady ==>
-// 		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
-// 	(dc.dataChannelState == HandshakeCompleted ==>
-// 		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
-// 	(dc.dataChannelState == IODistributed ==>
-// 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
-// 		// acc(dc.LocalInFactTMem(), 1/2) && acc(dc.RemoteOutFactTMem(), 1/2) &&
-// 		acc(dc.IoSpecMemPartial(), 1/4) &&
-// 		acc(&dc.ioLockDidLocalReceive, 1/2) && acc(&dc.ioLockCanRemoteSend, 1/2) )// &&
-// 		//acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
-// }
 
 // `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
 // TODO move below `MemTransfer`
@@ -445,9 +382,6 @@ pred (dc *dataChannel) MemRecv() {
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
-	// acc(dc.hs.responseChan.RecvChannel(), _) &&
-	// dc.hs.responseChan.RecvGivenPerm() == PredTrue!<!> &&
-	// dc.hs.responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!> &&
 	acc(&dc.dataStream, 1/2) &&
 	acc(&dc.hs.clientVersion, 1/2) &&
 	acc(&dc.hs.error, 1/2) &&
@@ -465,6 +399,8 @@ pred (dc *dataChannel) MemRecv() {
 	acc(&dc.agentLTKeyARN, 1/2) &&
 	acc(&dc.logReaderId, 1/2) &&
 	acc(&dc.logLTPk, 1/2) &&
+	acc(&dc.instanceId, 1/2) &&
+	acc(&dc.clientId, 1/2) &&
 	acc(dc.dataStream.Mem(), 1/2) &&
 	acc(dc.state.kmsService.Mem(), 1/2) &&
 	acc(dc.logLTPk.Mem(), 1/2) &&
@@ -474,7 +410,7 @@ pred (dc *dataChannel) MemRecv() {
 	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT()) &&
 	acc(&dc.ioLockCanLocalSend, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2) &&
 	acc(dc.LocalOutFactTMem(), 1/2) && acc(dc.RemoteInFactTMem(), 1/2) &&
-	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>
+	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>
 }
 
 // `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
@@ -498,6 +434,8 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	acc(&dc.agentLTKeyARN) &&
 	acc(&dc.logReaderId) &&
 	acc(&dc.logLTPk) &&
+	acc(&dc.instanceId) &&
+	acc(&dc.clientId) &&
 	dc.dataStream.Mem() &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
 	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
@@ -505,14 +443,13 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	!dc.hs.skipped &&
 	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
 	dc.blockCipher != nil && dc.blockCipher.Mem() &&
-	// dc.IoSpecMem() &&
 	dc.IoSpecMemMain() &&
 	dc.IoSpecMemPartial() &&
 	(state != Erroneous ==>
 		pl.token(dc.getToken()) &&
 		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())) &&
-	tm.pubTerm(pub.pub_msg(dc.dataStream.GetInstanceId())) == dc.getAgentIdT() &&
-	tm.pubTerm(pub.pub_msg(dc.dataStream.GetClientId())) == dc.getClientIdT() &&
+	tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.getAgentIdT() &&
+	tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.getClientIdT() &&
 	tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
 	by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs() &&
 	(encryptionEnabled ==>

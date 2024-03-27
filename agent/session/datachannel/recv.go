@@ -36,9 +36,8 @@ import (
 
 // processStreamDataMessage gets called for all messages of type OutputStreamDataMessage
 // @ requires log != nil
-// @ requires datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
+// @ requires datastream.StreamDataHandlerFootprint(streamDataMessage)
 // @ preserves acc(log.Mem(), _) && dc.RecvRoutineMem()
-// @ ensures err == nil ==> streamDataMessage.Mem()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
@@ -58,11 +57,8 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := iospec.get_e_InFact_r1(t0, rid)
+		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
-		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
-		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
 		//@ unfold dc.IoSpecMemMain()
 		//@ unfold dc.IoSpecMemPartial()
 		//@ dc.setToken(t1)
@@ -106,7 +102,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 		
 		//@ t0 := dc.getToken()
 		//@ rid := dc.getRid()
@@ -114,11 +110,8 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := iospec.get_e_InFact_r1(t0, rid)
+		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
-		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
-		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
 
 		//@ unfold dc.IoSpecMemMain()
 		//@ dc.setToken(t1)
@@ -127,7 +120,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ dc.ioLockDidRemoteReceive = true
 		//@ fold dc.IoSpecMemMain()
 		
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
 
@@ -166,7 +159,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 
 		// ----- start internal I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 		//@ t1 = dc.getToken()
 		//@ s1 = dc.getAbsState()
 		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
@@ -206,13 +199,13 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ dc.ioLockCanLocalSend = true
 		//@ fold dc.IoSpecMemMain()
 
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end internal I/O operation -----
 
 		// ----- start internal send I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 
 		//@ t2 = dc.getToken()
 		//@ s2 = dc.getAbsState()
@@ -223,14 +216,14 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = dc.inputStreamMessageHandler(log, streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
+		err = dc.inputStreamMessageHandler(log, streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{} @*/
 		//@ fold dc.RecvRoutineMem()
 
 		if err != nil {
 			//@ unfold acc(dc.MemRecv(), 1/2)
 			//@ fold iospec.phiRG_Agent_13(t2, rid, s2)
 			//@ fold iospec.P_Agent(t2, rid, s2)
-			//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+			//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 			//@ dc.ioLock.Unlock()
 			//@ fold acc(dc.MemRecv(), 1/2)
 			dc.resendReceiveOtherResponse()
@@ -244,7 +237,7 @@ func (dc *dataChannel) processStreamDataMessage(log logger.T, streamDataMessage 
 		//@ dc.ioLockCanLocalSend = false
 		//@ fold dc.IoSpecMemMain()
 
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end internal send I/O operation -----
 
