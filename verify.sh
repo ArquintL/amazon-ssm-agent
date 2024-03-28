@@ -16,4 +16,6 @@ INPUT_FILES="\
 java -Xss128m -jar $GOBRA_JAR \
     --module "github.com/aws/amazon-ssm-agent" \
     --include ".verification" --include "." \
-    --input $INPUT_FILES
+    --input $INPUT_FILES \
+    --parseAndTypeCheckMode PARALLEL \
+    --parallelizeBranches
