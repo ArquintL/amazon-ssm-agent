@@ -39,10 +39,12 @@ pred (bc *BlockCipherT) Mem() {
 pred (bc *BlockCipherT) EncKeyTMem()
 
 ghost
+decreases _
 requires acc(bc.EncKeyTMem(), _)
 pure func (bc *BlockCipherT) getEncKeyT() tm.Term
 
 ghost
+decreases
 requires acc(bc.Mem(), _)
 ensures  bc.IsReady() ==> by.gamma(res) == bc.GetEncKeyB()
 pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
@@ -50,12 +52,14 @@ pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
 }
 
 ghost
+decreases
 requires acc(bc.Mem(), _) && bc.IsReady()
 pure func (bc *BlockCipherT) GetEncKeyB() by.Bytes {
 	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.encryptionKey)
 }
 
 ghost
+decreases _
 preserves bc.EncKeyTMem()
 ensures bc.getEncKeyT() == encKeyT
 func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
@@ -63,27 +67,32 @@ func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
 pred (bc *BlockCipherT) DecKeyTMem()
 
 ghost
+decreases _
 requires acc(bc.DecKeyTMem(), _)
 pure func (bc *BlockCipherT) getDecKeyT() tm.Term
 
 ghost
+decreases
 requires acc(bc.Mem(), _)
 pure func (bc *BlockCipherT) GetDecKeyT() tm.Term {
 	return unfolding acc(bc.Mem(), _) in bc.getDecKeyT()
 }
 
 ghost
+decreases
 requires acc(bc.Mem(), _) && bc.IsReady()
 pure func (bc *BlockCipherT) GetDecKeyB() by.Bytes {
 	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.decryptionKey)
 }
 
 ghost
+decreases _
 preserves bc.DecKeyTMem()
 ensures bc.getDecKeyT() == decKeyT
 func (bc *BlockCipherT) setDecKeyT(decKeyT tm.Term)
 @*/
 
+// @ decreases
 // @ requires acc(bc.Mem(), _)
 // @ pure
 func (bc *BlockCipherT) IsReady() bool {
@@ -92,9 +101,9 @@ func (bc *BlockCipherT) IsReady() bool {
 
 // @ trusted
 // @ requires noPerm < p
-// @ requires bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
+// @ requires bc.Mem() && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
 // @ requires by.gamma(readKeyT) == abs.Abs(readKey) && by.gamma(writeKeyT) == abs.Abs(writeKey)
-// @ ensures  bc.Mem() && acc(log.Mem(), _) && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
+// @ ensures  bc.Mem() && acc(bytes.SliceMem(readKey), p) && acc(bytes.SliceMem(writeKey), p)
 // @ ensures  err == nil ==> bc.IsReady() && bc.GetEncKeyT() == writeKeyT && bc.GetDecKeyT() == readKeyT
 // @ ensures  err != nil ==> err.ErrorMem()
 func (bc *BlockCipherT) UpdateEncryptionKeys(readKey, writeKey []byte /*@, ghost p perm, ghost readKeyT tm.Term, ghost writeKeyT tm.Term @*/) (err error) {
@@ -110,15 +119,13 @@ func (bc *BlockCipherT) UpdateEncryptionKeys(readKey, writeKey []byte /*@, ghost
 // @ trusted
 // @ requires noPerm < p
 // @ requires acc(bytes.SliceMem(cipherTextBlob), p)
-// @ preserves bc.Mem() && acc(log.Mem(), _)
+// @ preserves bc.Mem()
 // @ ensures err != nil ==> err.ErrorMem()
 func (bc *BlockCipherT) UpdateEncryptionKey(cipherTextBlob []byte, _, _ string /*@, ghost p perm @*/) (err error) {
 	const keyLen = 32 // key length in bytes
 	bc.cipherTextKey = cipherTextBlob
 	bc.decryptionKey = cipherTextBlob[:keyLen]
 	bc.encryptionKey = cipherTextBlob[keyLen:]
-	// log.Debugf("ENCRYPTION KEY: %x", bc.encryptionKey)
-	// log.Debugf("DECRYPTION KEY: %x", bc.decryptionKey)
 	enc, err := getAEAD(bc.encryptionKey)
 	bc.encryptionCipher = enc
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 	ft "github.com/aws/amazon-ssm-agent/agent/iospecs/fact"
-	io "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
+	iospec "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
 	pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	. "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
@@ -30,23 +30,30 @@ type Calls interface {
 	pred Inv()
 }
 
-pred StreamDataHandlerSpecWand(t pl.Place, rid tm.Term, msg *mgsContracts.AgentMessage) {
-	(pl.token(t) && io.e_InFact(t, rid)) --* (msg.Mem() && by.gamma(old[#lhs](io.get_e_InFact_r1(t, rid))) == msg.Abs() && pl.token(old[#lhs](io.get_e_InFact_placeDst(t, rid))))
-}
-
-pred QuantifiedStreamDataHandlerSpecWand(msg *mgsContracts.AgentMessage) {
-	forall t pl.Place, rid tm.Term :: { StreamDataHandlerSpecWand(t, rid, msg) } StreamDataHandlerSpecWand(t, rid, msg)
-}
+// the body of this predicate is only provided for illustration purposes
+// obtaining `msg.Mem()` is however only possible by
+// applying `SendStreamDataMessageViewShift` and, thus, giving up the
+// corresponding token and fact.
+pred StreamDataHandlerFootprint(msg *mgsContracts.AgentMessage) // {
+// 	msg.Mem()
+// }
 
 ghost
-requires cs != nil && log != nil
-requires QuantifiedStreamDataHandlerSpecWand(msg)
-preserves cs.Inv() && acc(log.Mem(), _)
-ensures err == nil ==> msg.Mem()
-ensures err != nil ==> err.ErrorMem()
-func StreamDataHandlerSpec(ghost cs Calls, log logger.T, msg *mgsContracts.AgentMessage) (err error)
+decreases
+requires pl.token(t) && iospec.e_InFact(t, rid)
+requires StreamDataHandlerFootprint(msg)
+ensures  pl.token(old(iospec.get_e_InFact_placeDst(t, rid)))
+ensures  msg.Mem() && by.gamma(inputDataT) == msg.Abs()
+ensures  inputDataT == old(iospec.get_e_InFact_r1(t, rid))
+func StreamDataHandlerViewShift(t pl.Place, rid tm.Term, msg *mgsContracts.AgentMessage) (inputDataT tm.Term)
 
-requires acc(context.Mem(), _) && cancelFlag.Mem()
+requires cs != nil
+requires StreamDataHandlerFootprint(msg)
+preserves cs.Inv()
+ensures err != nil ==> err.ErrorMem()
+func StreamDataHandlerSpec(ghost cs Calls, msg *mgsContracts.AgentMessage) (err error)
+
+requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
 // the following precondition allows `NewDataStream` or a started go routine to invoke `streamDataHandler`:
 requires cs != nil && cs.Inv() && streamDataHandler implements StreamDataHandlerSpec{cs}
 ensures  err == nil ==> res.Mem() && res.GetChannelId() == channelId
@@ -54,18 +61,20 @@ ensures  err != nil ==> err.ErrorMem()
 func NewDataStream(context ctx.T,
 	channelId string,
 	clientId string,
-	streamDataHandler func(log logger.T, msg *mgsContracts.AgentMessage) error,
+	logReaderId string,
+	streamDataHandler func(msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag,
 	ghost cs Calls) (res *DataStream, err error)
 
 // since `Send` internally acquires a mutex before sending, a `p` fraction of `datastream.Mem()` is sufficient
-requires log != nil && noPerm < p && acc(bytes.SliceMem(inputData), p)
+requires log != nil && noPerm < p
+requires bytes.SliceMem(inputData)
 requires m == tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)
-requires pl.token(t) && io.e_OutFact(t, rid, m) && by.gamma(inputDataT) == abs.Abs(inputData)
+requires pl.token(t) && iospec.e_OutFact(t, rid, m) && by.gamma(inputDataT) == abs.Abs(inputData)
 preserves acc(datastream.Mem(), p) && acc(log.Mem(), _)
-ensures err != nil ==> err.ErrorMem()
-ensures err == nil ==> pl.token(t1) && t1 == old(io.get_e_OutFact_placeDst(t, rid, m))
-ensures err != nil ==> t1 == t && pl.token(t) && io.e_OutFact(t, rid, m) && io.get_e_OutFact_placeDst(t, rid, m) == old(io.get_e_OutFact_placeDst(t, rid, m))
+ensures  err != nil ==> err.ErrorMem()
+ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_OutFact_placeDst(t, rid, m))
+ensures  err != nil ==> t1 == t && pl.token(t) && iospec.e_OutFact(t, rid, m) && iospec.get_e_OutFact_placeDst(t, rid, m) == old(iospec.get_e_OutFact_placeDst(t, rid, m))
 func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost inputDataT tm.Term, ghost m tm.Term) (err error, ghost t1 pl.Place)
 
 // a fractional permission is sufficient as a lock is internally acquired
@@ -73,25 +82,29 @@ requires noPerm < p
 preserves acc(datastream.Mem(), p)
 func (datastream *DataStream) GetStreamDataSequenceNumber(ghost p perm) int64
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetChannelId() string
+pure func (datastream *DataStream) GetInstanceId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetInstanceId() string
+pure func (datastream *DataStream) GetClientId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetClientId() string
+pure func (datastream *DataStream) GetLogReaderId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) GetRegion() string
+pure func (datastream *DataStream) GetChannelId() string
 
+decreases _
 requires acc(datastream.Mem(), _)
-pure
-func (datastream *DataStream) IsActive() bool
+pure func (datastream *DataStream) GetRegion() string
+
+decreases _
+requires acc(datastream.Mem(), _)
+pure func (datastream *DataStream) IsActive() bool
 
 // the cancel flag internally acquires a lock thus making read-only
 // permissions sufficient
@@ -103,17 +116,11 @@ func (datastream *DataStream) CancelSession(ghost p perm)
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
 ensures err != nil ==> err.ErrorMem()
-// ensures datastream.GetChannelId() == old(datastream.GetChannelId())
-// ensures datastream.GetClientId() == old(datastream.GetClientId())
-// ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
 func (datastream *DataStream) Close(log logger.T, ghost p perm) (err error)
 
 // we assume that `PrepareToCloseChannel` is thread-safe
 requires noPerm < p
 preserves acc(datastream.Mem(), p)
-// ensures datastream.GetChannelId() == old(datastream.GetChannelId())
-// ensures datastream.GetClientId() == old(datastream.GetClientId())
-// ensures datastream.GetInstanceId() == old(datastream.GetInstanceId())
 func (datastream *DataStream) PrepareToCloseChannel(log logger.T, ghost p perm)
 
 requires noPerm < p

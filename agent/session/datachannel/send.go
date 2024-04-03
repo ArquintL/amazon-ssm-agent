@@ -38,26 +38,27 @@ import (
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
 // @ requires log != nil
-// @ requires QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
+// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
 // @ preserves dc.Mem()
 // @ preserves acc(log.Mem(), _)
-// @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term @*/) (err error) {
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/) {
 	if dc.getState() != IODistributed {
-		return fmtErrorInvalidState(dc.getState())
+		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
 	}
 
 	if payloadType != mgsContracts.Output && payloadType != mgsContracts.StdErr && payloadType != mgsContracts.ExitCode {
-		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType)
+		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType) /*@, false @*/
 	}
 
 	//@ unfold dc.Mem()
 	//@ unfold acc(dc.MemInternal(IODistributed), 1/2)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 
 	// ----- start local receive I/O operation -----
 	//@ dc.ioLock.Lock()
-	//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
 	//@ t0 := dc.getToken()
 	//@ s0 := dc.getAbsState()
@@ -67,9 +68,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
 	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, iospec.get_e_InFact_r1(t0, rid)) }
-	//@ unfold QuantifiedSendStreamDataMessageWand(inputData, inputDataT, p)
-	//@ unfold SendStreamDataMessageWand(t0, rid, inputData, inputDataT, p)
-	//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData) && inputDataT == old[#lhs](iospec.get_e_InFact_r1(t0, rid)) && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
+	//@ inputDataT := SendStreamDataMessageViewShift(t0, rid, inputData)
 
 	//@ unfold dc.IoSpecMemMain()
 	//@ dc.setToken(t1)
@@ -78,13 +77,13 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ dc.ioLockDidLocalReceive = true
 	//@ fold dc.IoSpecMemMain()
 
-	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	//@ dc.ioLock.Unlock()
 	// ----- end local receive I/O operation -----
 
 	// ----- start internal I/O operation -----
 	//@ dc.ioLock.Lock()
-	//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	//@ t1 = dc.getToken()
 	//@ s1 = dc.getAbsState()
 	//@ sharedSecretT := dc.getSharedSecretT()
@@ -121,39 +120,50 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ dc.ioLockCanRemoteSend = true
 	//@ fold dc.IoSpecMemMain()
 
-	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	//@ dc.ioLock.Unlock()
 	// ----- end internal I/O operation -----
+
+	if !dc.encryptionEnabled {
+		// since `dataStream.Send` (called within `sendData`) will store `inputData` in a queue to send out possibly later, we duplicate the byte slice
+		// such that callers can reuse the input parameter.
+		// This is necessary since there are clients reusing the same byte slice, which would otherwise result in a data race.
+		// However, this is dead code when we assume that clients enable encryption.
+		inputData = duplicate(inputData /*@, perm(1/2) @*/)
+	}
 
 	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ fold dc.Mem()
 
-	return dc.sendData(log, payloadType, inputData /*@, p/2, inputDataT, true, true @*/)
+	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/) /*@, true @*/
 }
 
-// @ requires log != nil && noPerm < p && p <= writePerm
+// @ requires log != nil
 // @ requires dc.Mem()
 // @ requires requiresEncryption == (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete)
 // @ requires dc.getState() >= (requiresEncryption ? BlockCipherReady : BlockCipherInitialized)
-// @ requires requiresLock ==> dc.getState() == IODistributed && requiresEncryption
-// @ requires requiresLock ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.getRemoteOutFactTInternal() == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
-// @ requires !requiresLock ==> dc.getState() < IODistributed
-// @ requires !requiresLock ==> (requiresEncryption ?
-// @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))) # dc.GetAbsState() > 0 :
-// @ 	ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)) # dc.GetAbsState() > 0)
-// @ requires acc(bytes.SliceMem(inputData), p) && by.gamma(inputDataT) == abs.Abs(inputData)
+// @ requires requiresLock ==>
+// @ 	dc.getState() == IODistributed && requiresEncryption &&
+// @ 	unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.getRemoteOutFactTInternal() == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
+// @ requires !requiresLock ==>
+// @	dc.getState() < IODistributed &&
+// @	(requiresEncryption ?
+// @ 		ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))) # dc.GetAbsState() > 0 :
+// @ 		ft.OutFact_Agent(dc.GetRid(), tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)) # dc.GetAbsState() > 0)
+// @ requires bytes.SliceMem(inputData) && by.gamma(inputDataT) == abs.Abs(inputData)
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem() && dc.getState() == old(dc.getState())
+// @ ensures old(unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in dc.encryptionEnabled) && requiresEncryption ==> bytes.SliceMem(inputData)
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
+func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
 	// @ ghost state := dc.getState()
 	// @ unfold dc.Mem()
 	// @ unfold acc(dc.MemInternal(state), 1/2)
 
 	// If encryption has been enabled, encrypt the payload
 	if dc.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
-		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, p/4 @*/); err != nil {
-			err = fmtErrorfInt64Err("error encrypting stream data message sequence", dc.dataStream.GetStreamDataSequenceNumber( /*@ p/4 @*/ ), err /*@, perm(1/1) @*/)
+		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, perm(1/4) @*/); err != nil {
+			err = fmtErrorfInt64Err("error encrypting stream data message sequence", dc.dataStream.GetStreamDataSequenceNumber( /*@ perm(1/2) @*/ ), err /*@, perm(1/1) @*/)
 			// @ fold acc(dc.MemInternal(state), 1/2)
 			// @ fold dc.Mem()
 			return
@@ -165,12 +175,12 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	// ----- start external send I/O operation -----
 	ghost if requiresLock {
 		dc.ioLock.Lock()
-		unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	} else {
 		unfold acc(dc.MemInternal(state), 1/2)
 	}
 
-	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	t0 := dc.getToken()
 	s0 := dc.getAbsState()
 	sharedSecretT := dc.getSharedSecretT()
@@ -184,13 +194,13 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	@*/
 
 	//@ ghost var t1 pl.Place
-	err /*@, t1 @*/ = dc.dataStream.Send(log, payloadType, inputData /*@, p/4, t0, rid, inputDataT, m @*/)
+	err /*@, t1 @*/ = dc.dataStream.Send(log, payloadType, inputData /*@, perm(1/2), t0, rid, inputDataT, m @*/)
 	if err != nil {
 		/*@
 		fold iospec.phiRG_Agent_13(t0, rid, s0)
 		fold iospec.P_Agent(t0, rid, s0)
 		ghost if requiresLock {
-			fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+			fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 			dc.ioLock.Unlock()
 			fold acc(dc.MemInternal(state), 1/2)
 		} else {
@@ -209,7 +219,7 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	fold dc.IoSpecMemMain()
 	ghost if requiresLock {
 		dc.ioLockCanRemoteSend = false
-		fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		dc.ioLock.Unlock()
 		fold acc(dc.MemInternal(state), 1/2)
 	} else {
@@ -221,15 +231,13 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	return nil
 }
 
-// TODO: treat this function as trusted / unrelated to the security protocol because it
-// does not involve any cryptography. We might have to model in Tamarin that `GetChannelId()`
-// can savely be sent to the network.
-// SendAgentSessionStateMessage sends agent session state to MGS
+// we treat this function has trusted as it does not depend on any secrets negotiated during
+// the handshake. In particular, the channel id and session status is sent.
 // @ trusted
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures dc.getState() == old(dc.getState())
-// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
 	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
 		SchemaVersion: schemaVersion,

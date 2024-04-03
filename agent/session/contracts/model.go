@@ -338,6 +338,7 @@ const (
 
 /*@
 ghost
+decreases
 pure func payloadTypeTerm(payloadType PayloadType) tm.Term {
 	return payloadType == HandshakeRequest ? tm.pubTerm(pub.const_SecureSessionRequest_pub()) :
 		payloadType == HandshakeResponse ? tm.pubTerm(pub.const_SecureSessionResponse_pub()) :
@@ -399,9 +400,19 @@ type KMSEncryptionResponse struct {
 }
 
 type SessionTypeRequest struct {
-	SessionType string      `json:"SessionType"`
-	Properties  interface{} `json:"Properties"`
+	SessionType string      	  `json:"SessionType"`
+	Properties  RequestProperties `json:"Properties"`
 }
+
+type RequestProperties interface {
+	//@ pred Mem()
+}
+
+/*@
+pred (str SessionTypeRequest) Mem() {
+	str.Properties.Mem()
+}
+@*/
 
 // SignAgentSharePayload is the payload sent by the agent to KMS for signing
 type SignAgentSharePayload struct {
@@ -437,8 +448,8 @@ type SecureSessionRequest struct {
 }
 
 /*@
-pred (secureSessionRequest *SecureSessionRequest) Mem() {
-	acc(secureSessionRequest)
+pred (secureSessionRequest SecureSessionRequest) Mem() {
+	true
 }
 @*/
 
@@ -475,6 +486,7 @@ pred (secureSessionResponse *SecureSessionResponse) Mem() {
 }
 
 ghost
+decreases
 requires acc(secureSessionResponse.Mem(), _)
 pure func (secureSessionResponse *SecureSessionResponse) Abs() by.Bytes {
 	return unfolding acc(secureSessionResponse.Mem(), _) in by.tuple4B(
@@ -498,6 +510,17 @@ pred (handshakeRequestPayload *HandshakeRequestPayload) Mem() {
 }
 
 ghost
+decreases
+requires acc(handshakeRequestPayload.Mem(), _)
+pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSessionTypeAction(request SessionTypeRequest) bool {
+	return unfolding acc(handshakeRequestPayload.Mem(), _) in (
+		1 <= len(handshakeRequestPayload.RequestedClientActions) &&
+		handshakeRequestPayload.RequestedClientActions[0].Type() == SessionType &&
+		unfolding acc(handshakeRequestPayload.RequestedClientActions[0].Mem(), _) in handshakeRequestPayload.RequestedClientActions[0].ActionParameters == request)
+}
+
+ghost
+decreases
 requires acc(handshakeRequestPayload.Mem(), _)
 pure func (handshakeRequestPayload *HandshakeRequestPayload) ContainsSecureSessionAction(secActionB by.Bytes) bool {
 	return unfolding acc(handshakeRequestPayload.Mem(), _) in (
@@ -517,16 +540,23 @@ type RequestedClientAction struct {
 /*@
 pred (action *RequestedClientAction) Mem() {
 	acc(action) &&
-	(action.ActionType == SecureSession ==> typeOf(action.ActionParameters) == SecureSessionRequest)
+	(action.ActionType == SessionType ==>
+		typeOf(action.ActionParameters) == SessionTypeRequest &&
+		action.ActionParameters.(SessionTypeRequest).Mem()) &&
+	(action.ActionType == SecureSession ==>
+		typeOf(action.ActionParameters) == SecureSessionRequest &&
+		action.ActionParameters.(SecureSessionRequest).Mem())
 }
 
 ghost
+decreases
 requires acc(action.Mem(), _)
 pure func (action *RequestedClientAction) Type() ActionType {
 	return unfolding acc(action.Mem(), _) in action.ActionType
 }
 
 ghost
+decreases
 requires acc(action.Mem(), _)
 requires unfolding acc(action.Mem(), _) in action.ActionType == SecureSession
 pure func (action *RequestedClientAction) Abs() by.Bytes {
@@ -605,6 +635,7 @@ pred (handshakeResponsePayload *HandshakeResponsePayload) Mem() {
 }
 
 ghost
+decreases
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) Abs() by.Bytes {
 	return handshakeResponsePayload.ContainsSecureSession() ?
@@ -619,6 +650,7 @@ requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) UnknownAbs() by.Bytes
 
 ghost
+decreases
 requires acc(handshakeResponsePayload.Mem(), _)
 pure func (handshakeResponsePayload *HandshakeResponsePayload) ContainsSecureSession() bool {
 	return unfolding acc(handshakeResponsePayload.Mem(), _) in
@@ -693,6 +725,7 @@ pred (handshakeCompletePayload *HandshakeCompletePayload) Mem() {
 }
 
 ghost
+decreases
 requires acc(handshakeCompletePayload.Mem(), _)
 pure func (handshakeCompletePayload *HandshakeCompletePayload) Abs() by.Bytes {
 	return unfolding acc(handshakeCompletePayload.Mem(), _) in

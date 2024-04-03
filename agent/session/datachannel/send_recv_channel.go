@@ -47,24 +47,6 @@ func (dc *dataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (
 }
 
 // @ trusted
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p) && dc.getState() == AgentSecretCreatedAndSigned
-// @ ensures  err == nil ==> ResponseChanInv!<dc, _!>(payload)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveResponse(timeout time.Duration /*@, ghost p perm @*/) (payload ResponseChanPayload, err error) {
-	var ok bool
-	select {
-	case payload, ok = <-dc.hs.responseChan:
-		if !ok {
-			err = fmtError("Channel has been closed")
-		}
-	case <-time.After(timeout):
-		err = fmtError("Timeout occurred waiting for receiving a message on a channel")
-	}
-	return
-}
-
-// @ trusted
 // @ requires acc(responseChan.RecvChannel(), _)
 // @ requires responseChan.RecvGivenPerm() == PredTrue!<!>
 // @ requires responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!>
@@ -73,7 +55,7 @@ func (dc *dataChannel) tryReceiveResponse(timeout time.Duration /*@, ghost p per
 // @ ensures  responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!>
 // @ ensures  err == nil ==> ResponseChanInv!<dc, _!>(payload)
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveResponseAlt(responseChan chan ResponseChanPayload, timeout time.Duration) (payload ResponseChanPayload, err error) {
+func (dc *dataChannel) tryReceiveResponse(responseChan chan ResponseChanPayload, timeout time.Duration) (payload ResponseChanPayload, err error) {
 	var ok bool
 	select {
 	case payload, ok = <-responseChan:
@@ -91,11 +73,13 @@ func (dc *dataChannel) tryReceiveResponseAlt(responseChan chan ResponseChanPaylo
 // Since we do not constrain the result value, the verifier
 // considers both return values for any invocation of `nonDeterministicChoice()`
 ghost
+decreases _
 func nonDeterministicChoice() bool
 
 // this models `tryReceiveMessageReceptionStatus` as Gobra does not yet support the `select` statement
 // we use this function to validate the spec of `tryReceiveMessageReceptionStatus`
 ghost
+decreases _
 preserves dc.RecvRoutineMem()
 ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
 ensures  err != nil ==> err.ErrorMem()
@@ -119,30 +103,7 @@ func (dc *dataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Durati
 // this models `tryReceiveResponse` as Gobra does not yet support the `select` statement
 // we use this function to validate the spec of `tryReceiveResponse`
 ghost
-requires noPerm < p
-preserves acc(dc.Mem(), p) && dc.getState() == AgentSecretCreatedAndSigned
-ensures  err == nil ==> ResponseChanInv!<dc, _!>(payload)
-ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveResponseModel(timeout time.Duration, ghost p perm) (payload ResponseChanPayload, err error) {
-	if nonDeterministicChoice() {
-		unfold acc(dc.Mem(), p)
-		unfold acc(dc.MemInternal(dc.dataChannelState), p)
-		fold PredTrue!<!>()
-		var ok bool
-		payload, ok = <-dc.hs.responseChan
-		fold acc(dc.MemInternal(dc.dataChannelState), p)
-		fold acc(dc.Mem(), p)
-		if !ok {
-			err = fmtError("Channel has been closed")
-			return
-		}
-	} else {
-		err = fmtError("Timeout occurred waiting for receiving a message on a channel")
-	}
-	return
-}
-
-ghost
+decreases _
 requires noPerm < p
 preserves acc(responseChan.RecvChannel(), p)
 preserves responseChan.RecvGivenPerm() == PredTrue!<!>

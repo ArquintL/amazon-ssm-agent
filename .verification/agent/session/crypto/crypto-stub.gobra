@@ -14,24 +14,7 @@ import (
     . "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	. "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
-/*
-type IBlockCipher interface {
 
-    pred Mem()
-
-    requires noPerm < p
-    preserves acc(Mem(), p) && acc(bytes.SliceMem(plainText), p)
-    ensures err == nil ==> bytes.SliceMem(cipherText)
-    ensures err != nil ==> err.ErrorMem()
-    EncryptWithAESGCM(plainText []byte, ghost p perm) (cipherText []byte, err error)
-    
-    requires noPerm < p
-    preserves acc(Mem(), p) && acc(bytes.SliceMem(cipherText), p)
-    ensures err == nil ==> bytes.SliceMem(plainText)
-    ensures err != nil ==> err.ErrorMem()
-    DecryptWithAESGCM(cipherText []byte, ghost p perm) (plainText []byte, err error)
-}
-*/
 type KMSService struct {
     nonEmptyStruct int
 }

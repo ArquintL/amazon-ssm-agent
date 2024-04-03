@@ -20,6 +20,7 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
+	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
@@ -34,10 +35,8 @@ import (
 )
 
 // processStreamDataMessage gets called for all messages of type OutputStreamDataMessage
-// @ requires log != nil
-// @ requires datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
-// @ preserves acc(log.Mem(), _) && dc.RecvRoutineMem()
-// @ ensures err == nil ==> streamDataMessage.Mem()
+// @ requires datastream.StreamDataHandlerFootprint(streamDataMessage)
+// @ preserves dc.RecvRoutineMem()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
@@ -57,11 +56,8 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := iospec.get_e_InFact_r1(t0, rid)
+		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
-		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
-		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
 		//@ unfold dc.IoSpecMemMain()
 		//@ unfold dc.IoSpecMemPartial()
 		//@ dc.setToken(t1)
@@ -105,19 +101,16 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
-
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
+		
 		//@ t0 := dc.getToken()
 		//@ rid := dc.getRid()
 		//@ s0 := dc.getAbsState()
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := iospec.get_e_InFact_r1(t0, rid)
+		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-		//@ unfold datastream.QuantifiedStreamDataHandlerSpecWand(streamDataMessage)
-		//@ unfold datastream.StreamDataHandlerSpecWand(t0, rid, streamDataMessage)
-		//@ apply (pl.token(t0) && iospec.e_InFact(t0, rid)) --* (streamDataMessage.Mem() && by.gamma(old[#lhs](iospec.get_e_InFact_r1(t0, rid))) == streamDataMessage.Abs() && pl.token(old[#lhs](iospec.get_e_InFact_placeDst(t0, rid))))
 
 		//@ unfold dc.IoSpecMemMain()
 		//@ dc.setToken(t1)
@@ -125,8 +118,8 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.setRemoteInFactT(receivedMsgT)
 		//@ dc.ioLockDidRemoteReceive = true
 		//@ fold dc.IoSpecMemMain()
-
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
 
@@ -165,10 +158,10 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		// ----- start internal I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ t1 = dc.getToken()
 		//@ s1 = dc.getAbsState()
-		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 		//@ sharedSecretT := dc.getSharedSecretT()
 		//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
 		//@ clientSecretT := dc.getClientShareT()
@@ -205,13 +198,13 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.ioLockCanLocalSend = true
 		//@ fold dc.IoSpecMemMain()
 
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end internal I/O operation -----
 
 		// ----- start internal send I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
 		//@ t2 = dc.getToken()
 		//@ s2 = dc.getAbsState()
@@ -222,14 +215,14 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = dc.inputStreamMessageHandler(streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{dc.msgHandlerCtx} @*/
+		err = dc.inputStreamMessageHandler(streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{} @*/
 		//@ fold dc.RecvRoutineMem()
 
 		if err != nil {
 			//@ unfold acc(dc.MemRecv(), 1/2)
 			//@ fold iospec.phiRG_Agent_13(t2, rid, s2)
 			//@ fold iospec.P_Agent(t2, rid, s2)
-			//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+			//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 			//@ dc.ioLock.Unlock()
 			//@ fold acc(dc.MemRecv(), 1/2)
 			dc.resendReceiveOtherResponse()
@@ -243,7 +236,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.ioLockCanLocalSend = false
 		//@ fold dc.IoSpecMemMain()
 
-		//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
+		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end internal send I/O operation -----
 

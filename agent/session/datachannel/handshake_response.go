@@ -43,11 +43,11 @@ import (
 )
 
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
-// @ requires log != nil && dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
+// @ requires dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
 // @ requires unfolding streamDataMessage.Mem() in mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, encryptionEnabled) in by.gamma(dc.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
-// @ preserves acc(log.Mem(), _) && dc.RecvRoutineMem()
+// @ preserves dc.RecvRoutineMem()
 // @ ensures  streamDataMessage.Mem()
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) (err error) {
@@ -73,7 +73,6 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	//@ invariant err == nil && !containsSecureSessionAction ==> state == HandshakeRequestSent
 	//@ invariant err == nil && containsSecureSessionAction ==> state == BlockCipherReady
 	//@ invariant err != nil ==> err.ErrorMem()
-	//@ invariant acc(log.Mem(), _)
 	//@ invariant acc(streamDataMessage.Mem(), 1/2)
 	//@ invariant unfolding acc(streamDataMessage.Mem(), 1/2) in
 	//@		mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse &&
@@ -168,10 +167,8 @@ func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeRespon
 	return
 }
 
-// @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
-// @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -179,33 +176,33 @@ func (dc *dataChannel) processSecureSessionResponse(action *mgsContracts.Process
 	state, err = dc.verifySecureSessionResponse(action)
 	if err != nil { //argot:ignore
 		state = Erroneous
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	state, err = dc.completeSecureSessionResponseProcessing()
 	if err != nil { //argot:ignore
 		state = Erroneous
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	return state, nil
 }
 
-// @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/8) && action.IsSuccessfulSecureSession()
 // @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
-// @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
 // @ ensures  err == nil ==> state == HandshakeResponseVerified
-// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
 func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
 	state = HandshakeRequestSent
 	//@ unfold acc(action.Mem(), 1/8)
 	resp, err := unmarshalSecureSessionResponse(action.ActionResult /*@, perm(1/16) @*/)
 	//@ fold acc(action.Mem(), 1/8)
 	if err != nil { //argot:ignore
+		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
-		return state, errHandshake
+		//@ fold dc.MemTransfer(state, true)
+		return state, errHandshake()
 	}
 
 	// decode the client share
@@ -215,7 +212,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	dc.secrets.sharedSecret = sharedSecret
@@ -229,13 +226,13 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	if !equal(dc.secrets.sessionID, sessionIDBytes) { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	//@ receivedMsgT := dc.getInFactT()
@@ -243,7 +240,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ sigYB := by.msgB(resp.Signature)
 	//@ clientLtKeyIdB := by.msgB(resp.ClientLTKeyARN)
 	//@ t0 := dc.getToken()
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ s0 := dc.getAbsState()
 
 	// retrieve the term representation of `clientSecretT`, `sigYT`, and `clientLtKeyIdT` by applying our term-uniqueness assumption of the received message:
@@ -284,17 +281,19 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtError("failed to decode signature")
+		err = errHandshake()
 		return
 	}
 
-	agentId := dc.dataStream.GetInstanceId()
+	agentId := dc.instanceId
 	//@ fold dc.MemTransfer(state, true)
 
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
 	if err != nil { //argot:ignore
+		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
-		err = fmtError("failed to encode client sign payload")
+		//@ fold dc.MemTransfer(state, true)
+		err = errHandshake()
 		return
 	}
 
@@ -328,20 +327,17 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
 	//@ messageT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), AgentId)
-	clientSignPayloadBytesStr := string(clientSignPayloadBytes)
-	sigStr := string(sig)
-	ok, err := dc.kmsService.Verify(resp.ClientLTKeyARN, []byte(sanitizeStr(clientSignPayloadBytesStr)), []byte(sanitizeStr(sigStr)) /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
+	ok, err := dc.kmsService.Verify(resp.ClientLTKeyARN, sanitizeBytes(clientSignPayloadBytes /*@, perm(1/2) @*/), sanitizeBytes(sig /*@, perm(1/2) @*/) /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
 	if !ok {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		err = fmtError("failed to verify signature")
+		err = errHandshake()
 		return
 	}
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		// err = fmtErrorf("failed to verify signature", err /*@, perm(1/1) @*/)
-		err = fmtError("failed to verify signature")
+		err = errHandshake()
 		return
 	}
 
@@ -432,16 +428,14 @@ func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayloa
 	return json.Marshal(payload /*@, perm(1/2) @*/)
 }
 
-// @ requires log != nil
 // @ requires dc.MemTransfer(HandshakeResponseVerified, true)
-// @ preserves acc(log.Mem(), _)
 // @ ensures  dc.MemTransfer(state, true)
 // @ ensures  err == nil ==> state == BlockCipherReady
-// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
 func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChannelState, err error) {
 	state = HandshakeResponseVerified
 	//@ unfold dc.MemTransfer(state, true)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ t0 := dc.getToken()
 	//@ s0 := dc.getAbsState()
 	sharedSecret := dc.secrets.sharedSecret
@@ -451,30 +445,27 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ sigYT := dc.getClientShareSignatureT()
 
 	// use the shared secret to generate read and write keys
-	agentWriteKey, err := computeKdf([]byte(sanitizeStr(string(sharedSecret))), true /*@, 1/2 @*/)
+	agentWriteKey, err := computeKdf(sanitizeBytes(sharedSecret /*@, perm(1/4) @*/), true /*@, perm(1/8) @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 	dc.secrets.agentWriteKey = agentWriteKey
 
-	agentReadKey, err := computeKdf([]byte(sanitizeStr(string(sharedSecret))), false /*@, 1/2 @*/)
+	agentReadKey, err := computeKdf(sanitizeBytes(sharedSecret /*@, perm(1/4) @*/), false /*@, perm(1/8) @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 	dc.secrets.agentReadKey = agentReadKey
 
-	// logDebugBytes(log, "agent read key", agentReadKey /*@, perm(1/2) @*/)
-	// logDebugBytes(log, "agent write key", agentWriteKey /*@, perm(1/2) @*/)
-
-	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/2) @*/)
+	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/8) @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 	//@ sessionKeysBytesT := tm.pair(tm.kdf1(sharedSecretT), tm.kdf2(sharedSecretT))
 	//@ assert abs.Abs(sessionKeysBytes) == by.gamma(sessionKeysBytesT)
@@ -483,22 +474,21 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
-	// logInfoString(log, "encrypted base-64-encoded session keys", encodedEncryptedSessionKeys)
 	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.getLogLTPkT())
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
 	// sign ciphertext containing session keys using KMS:
-	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.dataStream.GetClientId())
+	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.clientId)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 	//@ messageT := tm.pair(encodedEncryptedSessionKeysT, dc.getClientIdT())
 	//@ assert abs.Abs(signSessionKeysPayloadBytes) == by.gamma(messageT)
-	//@ m := ut.tuple3(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), messageT)
+	//@ m := ut.tuple3(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), messageT)
 	// unfold phiR_Agent_6 to obtain Out_KMS_Agent fact
 	//@ Y := tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)
 	//@ assert m == tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(AgentLtKeyId, tm.pair(tm.aenc(tm.pair(tm.kdf1(tm.exp(Y, xT)), tm.kdf2(tm.exp(Y, xT))), logPk), ClientId)))
@@ -528,12 +518,11 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ unfold iospec.P_Agent(t2, rid, s2)
 	//@ unfold iospec.phiRF_Agent_15(t2, rid, s2)
 	//@ t3 := iospec.get_e_In_KMS_placeDst(t2, rid)
-	signSessionKeysPayloadBytesStr := string(signSessionKeysPayloadBytes)
-	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), []byte(sanitizeStr(signSessionKeysPayloadBytesStr)) /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
+	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), sanitizeBytes(signSessionKeysPayloadBytes /*@, perm(1/2) @*/) /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	//@ s3 := s2 union mset[ft.Fact] { ft.In_KMS_Agent(rid, KMSId, AgentId, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), sigSessionKeysT)) }
@@ -570,16 +559,14 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ s5 := ft.U(l3, r3, s4)
 
 	// send ciphertext containing session keys and the corresponding signature to the log server:
-	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.dataStream.GetInstanceId(), dc.secrets.agentLTKeyARN, dc.dataStream.GetClientId())
+	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.instanceId, dc.secrets.agentLTKeyARN, dc.clientId)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		// logError(log, err /*@, perm(1/1) @*/)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	_ = encodedEncryptedSessionKeysPayloadBytes // TODO send to log server
-	// logInfoString(log, "encrypted session keys payload that should be sent to log server", sanitizeStr(encodedEncryptedSessionKeysPayloadBytes))
 
 	//@ encryptedSessionKeysPayloadT := ut.tuple5(encodedEncryptedSessionKeysT, sigSessionKeysT, AgentId, AgentLtKeyId, ClientId)
 	//@ assert by.msgB(encodedEncryptedSessionKeysPayloadBytes) == by.gamma(encryptedSessionKeysPayloadT)
@@ -588,12 +575,10 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
 	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
 
-	agentReadKeyStr := string(dc.secrets.agentReadKey)
-	agentWriteKeyStr := string(dc.secrets.agentWriteKey)
-	if err := dc.blockCipher.UpdateEncryptionKeys([]byte(sanitizeStr(agentReadKeyStr)), []byte(sanitizeStr(agentWriteKeyStr)) /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
+	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
-		return state, errHandshake
+		return state, errHandshake()
 	}
 
 	//@ unfold dc.IoSpecMemMain()

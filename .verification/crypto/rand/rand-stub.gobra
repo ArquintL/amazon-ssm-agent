@@ -8,5 +8,6 @@ var Reader io.Reader
 // a cryptographic random number generator, we assume
 // that the `Mem` predicate is a duplicable resource.
 ghost
+decreases _
 ensures Reader.Mem()
 func GetReaderMem()

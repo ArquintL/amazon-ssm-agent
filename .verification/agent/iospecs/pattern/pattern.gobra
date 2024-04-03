@@ -11,6 +11,7 @@ import (
 
 
 ghost
+decreases _
 requires pl.token(p) && io.P_Agent(p, rid, s)
 requires mset[ft.Fact]{ ft.St_Agent_3(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX) } subset s
 requires by.gamma(t) == by.gamma(tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), someZ), tm.pair(someSigY, tm.pair(someClientLtKeyId, tm.hash(tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), someZ), xT)))))))
@@ -19,6 +20,7 @@ ensures  t == tm.pair(tm.pubTerm(pub.const_SecureSessionResponse_pub()), tm.pair
 func patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, someZ, someSigY, someClientLtKeyId, t tm.Term, p pl.Place, s mset[ft.Fact]) (Z, SigY, ClientLtKeyId tm.Term)
 
 ghost
+decreases _
 requires pl.token(p) && io.P_Agent(p, rid, s)
 requires mset[ft.Fact]{ ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, ClientLtKeyId, Y, SigY, SigSessionKeys) } subset s
 requires by.gamma(t) == by.gamma(tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(somePayload, tm.kdf2(tm.exp(Y, xT)))))

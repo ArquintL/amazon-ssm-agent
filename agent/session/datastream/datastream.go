@@ -43,6 +43,7 @@ type DataStream struct {
 	ChannelId  string
 	ClientId   string
 	InstanceId string
+	LogReaderId string
 	Role       string
 	Pause      bool
 	//records sequence number of last acknowledged message received over data channel
@@ -91,6 +92,7 @@ type StreamingMessage struct {
 func NewDataStream(context context.T,
 	channelId string,
 	clientId string,
+	logReaderId string,
 	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) (*DataStream, error) {
 
@@ -125,12 +127,13 @@ func NewDataStream(context context.T,
 	}
 
 	dataStream := &DataStream{}
-	dataStream.Initialize(
+	dataStream.initialize(
 		context,
 		mgsService,
 		channelId,
 		clientId,
 		instanceID,
+		logReaderId,
 		mgsConfig.RolePublishSubscribe,
 		streamDataHandler,
 		cancelFlag)
@@ -152,11 +155,12 @@ func NewDataStream(context context.T,
 }
 
 // Initialize populates datastream object.
-func (dataStream *DataStream) Initialize(context context.T,
+func (dataStream *DataStream) initialize(context context.T,
 	mgsService service.Service,
 	sessionId string,
 	clientId string,
 	instanceId string,
+	logReaderId string,
 	role string,
 	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) {
@@ -166,6 +170,7 @@ func (dataStream *DataStream) Initialize(context context.T,
 	dataStream.ChannelId = sessionId
 	dataStream.ClientId = clientId
 	dataStream.InstanceId = instanceId
+	dataStream.LogReaderId = logReaderId
 	dataStream.Role = role
 	dataStream.Pause = false
 	dataStream.ExpectedSequenceNumber = 0
@@ -260,16 +265,20 @@ func (dataStream *DataStream) GetStreamDataSequenceNumber() int64 {
 	return dataStream.StreamDataSequenceNumber
 }
 
-func (dataStream *DataStream) GetChannelId() string {
-	return dataStream.ChannelId
+func (dataStream *DataStream) GetInstanceId() string {
+	return dataStream.InstanceId
 }
 
 func (dataStream *DataStream) GetClientId() string {
 	return dataStream.ClientId
 }
 
-func (dataStream *DataStream) GetInstanceId() string {
-	return dataStream.InstanceId
+func (dataStream *DataStream) GetLogReaderId() string {
+	return dataStream.LogReaderId
+}
+
+func (dataStream *DataStream) GetChannelId() string {
+	return dataStream.ChannelId
 }
 
 func (dataStream *DataStream) GetRegion() string {

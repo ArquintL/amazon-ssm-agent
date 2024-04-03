@@ -1,0 +1,9 @@
+package Identity
+
+type IAgentIdentity interface {
+    pred Mem()
+
+    preserves acc(Mem(), _)
+    ensures err != nil ==> err.ErrorMem()
+    InstanceID() (instanceId string, err error)
+}

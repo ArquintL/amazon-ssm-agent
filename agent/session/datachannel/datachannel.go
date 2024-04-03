@@ -15,7 +15,7 @@
 package datachannel
 
 // work arounds to make verification possible
-// - magic wands for receiving messages via callbacks instead of by calling a particular receive method
+// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
 // - ghost fields to simplify keeping track of abstract terms
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
@@ -29,13 +29,11 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/cryptolib"
 )
 
-// errHandshake is a generic error message to avoid leaking any information to an attacker.
-var errHandshake = errors.New("failed to execute handshake operation")
-
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
 // @ ensures err == nil ==> dc.getState() == HandshakeSkipped
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	if dc.getState() != Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -59,8 +57,9 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 // restricting the current client of `DataChannel`.
 // @ requires log != nil
 // @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
-// @ preserves dc.Mem() && acc(log.Mem(), _)
+// @ preserves dc.Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
 // @ ensures err == nil ==> dc.getState() == IODistributed
+// @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
@@ -103,7 +102,10 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	if err != nil {
 		return err
 	}
-	if err := dc.sendHandshakeRequest(log, handshakeRequestPayload); err != nil {
+	err = dc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
+	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
+	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
+	if err != nil {
 		return err
 	}
 
@@ -127,7 +129,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	startReceivingChan <- payload
 
 	// Block until handshake response is received or handshake times out
-	res, err := dc.tryReceiveResponseAlt(responseChan, handshakeTimeout)
+	res, err := dc.tryReceiveResponse(responseChan, handshakeTimeout)
 	if err != nil {
 		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
@@ -189,8 +191,8 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	//@ dc.ioLockCanRemoteSend = false
 	//@ dc.ioLockDidRemoteReceive = false
 	//@ dc.ioLockCanLocalSend = false
-	//@ fold IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>()
-	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.dataStream.GetInstanceId(), dc.dataStream.GetClientId(), dc.agentLTKeyARN!>)
+	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
+	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>)
 
 	payload = MessageReceptionPayload{
 		status: ReceiveOtherResponse,

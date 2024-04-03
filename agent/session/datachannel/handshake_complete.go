@@ -105,7 +105,7 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 
 	//@ unfold dc.Mem()
 	//@ unfold dc.MemInternal(BlockCipherReady)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
 	//@ t0 := dc.getToken()
 	//@ s0 := dc.getAbsState()
 	//@ sharedSecretT := dc.getSharedSecretT()
@@ -148,7 +148,7 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	//@ fold dc.MemInternal(HandshakeCompleted)
 	//@ fold dc.Mem()
 
-	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, perm(1/2), inputDataT, true, false @*/); err != nil {
+	if err = dc.sendData(log, mgsContracts.HandshakeComplete, handshakeCompletePayloadBytes /*@, inputDataT, true, false @*/); err != nil {
 		return err
 	}
 

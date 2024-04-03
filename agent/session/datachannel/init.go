@@ -6,7 +6,7 @@ import (
 	"time"
 
 	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
-	"github.com/aws/amazon-ssm-agent/agent/log"
+	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
@@ -20,35 +20,36 @@ import (
 )
 
 // NewDataChannel constructs datachannel objects.
-// @ requires context.Mem() && cancelFlag.Mem()
-// @ requires ctx != nil && ctx.Inv() && inputStreamMessageHandler implements StreamDataHandlerSpec{ctx}
-// @ requires pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
+// @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
+// @ requires inputStreamMessageHandler implements StreamDataHandlerSpec{}
 // @ ensures  res.Mem() && typeOf(res) == *dataChannel
 // @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
-// TODO: make `ctx` a ghost parameter as soon as Gobra supports ghost fields
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
 	logReaderId string,
 	inputStreamMessageHandler InputStreamMessageHandler,
-	cancelFlag task.CancelFlag,
-	/*@ ctx StreamDataHandlerContext, t0 pl.Place, rid tm.Term @*/) (res IDataChannel, err error) {
+	cancelFlag task.CancelFlag) (res IDataChannel, err error) {
+
+	// pick an arbitrary rid for this protocol session and inhale the IO specification for
+	// the SSM agent and the chosen protocol session:
+	//@ t0, rid := getArbPlace(), getArbRid()
+	//@ inhale pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
 
 	tmp /*@ @ @*/ := dataChannel{}
 	dc := &tmp
-	cl := // @ requires log != nil
-		// @ requires datastream.QuantifiedStreamDataHandlerSpecWand(msg)
-		// @ preserves acc(log.Mem(), _) && tmp.RecvRoutineMem()
-		// @ ensures err == nil ==> msg.Mem()
+	cl :=
+		// @ requires datastream.StreamDataHandlerFootprint(msg)
+		// @ preserves tmp.RecvRoutineMem()
 		// @ ensures err != nil ==> err.ErrorMem()
-		func /*@ callHandler @*/ (_ log.T, msg *mgsContracts.AgentMessage) (err error) {
+		func /*@ callHandler @*/ (msg *mgsContracts.AgentMessage) (err error) {
 			err = tmp.processStreamDataMessage(msg)
 			return
 		}
 	/*@
 		proof cl implements datastream.StreamDataHandlerSpec{dc} {
 	        unfold dc.Inv()
-	        err = cl(log, msg) as callHandler
+	        err = cl(msg) as callHandler
 			fold dc.Inv()
 	    }
 	@*/
@@ -57,7 +58,6 @@ func NewDataChannel(context contextPkg.T,
 	dc.hs.startReceivingChan = make(chan MessageReceptionPayload)
 	//@ dc.hs.startReceivingChan.Init(StartReceivingChanInv!<dc, _!>, PredTrue!<!>)
 	dc.inputStreamMessageHandler = inputStreamMessageHandler
-	//@ dc.msgHandlerCtx = ctx
 	dc.hs.responseChan = make(chan ResponseChanPayload)
 	//@ dc.hs.responseChan.Init(ResponseChanInv!<dc, _!>, PredTrue!<!>)
 	// we allocate some ghost heap space:
@@ -80,6 +80,7 @@ func NewDataChannel(context contextPkg.T,
 	dataStream, err := datastream.NewDataStream(context,
 		channelId,
 		clientId,
+		logReaderId,
 		cl,
 		cancelFlag,
 		/*@ dc @*/)
@@ -90,7 +91,7 @@ func NewDataChannel(context contextPkg.T,
 		return dc, fmtErrorf("failed to create data stream with error", err /*@, perm(1/2) @*/)
 	}
 
-	err = dc.initialize(dataStream, logReaderId)
+	err = dc.initialize(dataStream)
 	if err != nil {
 		return dc, err
 	}
@@ -103,7 +104,7 @@ func NewDataChannel(context contextPkg.T,
 // @ requires dc.IoSpecMemMain() && dc.IoSpecMemPartial() && pl.token(dc.getToken()) && iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())
 // @ ensures  dc.Mem()
 // @ ensures  err == nil ==> dc.getState() == Initialized
-func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId string) (err error) {
+func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error) {
 	// @ unfold dc.Mem()
 	// @ unfold dc.MemInternal(Uninitialized)
 	dc.dataStream = dataStream
@@ -113,9 +114,8 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	dc.hs.skipped = false
 	dc.hs.handshakeEndTime = time.Now()
 	dc.hs.handshakeStartTime = time.Now()
-	var kms *crypto.KMSService
-	ds := dc.dataStream
-	kms, err = ds.GetKMSService()
+
+	dc.kmsService, err = dataStream.GetKMSService(/*@ perm(1/2) @*/)
 	if err != nil {
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
@@ -134,7 +134,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ readerIdT := iospec.get_e_Setup_Agent_r4(t0, rid)
 	// @ logLTPkT := iospec.get_e_Setup_Agent_r6(t0, rid)
 	// @ setupFact := ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, iospec.get_e_Setup_Agent_r5(t0, rid), logLTPkT)
-	agentLTKeyARN, logLTPk, err := getInitialValues(kms /*@, t0, rid @*/)
+	dc.instanceId, dc.clientId, dc.logReaderId, dc.secrets.agentLTKeyARN, dc.logLTPk, err = getInitialValues(dc.dataStream, dc.kmsService /*@, t0, rid @*/)
 	if err != nil {
 		// @ fold iospec.phiRF_Agent_17(t0, rid, s0)
 		// @ fold iospec.P_Agent(t0, rid, s0)
@@ -144,9 +144,6 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 		// return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
-	dc.secrets.agentLTKeyARN = agentLTKeyARN
-	dc.logLTPk = logLTPk
-	dc.kmsService = kms
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
 	// @ unfold dc.IoSpecMemMain()
 	// @ unfold dc.IoSpecMemPartial()
@@ -159,7 +156,6 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 	// @ dc.setLogLTPkT(logLTPkT)
 	// @ fold dc.IoSpecMemPartial()
 	// @ fold dc.IoSpecMemMain()
-	dc.logReaderId = logReaderId
 	// @ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = Initialized
 	// @ fold acc(dc.MemChannelState(), 1/2)
@@ -194,26 +190,42 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream, logReaderId
 // @ 	iospec.get_e_Setup_Agent_r4(t, rid) == old(iospec.get_e_Setup_Agent_r4(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
 // @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
-func getInitialValues(kmsService *crypto.KMSService /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
+func getInitialValues(dataStream *datastream.DataStream, kmsService *crypto.KMSService /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentId string, clientId string, logReaderId string, agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
 	metadata, err := kmsService.CreateKeyAssymetric()
 	if err != nil {
 		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
-		return "", nil, err /*@, t @*/
+		return "", nil, err
 	}
+
+	agentId = dataStream.GetInstanceId()
+	clientId = dataStream.GetClientId()
+	logReaderId = dataStream.GetLogReaderId()
 
 	//@ unfold metadata.Mem()
 	if metadata.Arn == nil {
 		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata", metadata /*@, perm(1/2) @*/)
-		return "", nil, err /*@, t @*/
+		return "", nil, err
 	}
 	agentLTKeyARN = *metadata.Arn
 	//@ cryptoRand.GetReaderMem()
 	sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096 /*@, perm(1/2) @*/)
 	if err != nil {
 		err = fmtErrorf("failed to create log secret key", err /*@, perm(1/1) @*/)
-		return "", nil, err /*@, t @*/
+		return "", nil, err
 	}
 	//@ unfold sk.Mem()
 	logLTPk = &sk.PublicKey
 	return
 }
+
+/*@
+// we model picking an arbitrary place and rid as (impure) functions
+// returning an unconstraint return value:
+ghost
+decreases
+func getArbPlace() pl.Place
+
+ghost
+decreases
+func getArbRid() tm.Term
+@*/
