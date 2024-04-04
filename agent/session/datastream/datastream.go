@@ -37,15 +37,15 @@ const (
 )
 
 type DataStream struct {
-	wsChannel  communicator.IWebSocketChannel
-	context    context.T
-	Service    service.Service
-	ChannelId  string
-	ClientId   string
-	InstanceId string
+	wsChannel   communicator.IWebSocketChannel
+	context     context.T
+	Service     service.Service
+	ChannelId   string
+	ClientId    string
+	InstanceId  string
 	LogReaderId string
-	Role       string
-	Pause      bool
+	Role        string
+	Pause       bool
 	//records sequence number of last acknowledged message received over data channel
 	ExpectedSequenceNumber int64
 	//records sequence number of last stream data message sent over data channel
@@ -68,7 +68,7 @@ type DataStream struct {
 	//cancelFlag is used for passing cancel signal to plugin in when channel_closed message is received over data channel
 	cancelFlag task.CancelFlag
 	//streamDataHandler handles (possibly encrypted) messages received from the stream
-	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error
+	streamDataHandler func(msg *mgsContracts.AgentMessage) error
 }
 
 type ListMessageBuffer struct {
@@ -93,7 +93,7 @@ func NewDataStream(context context.T,
 	channelId string,
 	clientId string,
 	logReaderId string,
-	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
+	streamDataHandler func(msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) (*DataStream, error) {
 
 	log := context.Log()
@@ -162,7 +162,7 @@ func (dataStream *DataStream) initialize(context context.T,
 	instanceId string,
 	logReaderId string,
 	role string,
-	streamDataHandler func(log log.T, msg *mgsContracts.AgentMessage) error,
+	streamDataHandler func(msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) {
 
 	dataStream.context = context
@@ -619,7 +619,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 	// Further process messages from IncomingMessageBuffer
 	if streamDataMessage.SequenceNumber == dataStream.ExpectedSequenceNumber {
 		log.Tracef("Process new incoming stream data message. Sequence Number: %d", streamDataMessage.SequenceNumber)
-		if err = dataStream.streamDataHandler(log, streamDataMessage); err != nil {
+		if err = dataStream.streamDataHandler(streamDataMessage); err != nil {
 			if errors.Is(err, mgsContracts.ErrHandlerNotReady) {
 				return nil
 			}
@@ -723,7 +723,7 @@ func (dataStream *DataStream) processIncomingMessageBufferItems(log log.T) (err 
 				// log.Errorf("Cannot deserialize raw message: %d, err: %v.", bufferedStreamMessage.SequenceNumber, err)
 				return err
 			}
-			if err = dataStream.streamDataHandler(log, streamDataMessage); err != nil {
+			if err = dataStream.streamDataHandler(streamDataMessage); err != nil {
 				// log.Errorf("Unable to process stream data payload, err: %v.", err)
 				return err
 			}

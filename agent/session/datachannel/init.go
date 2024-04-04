@@ -6,7 +6,6 @@ import (
 	"time"
 
 	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
-	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
@@ -115,7 +114,7 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error)
 	dc.hs.handshakeEndTime = time.Now()
 	dc.hs.handshakeStartTime = time.Now()
 
-	dc.kmsService, err = dataStream.GetKMSService(/*@ perm(1/2) @*/)
+	dc.kmsService, err = dataStream.GetKMSService( /*@ perm(1/2) @*/ )
 	if err != nil {
 		// @ fold dc.MemInternal(Uninitialized)
 		// @ fold dc.Mem()
@@ -194,7 +193,7 @@ func getInitialValues(dataStream *datastream.DataStream, kmsService *crypto.KMSS
 	metadata, err := kmsService.CreateKeyAssymetric()
 	if err != nil {
 		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
-		return "", nil, err
+		return "", "", "", "", nil, err
 	}
 
 	agentId = dataStream.GetInstanceId()
@@ -204,14 +203,14 @@ func getInitialValues(dataStream *datastream.DataStream, kmsService *crypto.KMSS
 	//@ unfold metadata.Mem()
 	if metadata.Arn == nil {
 		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata", metadata /*@, perm(1/2) @*/)
-		return "", nil, err
+		return "", "", "", "", nil, err
 	}
 	agentLTKeyARN = *metadata.Arn
 	//@ cryptoRand.GetReaderMem()
 	sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096 /*@, perm(1/2) @*/)
 	if err != nil {
 		err = fmtErrorf("failed to create log secret key", err /*@, perm(1/1) @*/)
-		return "", nil, err
+		return "", "", "", "", nil, err
 	}
 	//@ unfold sk.Mem()
 	logLTPk = &sk.PublicKey

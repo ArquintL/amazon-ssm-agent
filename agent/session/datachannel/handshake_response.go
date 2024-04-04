@@ -55,7 +55,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	//@ unfold streamDataMessage.Mem()
 	handshakeResponse, err := unmarshalHandshakeResponse(streamDataMessage.Payload /*@, perm(1/2) @*/)
 	//@ fold streamDataMessage.Mem()
-	if err != nil { //argot:ignore
+	if err != nil {
 		return fmtErrorf("Unmarshalling of HandshakeResponse message failed", err /*@, perm(1/1) @*/)
 	}
 
@@ -174,13 +174,13 @@ func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeRespon
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) processSecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
 	state, err = dc.verifySecureSessionResponse(action)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		return state, errHandshake()
 	}
 
 	state, err = dc.completeSecureSessionResponseProcessing()
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		return state, errHandshake()
 	}
@@ -198,7 +198,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold acc(action.Mem(), 1/8)
 	resp, err := unmarshalSecureSessionResponse(action.ActionResult /*@, perm(1/16) @*/)
 	//@ fold acc(action.Mem(), 1/8)
-	if err != nil { //argot:ignore
+	if err != nil {
 		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -209,7 +209,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold resp.Mem()
 	//@ unfold dc.MemTransfer(state, true)
 	sharedSecret, err /*@, clientSecretB @*/ := unmarshalAndCheckClientShare(resp.ClientShare, dc.secrets.agentSecret /*@, perm(1/2) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -223,7 +223,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -278,7 +278,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// verify client signature
 	sig, err := base64.StdEncoding.DecodeString(resp.Signature)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		err = errHandshake()
@@ -289,7 +289,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ fold dc.MemTransfer(state, true)
 
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
-	if err != nil { //argot:ignore
+	if err != nil {
 		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -396,7 +396,7 @@ func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessi
 func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p perm @*/) (sharedSecret []byte, err error /*@, privB by.Bytes @*/) {
 	var clientShareBytes []byte
 	clientShareBytes, err = base64.StdEncoding.DecodeString(clientShare)
-	if err != nil { //argot:ignore
+	if err != nil {
 		err = fmtError("failed to decode server share")
 		return
 	}
@@ -575,7 +575,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
 	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
 
-	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
+	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()

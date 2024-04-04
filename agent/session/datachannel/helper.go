@@ -105,7 +105,7 @@ func computeSHA384(input []byte /*@, ghost p perm @*/) (res []byte) {
 // @ ensures err == nil ==> (bytes.SliceMem(res) &&
 // @ 	(isKdf1 ? abs.Abs(res) == by.kdf1B(abs.Abs(input)) : abs.Abs(res) == by.kdf2B(abs.Abs(input))))
 // @ ensures err != nil ==> err.ErrorMem()
-func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, err error) {
+func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, err error) { //argot:ignore
 	hash512 := sha512.New
 	hkPRK := hkdf.Extract(hash512, input, nil) //it's pretty complicated what using a salt with HKDF means, we should double check this
 
@@ -141,6 +141,7 @@ func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
 	// TODO: since `Abs` is not axiomatized to express that it only depends
 	// on the content of a byte slice, we have to assume this equality for now:
 	//@ assume abs.Abs(s) == abs.Abs(res)
+	return res
 }
 
 // GetClientVersion returns version of the client

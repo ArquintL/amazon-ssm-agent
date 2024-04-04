@@ -20,7 +20,6 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
-	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
@@ -102,7 +101,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-		
+
 		//@ t0 := dc.getToken()
 		//@ rid := dc.getRid()
 		//@ s0 := dc.getAbsState()
@@ -118,7 +117,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.setRemoteInFactT(receivedMsgT)
 		//@ dc.ioLockDidRemoteReceive = true
 		//@ fold dc.IoSpecMemMain()
-		
+
 		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
