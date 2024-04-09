@@ -209,7 +209,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold resp.Mem()
 	//@ unfold dc.MemTransfer(state, true)
 	sharedSecret, err /*@, clientSecretB @*/ := unmarshalAndCheckClientShare(resp.ClientShare, dc.secrets.agentSecret /*@, perm(1/2) @*/)
-	if err != nil {
+	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -223,7 +223,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
-	if err != nil {
+	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -278,7 +278,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// verify client signature
 	sig, err := base64.StdEncoding.DecodeString(resp.Signature)
-	if err != nil {
+	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		err = errHandshake()
@@ -289,7 +289,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ fold dc.MemTransfer(state, true)
 
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
-	if err != nil {
+	if err != nil { //argot:ignore
 		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
