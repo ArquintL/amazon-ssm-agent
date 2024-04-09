@@ -156,7 +156,7 @@ type dataChannel struct {
 	logLTPk               *rsa.PublicKey
 
 	instanceId string
-	clientId string
+	clientId   string
 
 	// TODO: mark the following fields as ghost as soon as Gobra supports ghost fields
 	//@ ioLock *sync.Mutex
@@ -179,7 +179,7 @@ type agentHandshakeSecrets struct {
 
 // sanitizeStr sanitizes a secret that is a string.
 // This is used to ignore safe calls to I/O-performing functions when applying the taint analysis.
-//@ ensures s == res
+// @ ensures s == res
 func sanitizeStr(s string) (res string) {
 	return s
 }
@@ -190,9 +190,9 @@ func sanitizeStr(s string) (res string) {
 // internally convert to strings and back. As soon as the taint
 // analysis supports sanitizing slices, this function should be adapted to
 // return `b`, i.e., without creating a copy.
-//@ requires noPerm < p && p <= writePerm
-//@ preserves acc(bytes.SliceMem(b), p)
-//@ ensures  bytes.SliceMem(res) && old(abs.Abs(b)) == abs.Abs(res)
+// @ requires noPerm < p && p <= writePerm
+// @ preserves acc(bytes.SliceMem(b), p)
+// @ ensures  bytes.SliceMem(res) && old(abs.Abs(b)) == abs.Abs(res)
 func sanitizeBytes(b []byte /*@, ghost p perm @*/) (res []byte) {
 	//@ unfold acc(bytes.SliceMem(b), p/2)
 	res = []byte(sanitizeStr(string(b)))

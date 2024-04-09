@@ -400,7 +400,7 @@ type KMSEncryptionResponse struct {
 }
 
 type SessionTypeRequest struct {
-	SessionType string      	  `json:"SessionType"`
+	SessionType string            `json:"SessionType"`
 	Properties  RequestProperties `json:"Properties"`
 }
 
