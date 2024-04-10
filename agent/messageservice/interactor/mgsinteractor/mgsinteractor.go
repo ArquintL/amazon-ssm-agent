@@ -184,6 +184,7 @@ func (mgs *MGSInteractor) Initialize() (err error) {
 
 	log.Info("SSM Agent is trying to setup control channel for MGSInteractor")
 	mgs.controlChannel, err = setupControlChannel(mgs.context, mgs.mgsService, mgs.agentConfig.InstanceID, mgs.incomingAgentMessageChan)
+	// TODO imprecision because mgs is tainted
 	if err != nil { //argot:ignore
 		log.Errorf("Error setting up control channel")
 		return err
@@ -266,6 +267,7 @@ func (mgs *MGSInteractor) listenReply() {
 externalLoop:
 	for {
 		select {
+		// TODO imprecision because mgs is tainted
 		case reply, isOpen := <-mgs.replyChan: //argot:ignore
 			if !isOpen {
 				log.Info("reply channel closed")
@@ -298,6 +300,7 @@ func (mgs *MGSInteractor) listenIncomingAgentMessages() {
 	log.Info("listen incoming messages thread in MGS interactor started")
 	defer func() {
 		log.Info("listen incoming messages thread in MGS interactor ended")
+		// TODO imprecision because mgs is tainted
 		if r := recover(); r != nil { //argot:ignore
 			log.Errorf("listen incoming messages panic: \n%v", r)
 			// log.Errorf("Stacktrace:\n%s", debug.Stack())
@@ -306,6 +309,7 @@ func (mgs *MGSInteractor) listenIncomingAgentMessages() {
 		}
 	}()
 
+	// TODO imprecision because mgs is tainted
 	for agentMessage := range mgs.incomingAgentMessageChan { //argot:ignore
 		log.Infof("Processing AgentMessage: MessageType - %s, Id - %s", agentMessage.MessageType, agentMessage.MessageId)
 		switch agentMessage.MessageType { //argot:ignore
@@ -338,7 +342,7 @@ func (mgs *MGSInteractor) processSessionRelatedMessages(agentMessage mgsContract
 	var errorCode messagehandler.ErrorCode
 	retryLimit := 5
 	// 5 retries for ProcessorBufferFull. This should not happen most of the time as we have a higher default session limit.
-	for retryNumber := 1; retryNumber <= retryLimit; retryNumber++ { //argot:ignore
+	for retryNumber := 1; retryNumber <= retryLimit; retryNumber++ {
 		errorCode = mgs.messageHandler.Submit(docState)
 		if errorCode == messagehandler.ProcessorBufferFull && retryNumber != retryLimit {
 			log.Errorf("received error code while checking processor buffer space for session messages %v", errorCode)
@@ -392,6 +396,7 @@ func (mgs *MGSInteractor) processAgentJobMessage(agentMessage mgsContracts.Agent
 	docState, err := agentMessage.ParseAgentMessage(mgs.context, commandOrchestrationRootDir, mgs.agentConfig.InstanceID)
 	// just dropping all errors - MDS will take care of these messages
 	// we should handle few errors differently in future
+	// TODO imprecision because mgs is tainted
 	if err != nil { //argot:ignore
 		log.Errorf("dropping message because cannot parse AgentJob message %s to Document State, err: %v", agentMessage.MessageId.String(), err)
 		return
@@ -399,6 +404,7 @@ func (mgs *MGSInteractor) processAgentJobMessage(agentMessage mgsContracts.Agent
 
 		log.Debugf("pushing AgentJob message %s to MessageHandler incoming message chan", agentMessage.MessageId.String())
 		errorCode := mgs.messageHandler.Submit(docState)
+		// TODO imprecision because mgs is tainted
 		if errorCode != "" { //argot:ignore
 			if _, ok := mgs.ackSkipCodes[errorCode]; ok { //argot:ignore
 				log.Warnf("dropping message %v because of error code %v", docState.DocumentInformation.DocumentID, errorCode)
@@ -520,6 +526,8 @@ var setupControlChannel = func(context context.T, mgsService service.Service, in
 		MaxAttempts:         mgsConfig.ControlChannelNumMaxRetries,
 	}
 	retryer.Init()
+	// TODO imprecision because retryer.Call() returns interface{} so
+	// every callsite gets tainted
 	channel, err := retryer.Call()
 	if err != nil { //argot:ignore
 		// should never happen

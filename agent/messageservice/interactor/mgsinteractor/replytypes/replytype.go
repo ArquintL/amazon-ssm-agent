@@ -44,10 +44,10 @@ func registerReplyTypes(name contracts.ResultType, reply ReplyTypeGenerator) {
 
 // GetReplyTypeObject returns the replytype object based on the reply type from the result
 func GetReplyTypeObject(ctx context.T, res contracts.DocumentResult, replyId uuid.UUID, retryNumber int) (IReplyType, error) {
-	if replyTypes == nil { //argot:ignore
+	if replyTypes == nil {
 		return nil, fmt.Errorf("no reply types found")
 	}
-	if replyType, ok := replyTypes[res.ResultType]; ok { //argot:ignore
+	if replyType, ok := replyTypes[res.ResultType]; ok {
 		return replyType(ctx, res, replyId, retryNumber), nil
 	}
 	return nil, fmt.Errorf("the given reply type not found %v", res.ResultType)

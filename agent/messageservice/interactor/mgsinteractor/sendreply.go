@@ -143,6 +143,7 @@ func (mgs *MGSInteractor) startSendFailedReplyJob() {
 	log := mgs.context.Log()
 	mgs.mutex.Lock()
 	defer mgs.mutex.Unlock()
+	// TODO imprecision because mgs is tainted
 	if mgs.sendReplyProp.sendFailedReplyJob == nil {
 		if mgs.sendReplyProp.sendFailedReplyJob, err = scheduler.Every(utils.SendFailedReplyFrequencyMinutes).Minutes().Run(mgs.sendFailedReplies); err != nil { //argot:ignore
 			log.Errorf("unable to schedule send failed reply job. %v", err)
@@ -287,6 +288,7 @@ func (mgs *MGSInteractor) startReplyProcessingQueue() {
 exitLoopLabel:
 	for {
 		// If there are too many reply threads currently running, wait for any of them to free up
+		// TODO imprecision because mgs is tainted
 		if replyThreadCount >= mgs.sendReplyProp.replyQueueLimit { //argot:ignore
 			logger.Debug("maximum reply threads are running right now. Waiting for one of them to end")
 			<-mgs.sendReplyProp.replyThreadDone

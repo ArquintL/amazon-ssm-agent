@@ -131,7 +131,7 @@ func prepareRuntimeStatus(update *UpdateDetail) contracts.PluginRuntimeStatus {
 	// Set default as failed, this will help us catch issues more proactively
 	pluginStatus := update.Result
 	code := 0
-	if pluginStatus == contracts.ResultStatusFailed { //argot:ignore
+	if pluginStatus == contracts.ResultStatusFailed {
 		code = 1
 	}
 
