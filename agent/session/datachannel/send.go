@@ -25,6 +25,7 @@ import (
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 	//@ cl "github.com/aws/amazon-ssm-agent/agent/iospecs/claim"
@@ -194,7 +195,7 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	@*/
 
 	//@ ghost var t1 pl.Place
-	err /*@, t1 @*/ = dc.dataStream.Send(log, payloadType, inputData /*@, perm(1/2), t0, rid, inputDataT, m @*/)
+	err /*@, t1 @*/ = iosanitization.DataStreamSend(dc.dataStream, log, payloadType, inputData /*@, perm(1/2), t0, rid, inputDataT, m @*/)
 	if err != nil {
 		/*@
 		fold iospec.phiRG_Agent_13(t0, rid, s0)

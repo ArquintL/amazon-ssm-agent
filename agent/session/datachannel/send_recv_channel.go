@@ -125,24 +125,3 @@ func (dc *dataChannel) tryReceiveResponseModelAlt(responseChan chan ResponseChan
 	return
 }
 @*/
-
-/*@
-// TODO remove (used to  justify magic wand for `processStreamDataMessage`)
-trusted
-requires pl.token(t) && iospec.e_InFact(t, rid)
-ensures   ok ==> msg.Mem() // && by.gamma(term) == abs.Abs(packet)
-ensures   ok ==> pl.token(t1) && t1 == old(iospec.get_e_InFact_placeDst(t, rid)) && term == old(iospec.get_e_InFact_r1(t, rid))
-ensures  !ok ==> t1 == t && pl.token(t) && iospec.e_InFact(t, rid) && iospec.get_e_InFact_placeDst(t, rid) == old(iospec.get_e_InFact_placeDst(t, rid)) && iospec.get_e_InFact_r1(t, rid) == old(iospec.get_e_InFact_r1(t, rid))
-func Receive(streamDataMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term) (msg *mgsContracts.AgentMessage, ok bool, ghost term tm.Term, ghost t1 pl.Place) {
-	msg = streamDataMessage
-	return
-}
-
-// TODO remove (used to  justify magic wand for `processStreamDataMessage`)
-func ReceiveWand(streamDataMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term) (msg *mgsContracts.AgentMessage, ok bool, ghost term tm.Term, ghost t1 pl.Place) {
-	package (pl.token(t) && iospec.e_InFact(t, rid)) --* (ok ==> msg.Mem() && pl.token(t1) && t1 == old[#lhs](iospec.get_e_InFact_placeDst(t, rid)) && term == old[#lhs](iospec.get_e_InFact_r1(t, rid))) {
-		msg, ok, term, t1 = Receive(streamDataMessage, t, rid)
-		assert ok ==> msg.Mem()
-	}
-}
-@*/

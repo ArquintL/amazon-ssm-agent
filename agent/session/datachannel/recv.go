@@ -21,6 +21,7 @@ package datachannel
 
 import (
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -214,7 +215,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = dc.inputStreamMessageHandler(streamDataMessage /*@, t2, rid, outMsgT @*/) /*@ as StreamDataHandlerSpec{} @*/
+		err = iosanitization.DataChannelForwardToMessageHandler(dc.inputStreamMessageHandler, streamDataMessage /*@, t2, rid, outMsgT @*/)
 		//@ fold dc.RecvRoutineMem()
 
 		if err != nil {

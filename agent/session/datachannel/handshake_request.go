@@ -28,6 +28,7 @@ import (
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/version"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -149,7 +150,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
 		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
-		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), sanitizeBytes(signPayloadBytes /*@, perm(1/2) @*/) /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
+		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
 		if err != nil {
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
@@ -247,7 +248,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 // @    iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
 func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
 	//@ cryptoRand.GetReaderMem()
-	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
+	priv, x, y, err /*@, t1 @*/ := iosanitization.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
 	if err != nil {
 		return nil, "", err /*@, t0 @*/
 	}

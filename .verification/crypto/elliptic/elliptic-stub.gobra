@@ -32,7 +32,6 @@ requires pl.token(t0) && iospec.e_FrFact(t0, rid)
 ensures  err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
 ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
 ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
-// ensures  err == nil ==> abs.AbsEllipticPk(x, y) == by.expB(by.generatorB(), abs.Abs(priv))
 ensures  err != nil ==> err.ErrorMem()
 ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
     iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&

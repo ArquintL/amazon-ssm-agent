@@ -10,6 +10,7 @@ import (
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/cryptolib"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -52,7 +53,7 @@ func SendStreamDataMessageViewShift(t pl.Place, rid tm.Term, inputData []byte) (
 
 type IDataChannel interface {
 
-	//@ pred Mem()
+	// @ pred Mem()
 
 	// @ requires log != nil
 	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
@@ -141,7 +142,7 @@ type dataChannel struct {
 	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
 	dataStream *datastream.DataStream
 	//inputStreamMessageHandler is responsible for handling plugin specific input_stream_data message
-	inputStreamMessageHandler InputStreamMessageHandler
+	inputStreamMessageHandler iosanitization.InputStreamMessageHandler
 	//hs captures handshake state and error
 	hs handshake
 	//blockCipher stores encrytion keys and provides interface for encryption/decryption functions
@@ -176,35 +177,6 @@ type agentHandshakeSecrets struct {
 	// agentLTKeyARN is the ARN for the KMS long-term-key used to sign and verify the handshake
 	agentLTKeyARN string
 }
-
-// sanitizeStr sanitizes a secret that is a string.
-// This is used to ignore safe calls to I/O-performing functions when applying the taint analysis.
-// @ ensures s == res
-func sanitizeStr(s string) (res string) {
-	return s
-}
-
-// sanitizeStr sanitizes a secret that is a string.
-// This is used to ignore safe calls to I/O-performing functions when applying the taint analysis.
-// NOTE: Currently it is impossible to sanitize slices because they are reference types. Thus, we
-// internally convert to strings and back. As soon as the taint
-// analysis supports sanitizing slices, this function should be adapted to
-// return `b`, i.e., without creating a copy.
-// @ requires noPerm < p && p <= writePerm
-// @ preserves acc(bytes.SliceMem(b), p)
-// @ ensures  bytes.SliceMem(res) && old(abs.Abs(b)) == abs.Abs(res)
-func sanitizeBytes(b []byte /*@, ghost p perm @*/) (res []byte) {
-	//@ unfold acc(bytes.SliceMem(b), p/2)
-	res = []byte(sanitizeStr(string(b)))
-	//@ fold bytes.SliceMem(res)
-	//@ fold acc(bytes.SliceMem(b), p/2)
-	// TODO: due to the missing axiomatization of `Abs`, we have to assume that
-	// both slices store the same content:
-	//@ assume abs.Abs(b) == abs.Abs(res)
-	return
-}
-
-type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
 
 type MessageReceptionStatus int
 type MessageReceptionPayload struct {
@@ -247,18 +219,10 @@ func (dc *dataChannel) getState() DataChannelState {
 }
 
 /*@
-// this is non-ghost because it's the spec for a non-ghost closure implementation
-requires agentMessage.Mem()
-requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
-ensures err != nil ==> err.ErrorMem()
-ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
-ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
-func StreamDataHandlerSpec(agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
-
 pred (dc *dataChannel) RecvRoutineMem() {
 	dc != nil &&
 	acc(&dc.inputStreamMessageHandler) &&
-	dc.inputStreamMessageHandler implements StreamDataHandlerSpec{} &&
+	dc.inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{} &&
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(dc.hs.startReceivingChan.RecvChannel(), _) &&
 	dc.hs.startReceivingChan.RecvGivenPerm() == PredTrue!<!> &&

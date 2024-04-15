@@ -8,6 +8,7 @@ import (
 	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	"github.com/aws/amazon-ssm-agent/agent/task"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -20,14 +21,14 @@ import (
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
-// @ requires inputStreamMessageHandler implements StreamDataHandlerSpec{}
+// @ requires inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{}
 // @ ensures  res.Mem() && typeOf(res) == *dataChannel
 // @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
 	logReaderId string,
-	inputStreamMessageHandler InputStreamMessageHandler,
+	inputStreamMessageHandler iosanitization.InputStreamMessageHandler,
 	cancelFlag task.CancelFlag) (res IDataChannel, err error) {
 
 	// pick an arbitrary rid for this protocol session and inhale the IO specification for

@@ -30,6 +30,7 @@ import (
 
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 	//@ cl "github.com/aws/amazon-ssm-agent/agent/iospecs/claim"
@@ -327,7 +328,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
 	//@ messageT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), AgentId)
-	ok, err := dc.kmsService.Verify(resp.ClientLTKeyARN, sanitizeBytes(clientSignPayloadBytes /*@, perm(1/2) @*/), sanitizeBytes(sig /*@, perm(1/2) @*/) /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
+	ok, err := iosanitization.KMSVerify(dc.kmsService, resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
 	if !ok {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -445,7 +446,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ sigYT := dc.getClientShareSignatureT()
 
 	// use the shared secret to generate read and write keys
-	agentWriteKey, err := computeKdf(sanitizeBytes(sharedSecret /*@, perm(1/4) @*/), true /*@, perm(1/8) @*/)
+	agentWriteKey, err := computeKdf(sharedSecret, true /*@, perm(1/8) @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -453,7 +454,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	}
 	dc.secrets.agentWriteKey = agentWriteKey
 
-	agentReadKey, err := computeKdf(sanitizeBytes(sharedSecret /*@, perm(1/4) @*/), false /*@, perm(1/8) @*/)
+	agentReadKey, err := computeKdf(sharedSecret, false /*@, perm(1/8) @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -518,7 +519,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ unfold iospec.P_Agent(t2, rid, s2)
 	//@ unfold iospec.phiRF_Agent_15(t2, rid, s2)
 	//@ t3 := iospec.get_e_In_KMS_placeDst(t2, rid)
-	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), sanitizeBytes(signSessionKeysPayloadBytes /*@, perm(1/2) @*/) /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
+	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signSessionKeysPayloadBytes /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
 	if err != nil { //argot:ignore
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -659,8 +660,7 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 // @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
 func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
 	var sig []byte
-	msgStr := string(message)
-	sig, err /*@, signatureT @*/ = kmsService.Sign(sanitizeStr(keyId), []byte(sanitizeStr(msgStr)) /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
+	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
 	if err != nil { //argot:ignore
 		return
 	}
