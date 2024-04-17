@@ -135,6 +135,8 @@ const (
 	IODistributed               DataChannelState = 11
 )
 
+type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
+
 // dataChannel used for session communication between the message gateway service and the agent.
 type dataChannel struct {
 	//dataChannelState keeps track of the data channel's state such that calls violating the implicit state machine transitions can be rejected
@@ -142,7 +144,7 @@ type dataChannel struct {
 	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
 	dataStream *datastream.DataStream
 	//inputStreamMessageHandler is responsible for handling plugin specific input_stream_data message
-	inputStreamMessageHandler iosanitization.InputStreamMessageHandler
+	inputStreamMessageHandler InputStreamMessageHandler
 	//hs captures handshake state and error
 	hs handshake
 	//blockCipher stores encrytion keys and provides interface for encryption/decryption functions

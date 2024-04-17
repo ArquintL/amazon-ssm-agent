@@ -28,7 +28,7 @@ func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
 	logReaderId string,
-	inputStreamMessageHandler iosanitization.InputStreamMessageHandler,
+	inputStreamMessageHandler InputStreamMessageHandler,
 	cancelFlag task.CancelFlag) (res IDataChannel, err error) {
 
 	// pick an arbitrary rid for this protocol session and inhale the IO specification for

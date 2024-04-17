@@ -8,11 +8,11 @@ package iosanitization
 // we do not prove that the preconditions are satisfied.
 
 import (
-	"bytes"
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
+	//@ "bytes"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 	//@ ft "github.com/aws/amazon-ssm-agent/agent/iospecs/fact"
