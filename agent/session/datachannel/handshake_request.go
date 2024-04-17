@@ -28,7 +28,6 @@ import (
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/version"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -248,7 +247,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 // @    iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
 func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
 	//@ cryptoRand.GetReaderMem()
-	priv, x, y, err /*@, t1 @*/ := iosanitization.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
+	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
 	if err != nil {
 		return nil, "", err /*@, t0 @*/
 	}

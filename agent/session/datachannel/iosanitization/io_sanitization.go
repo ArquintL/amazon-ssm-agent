@@ -80,22 +80,6 @@ func DataStreamSend(dataStream *datastream.DataStream, log logger.T, payloadType
 }
 
 
-// ----- GenerateKey -----
-
-// @ preserves curve.Mem() && rand.Mem()
-// @ requires pl.token(t0) && iospec.e_FrFact(t0, rid)
-// @ ensures  err == nil ==> bytes.SliceMem(priv) && x.Mem() && y.Mem()
-// @ ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
-// @ ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
-// @     iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&
-// @     iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
-func GenerateKey(curve elliptic.Curve, rand io.Reader /*@, ghost t0 pl.Place, ghost rid tm.Term @*/) (priv []byte, x *big.Int, y *big.Int, err error /*@, ghost t1 pl.Place @*/) {
-	return elliptic.GenerateKey(curve, rand /*@, t0, rid @*/)
-}
-
-
 // ----- DataChannel -----
 
 type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
