@@ -149,7 +149,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
 		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
-		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, sanitizeStr(dc.secrets.agentLTKeyARN), sanitizeBytes(signPayloadBytes /*@, perm(1/2) @*/) /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
+		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
 		if err != nil {
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,

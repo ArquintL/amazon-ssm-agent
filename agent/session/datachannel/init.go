@@ -16,11 +16,12 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+	//@ "github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 )
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
-// @ requires inputStreamMessageHandler implements StreamDataHandlerSpec{}
+// @ requires inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{}
 // @ ensures  res.Mem() && typeOf(res) == *dataChannel
 // @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
 func NewDataChannel(context contextPkg.T,
