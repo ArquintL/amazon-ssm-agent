@@ -8,10 +8,7 @@ package iosanitization
 // we do not prove that the preconditions are satisfied.
 
 import (
-	"big"
 	"bytes"
-	"crypto/elliptic"
-	"io"
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
