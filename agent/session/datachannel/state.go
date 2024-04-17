@@ -10,7 +10,6 @@ import (
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/cryptolib"
-	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -19,6 +18,7 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+	//@ "github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 )
 
 const (
