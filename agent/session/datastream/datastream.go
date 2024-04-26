@@ -238,9 +238,7 @@ func (dataStream *DataStream) SetWebSocket(context context.T,
 			MaxAttempts:         mgsConfig.DataChannelNumMaxAttempts,
 			NonRetryableErrors:  getNonRetryableDataChannelErrors(),
 		}
-		// TODO imprecision because retryer.Call() returns interface{} so
-		// every callsite gets tainted
-		if _, err := retryer.Call(); err != nil { //argot:ignore
+		if _, err := retryer.Call(); err != nil {
 			log.Errorf("failed to set data stream token")
 		}
 	}

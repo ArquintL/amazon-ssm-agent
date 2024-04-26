@@ -184,8 +184,7 @@ func (mgs *MGSInteractor) Initialize() (err error) {
 
 	log.Info("SSM Agent is trying to setup control channel for MGSInteractor")
 	mgs.controlChannel, err = setupControlChannel(mgs.context, mgs.mgsService, mgs.agentConfig.InstanceID, mgs.incomingAgentMessageChan)
-	// TODO imprecision because mgs is tainted
-	if err != nil { //argot:ignore
+	if err != nil {
 		log.Errorf("Error setting up control channel")
 		return err
 	}
@@ -267,8 +266,7 @@ func (mgs *MGSInteractor) listenReply() {
 externalLoop:
 	for {
 		select {
-		// TODO imprecision because mgs is tainted
-		case reply, isOpen := <-mgs.replyChan: //argot:ignore
+		case reply, isOpen := <-mgs.replyChan:
 			if !isOpen {
 				log.Info("reply channel closed")
 				break externalLoop
@@ -300,8 +298,7 @@ func (mgs *MGSInteractor) listenIncomingAgentMessages() {
 	log.Info("listen incoming messages thread in MGS interactor started")
 	defer func() {
 		log.Info("listen incoming messages thread in MGS interactor ended")
-		// TODO imprecision because mgs is tainted
-		if r := recover(); r != nil { //argot:ignore
+		if r := recover(); r != nil {
 			log.Errorf("listen incoming messages panic: \n%v", r)
 			// log.Errorf("Stacktrace:\n%s", debug.Stack())
 			time.Sleep(2 * time.Second)
@@ -309,19 +306,18 @@ func (mgs *MGSInteractor) listenIncomingAgentMessages() {
 		}
 	}()
 
-	// TODO imprecision because mgs is tainted
-	for agentMessage := range mgs.incomingAgentMessageChan { //argot:ignore
+	for agentMessage := range mgs.incomingAgentMessageChan {
 		log.Infof("Processing AgentMessage: MessageType - %s, Id - %s", agentMessage.MessageType, agentMessage.MessageId)
-		switch agentMessage.MessageType { //argot:ignore
-		case mgsContracts.AgentJobMessage: //argot:ignore
+		switch agentMessage.MessageType {
+		case mgsContracts.AgentJobMessage:
 			mgs.processAgentJobMessage(agentMessage)
-		case mgsContracts.InteractiveShellMessage, mgsContracts.ChannelClosedMessage: //argot:ignore
+		case mgsContracts.InteractiveShellMessage, mgsContracts.ChannelClosedMessage:
 			mgs.processSessionRelatedMessages(agentMessage)
-		case mgsContracts.TaskAcknowledgeMessage: //argot:ignore
+		case mgsContracts.TaskAcknowledgeMessage:
 			mgs.processTaskAcknowledgeMessage(agentMessage)
-		case mgsContracts.AgentJobReplyAck: //argot:ignore
+		case mgsContracts.AgentJobReplyAck:
 			mgs.processJobReplyAck(log, agentMessage)
-		default: //argot:ignore
+		default:
 			log.Error("invalid message type in message")
 		}
 	}
@@ -396,23 +392,21 @@ func (mgs *MGSInteractor) processAgentJobMessage(agentMessage mgsContracts.Agent
 	docState, err := agentMessage.ParseAgentMessage(mgs.context, commandOrchestrationRootDir, mgs.agentConfig.InstanceID)
 	// just dropping all errors - MDS will take care of these messages
 	// we should handle few errors differently in future
-	// TODO imprecision because mgs is tainted
-	if err != nil { //argot:ignore
+	if err != nil {
 		log.Errorf("dropping message because cannot parse AgentJob message %s to Document State, err: %v", agentMessage.MessageId.String(), err)
 		return
 	} else {
 
 		log.Debugf("pushing AgentJob message %s to MessageHandler incoming message chan", agentMessage.MessageId.String())
 		errorCode := mgs.messageHandler.Submit(docState)
-		// TODO imprecision because mgs is tainted
-		if errorCode != "" { //argot:ignore
-			if _, ok := mgs.ackSkipCodes[errorCode]; ok { //argot:ignore
+		if errorCode != "" {
+			if _, ok := mgs.ackSkipCodes[errorCode]; ok {
 				log.Warnf("dropping message %v because of error code %v", docState.DocumentInformation.DocumentID, errorCode)
 				return
 			}
 		}
 		err = mgs.buildAgentJobAckMessageAndSend(agentMessage.MessageId, docState.DocumentInformation.MessageID, agentMessage.CreatedDate)
-		if err != nil { //argot:ignore
+		if err != nil {
 			// proceed without returning during error as the doc would have been already persisted
 			log.Errorf("could not send ack for message %v because of error: %v", docState.DocumentInformation.DocumentID, err)
 		}
@@ -526,10 +520,8 @@ var setupControlChannel = func(context context.T, mgsService service.Service, in
 		MaxAttempts:         mgsConfig.ControlChannelNumMaxRetries,
 	}
 	retryer.Init()
-	// TODO imprecision because retryer.Call() returns interface{} so
-	// every callsite gets tainted
 	channel, err := retryer.Call()
-	if err != nil { //argot:ignore
+	if err != nil {
 		// should never happen
 		return nil, err
 	}

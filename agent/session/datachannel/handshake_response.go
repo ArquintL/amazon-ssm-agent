@@ -116,7 +116,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 				// logUnknownActionType(log, action.ActionType)
 			}
 		}
-		if err != nil { //argot:ignore
+		if err != nil {
 			break
 		}
 	}
@@ -124,7 +124,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	if err == nil && encryptionEnabled && !containsSecureSessionAction { //argot:ignore
 		err = fmtError("No 'SecureSession' action found despite encryption being enabled")
 	}
-	if err != nil { //argot:ignore
+	if err != nil {
 		// logError(log, err /*@, perm(1/1) @*/)
 		// Cancel the session because handshake FAILED
 		//@ unfold dc.MemTransfer(state, encryptionEnabled)
@@ -328,7 +328,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
 	//@ messageT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), AgentId)
-	ok, err := iosanitization.KMSVerify(dc.kmsService, resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/)
+	ok, err := iosanitization.KMSVerify(dc.kmsService, resp.ClientLTKeyARN, clientSignPayloadBytes, sig /*@, perm(1/2), t2, rid, AgentId, KMSId, ClientId, clientLtKeyIdT, messageT, sigYT, verifyReqT @*/) // call to function has the necessary I/O spec
 	if !ok {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -621,7 +621,7 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 	//@ cryptoRand.GetReaderMem()
 	ciphertext, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, pk, payload /*@, p > writePerm ? perm(1/1) : p/2 @*/)
 	if err != nil { //argot:ignore
-		err = fmtErrorf("failed to encrypt session keys", err /*@, perm(1/1) @*/)
+		err = errHandshake()
 		return
 	}
 	encodedCiphertext = base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
@@ -660,8 +660,9 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 // @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
 func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
 	var sig []byte
-	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
-	if err != nil { //argot:ignore
+	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/) //argot:ignore // call to function has the necessary I/O spec
+	if err != nil {                                                                                                                   //argot:ignore
+		err = errHandshake()
 		return
 	}
 	signature = base64.StdEncoding.EncodeToString(sig /*@, perm(1/2)@*/)

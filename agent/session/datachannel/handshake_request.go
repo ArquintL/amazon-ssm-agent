@@ -101,14 +101,13 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ fold dc.IoSpecMemMain()
 
 		dc.secrets.agentSecret = agentSecret
+		// log.Info(dc) // DIODON:SINK
 
 		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
-		if err != nil {
+		if err != nil { //argot:ignore
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
-			err = fmtErrorf("failed to encode sign payload", err /*@, perm(1/1) @*/)
-			logError(log, err /*@, perm(1/2) @*/)
-			return nil, err
+			return nil, errHandshake()
 		}
 		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(dc.clientId))))
 
@@ -150,19 +149,14 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
 
 		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
-		if err != nil {
+		if err != nil { //argot:ignore
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
 			// folding I/O predicates. This is in accordance to the Tamarin model, which also does not foresee a participant
 			// instance to retry certain steps
 			//@ unfold acc(dc.MemChannelState(), 1/2)
 			dc.dataChannelState = Erroneous
-			//@ fold acc(dc.MemChannelState(), 1/2)
-			//@ fold dc.MemInternal(Erroneous)
-			//@ fold dc.Mem()
-			err = fmtErrorf("failed to sign agent sign payload", err /*@, perm(1/1) @*/)
-			logError(log, err /*@, perm(1/2) @*/)
-			return nil, err
+			return nil, errHandshake()
 		}
 
 		//@ s4 := s3 union mset[ft.Fact] { ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) }
@@ -248,8 +242,8 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
 	//@ cryptoRand.GetReaderMem()
 	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
-	if err != nil {
-		return nil, "", err /*@, t0 @*/
+	if err != nil { //argot:ignore
+		return nil, "", errHandshake() /*@, t0 @*/ // generic error
 	}
 
 	// Base64 encode the public part and put it in the message
@@ -291,7 +285,7 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	}
 
 	logDebug(log, "Sending Handshake Request.")
-	logHandshakeRequest(log, handshakeRequestPayload /*@, perm(1/2) @*/)
+	// logHandshakeRequest(log, handshakeRequestPayload /*@, perm(1/2) @*/)
 
 	//@ unfold dc.Mem()
 	//@ state := dc.dataChannelState

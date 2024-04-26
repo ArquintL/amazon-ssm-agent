@@ -22,6 +22,7 @@ package datachannel
 import (
 	"errors"
 	"time"
+
 	//@ "sync"
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
@@ -99,14 +100,14 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	logInfo(log, "Initiating Handshake")
 	handshakeRequestPayload, err :=
 		dc.buildHandshakeRequestPayload(log, encryptionEnabled, sessionTypeRequest)
-	if err != nil {
-		return err
+	if err != nil { //argot:ignore
+		return errHandshake() // safe generic error
 	}
 	err = dc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
 	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
 	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
-	if err != nil {
-		return err
+	if err != nil { //argot:ignore
+		return errHandshake()
 	}
 
 	// notify Go routing handling received messages that it can process a message:
@@ -142,13 +143,13 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	}
 	// we send the flag `encryptionEnabled` back via the channel such that we are able to express the data channel's
 	// state. This flag is expected to be identical to `encryptionEnabled`:
-	if res.encryptionEnabled != encryptionEnabled {
+	if res.encryptionEnabled != encryptionEnabled { //argot:ignore
 		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
 		//@ fold acc(dc.MemChannelState(), 1/2)
 		//@ fold dc.MemInternal(Erroneous)
 		//@ fold dc.Mem()
-		return errors.New("Unexpected result from processing handshake response")
+		return errHandshake()
 	}
 	//@ unfold ResponseChanInv!<dc, _!>(res)
 	//@ unfold dc.MemTransfer(res.state, encryptionEnabled)

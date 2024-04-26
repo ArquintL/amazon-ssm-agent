@@ -143,9 +143,8 @@ func (mgs *MGSInteractor) startSendFailedReplyJob() {
 	log := mgs.context.Log()
 	mgs.mutex.Lock()
 	defer mgs.mutex.Unlock()
-	// TODO imprecision because mgs is tainted
 	if mgs.sendReplyProp.sendFailedReplyJob == nil {
-		if mgs.sendReplyProp.sendFailedReplyJob, err = scheduler.Every(utils.SendFailedReplyFrequencyMinutes).Minutes().Run(mgs.sendFailedReplies); err != nil { //argot:ignore
+		if mgs.sendReplyProp.sendFailedReplyJob, err = scheduler.Every(utils.SendFailedReplyFrequencyMinutes).Minutes().Run(mgs.sendFailedReplies); err != nil {
 			log.Errorf("unable to schedule send failed reply job. %v", err)
 		}
 	}
@@ -288,8 +287,7 @@ func (mgs *MGSInteractor) startReplyProcessingQueue() {
 exitLoopLabel:
 	for {
 		// If there are too many reply threads currently running, wait for any of them to free up
-		// TODO imprecision because mgs is tainted
-		if replyThreadCount >= mgs.sendReplyProp.replyQueueLimit { //argot:ignore
+		if replyThreadCount >= mgs.sendReplyProp.replyQueueLimit {
 			logger.Debug("maximum reply threads are running right now. Waiting for one of them to end")
 			<-mgs.sendReplyProp.replyThreadDone
 			logger.Debug("one of the reply thread completed. proceeding to the next reply")
@@ -297,7 +295,7 @@ exitLoopLabel:
 		}
 
 		select {
-		case res, ok := <-mgs.sendReplyProp.reply: //argot:ignore
+		case res, ok := <-mgs.sendReplyProp.reply:
 			if !ok {
 				logger.Info("Reply queue has been closed")
 				break exitLoopLabel
@@ -307,7 +305,7 @@ exitLoopLabel:
 			replyThreadCount++
 			go func(resLocalContract *agentReplyLocalContract) {
 				defer func() {
-					if r := recover(); r != nil { //argot:ignore
+					if r := recover(); r != nil {
 						logger.Errorf("reply processing queue panic: \n%v", r)
 						// logger.Errorf("Stacktrace:\n%s", debug.Stack())
 					}
@@ -322,7 +320,7 @@ exitLoopLabel:
 	}
 
 	// Wait for all replies to complete
-	for replyThreadCount != 0 { //argot:ignore
+	for replyThreadCount != 0 {
 		<-mgs.sendReplyProp.replyThreadDone
 		logger.Debug("reply completed")
 		replyThreadCount--

@@ -123,7 +123,7 @@ func (controlChannel *ControlChannel) SetWebSocket(context context.T,
 		retryer.Init()
 		// TODO imprecision because retryer.Call() returns interface{} so
 		// every callsite gets tainted
-		if _, err := retryer.Call(); err != nil { //argot:ignore
+		if _, err := retryer.Call(); err != nil {
 			// should never happen
 			log.Errorf("failed to reconnect to the controlchannel")
 		}
