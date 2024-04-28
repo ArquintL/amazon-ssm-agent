@@ -139,6 +139,9 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			// instance to retry certain steps
 			//@ unfold acc(dc.MemChannelState(), 1/2)
 			dc.dataChannelState = Erroneous
+			//@ fold acc(dc.MemChannelState(), 1/2)
+			//@ fold dc.MemInternal(Erroneous)
+			//@ fold dc.Mem()
 			return nil, errHandshake()
 		}
 
