@@ -61,7 +61,6 @@ func KMSVerify(kmsService *crypto.KMSService, kmsKeyId string, message []byte, s
 	return kmsService.Verify(kmsKeyId, message, signature /*@, p, t, rid, agentId, kmsId, clientId, kmsKeyIdT, messageT, signatureT, m @*/)
 }
 
-
 // ----- DataStream -----
 
 // @ requires log != nil && noPerm < p
@@ -75,7 +74,6 @@ func KMSVerify(kmsService *crypto.KMSService, kmsKeyId string, message []byte, s
 func DataStreamSend(dataStream *datastream.DataStream, log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost inputDataT tm.Term, ghost m tm.Term @*/) (err error /*@, ghost t1 pl.Place @*/) {
 	return dataStream.Send(log, payloadType, inputData /*@, p, t, rid, inputDataT, m @*/)
 }
-
 
 // ----- DataChannel -----
 

@@ -34,7 +34,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // processStreamDataMessage gets called for all messages of type OutputStreamDataMessage
 // @ requires datastream.StreamDataHandlerFootprint(streamDataMessage)
 // @ preserves dc.RecvRoutineMem()

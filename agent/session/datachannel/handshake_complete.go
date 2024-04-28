@@ -31,7 +31,6 @@ import (
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
 )
 
-
 // buildHandshakeCompletePayload builds payload for HandshakeComplete
 // @ requires log != nil && dc.Mem() && dc.getState() >= Initialized
 // @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==> dc.dataChannelState == BlockCipherReady

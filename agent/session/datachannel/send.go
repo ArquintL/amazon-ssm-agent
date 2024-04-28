@@ -35,7 +35,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
 // @ requires log != nil

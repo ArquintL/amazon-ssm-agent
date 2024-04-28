@@ -21,7 +21,6 @@ import (
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 )
 
-
 const (
 	schemaVersion  = 1
 	sequenceNumber = 0

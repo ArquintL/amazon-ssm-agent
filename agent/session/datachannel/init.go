@@ -3,7 +3,7 @@ package datachannel
 import (
 	"time"
 
-	//@ contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
+	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	"github.com/aws/amazon-ssm-agent/agent/task"
@@ -13,7 +13,6 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 )
-
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)

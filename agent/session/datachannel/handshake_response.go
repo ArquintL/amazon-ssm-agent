@@ -36,7 +36,6 @@ import (
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
 )
 
-
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
 // @ requires dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()

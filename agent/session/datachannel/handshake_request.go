@@ -35,7 +35,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
 // @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized && request.Mem()
 // @ preserves acc(log.Mem(), _)

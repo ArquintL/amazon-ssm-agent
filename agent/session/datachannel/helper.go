@@ -21,6 +21,8 @@ package datachannel
 
 import (
 	"bytes"
+	"crypto/elliptic"
+	cryptoRand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha512"
 	"encoding/base64"
@@ -32,6 +34,7 @@ import (
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	"github.com/aws/amazon-ssm-agent/agent/versionutil"
 	"github.com/aws/aws-sdk-go/service/kms"
@@ -43,7 +46,6 @@ import (
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
-
 
 // we assume that this function returns the initial values used by this agent session
 // according to the `Agent_Init` Tamarin rule
@@ -291,7 +293,7 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 // @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
 func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
 	var sig []byte
-	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/) //argot:ignore // call to function has the necessary I/O spec
+	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
 	if err != nil { //argot:ignore
 		err = errHandshake()
 		return

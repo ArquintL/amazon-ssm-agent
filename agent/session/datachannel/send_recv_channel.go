@@ -29,7 +29,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-
 // @ trusted
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)

@@ -32,7 +32,6 @@ import (
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 )
 
-
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
