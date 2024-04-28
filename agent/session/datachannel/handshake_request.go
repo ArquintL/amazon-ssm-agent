@@ -20,11 +20,7 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
-	"crypto/elliptic"
-	cryptoRand "crypto/rand"
-	"encoding/base64"
-	"encoding/json"
-	//@ "bytes"
+	//@ cryptoRand "crypto/rand"
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
@@ -39,18 +35,6 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-// @ trusted
-// @ requires noPerm < p
-// @ requires acc(handshakeRequestPayload.Mem(), p)
-// @ requires handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
-// @ ensures  acc(handshakeRequestPayload.Mem(), p)
-// @ ensures  handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
-// @ ensures  err == nil ==> bytes.SliceMem(handshakeRequestPayloadBytes)
-// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == secActionB
-// @ ensures  err != nil ==> err.ErrorMem()
-func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost p perm, ghost secActionB by.Bytes @*/) (handshakeRequestPayloadBytes []byte, err error) {
-	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)
-}
 
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
 // @ requires log != nil && dc.Mem() && dc.getState() == BlockCipherInitialized && request.Mem()
@@ -191,8 +175,6 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		dc.dataChannelState = AgentSecretCreatedAndSigned
 		//@ fold acc(dc.MemChannelState(), 1/2)
 
-		// logDebugHex(log, "agent signed sign payload", sig)
-
 		req := mgsContracts.SecureSessionRequest{
 			Version:        1,
 			ShareAlgorithm: "P384",
@@ -227,44 +209,6 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 	} @*/
 
 	return handshakeRequest, nil
-}
-
-// @ trusted
-// @ requires pl.token(t0) && iospec.e_FrFact(t0, rid)
-// @ ensures  err == nil ==> bytes.SliceMem(priv)
-// @ ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
-// @ ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
-// @ ensures  err == nil ==> by.msgB(encodedPk) == by.expB(by.generatorB(), abs.Abs(priv))
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
-// @ 	iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&
-// @    iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
-func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
-	//@ cryptoRand.GetReaderMem()
-	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
-	if err != nil { //argot:ignore
-		return nil, "", errHandshake() /*@, t0 @*/ // generic error
-	}
-
-	// Base64 encode the public part and put it in the message
-	agentShare := elliptic.MarshalCompressed(elliptic.P384(), x, y /*@, perm(1/2) @*/)
-	encodedPk = base64.StdEncoding.EncodeToString(agentShare /*@, perm(1/2) @*/)
-	return
-}
-
-// @ trusted
-// @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
-// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.tuple3B(by.msgB(compressedPublic), by.msgB(logReaderId), by.msgB(clientId))
-// @ ensures err != nil ==> err.ErrorMem()
-func getSignAgentSharePayloadBytes(compressedPublic string, clientId string, logReaderId string) (signPayloadBytes []byte, err error) {
-	signPayload := &mgsContracts.SignAgentSharePayload{
-		AgentShare:  compressedPublic,
-		ClientId:    clientId,
-		LogReaderId: logReaderId,
-	}
-
-	//@ fold signPayload.Mem()
-	return json.Marshal(signPayload /*@, perm(1/2) @*/)
 }
 
 // sendHandshakeRequest sends handshake request

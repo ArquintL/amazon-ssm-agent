@@ -41,7 +41,6 @@ func GenerateKey(curve Curve, rand io.Reader, ghost t0 pl.Place, ghost rid tm.Te
 requires noPerm < p
 preserves curve.Mem() && acc(x.Mem(), p) && acc(y.Mem(), p)
 ensures bytes.SliceMem(res)
-// ensures abs.Abs(res) == abs.AbsEllipticPk(x, y)
 func MarshalCompressed(curve Curve, x *big.Int, y *big.Int, ghost p perm) (res []byte)
 
 requires noPerm < p

@@ -20,7 +20,6 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
-	"encoding/json"
 	//@ "bytes"
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
@@ -35,6 +34,7 @@ import (
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
+
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
@@ -229,34 +229,5 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	// ----- end external send I/O operation -----
 	fold dc.Mem()
 	@*/
-	return nil
-}
-
-// we treat this function has trusted as it does not depend on any secrets negotiated during
-// the handshake. In particular, the channel id and session status is sent.
-// @ trusted
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  dc.getState() == old(dc.getState())
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
-	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
-		SchemaVersion: schemaVersion,
-		SessionState:  string(sessionStatus),
-		SessionId:     dc.dataStream.GetChannelId(),
-	}
-
-	var agentSessionStateContentBytes []byte
-	if agentSessionStateContentBytes, err = json.Marshal(agentSessionStateContent); err != nil {
-		logErrorf(log, "Cannot serialize AgentSessionState message err", err /*@, perm(1/1) @*/)
-		return err
-	}
-
-	sessionStatusStr := string(sessionStatus)
-	//@ fold sessionStatusStr.Mem()
-	logDebug(log, "Send AgentSessionState message with session status"+sessionStatusStr)
-	if err := dc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes); err != nil {
-		return err
-	}
 	return nil
 }

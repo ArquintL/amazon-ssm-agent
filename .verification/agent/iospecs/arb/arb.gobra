@@ -1,9 +1,17 @@
 package arb
 
 import (
+    pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
     tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
+// we model picking an arbitrary place and term as (impure) functions
+// returning an unconstraint return value:
+ghost
+decreases
+func GetArbPlace() pl.Place
+
 // returns a completey unconstraint (and thus arbitrary) term
 ghost
+decreases
 func GetArbTerm() tm.Term

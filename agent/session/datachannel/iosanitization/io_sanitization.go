@@ -85,18 +85,14 @@ type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessa
 // this is non-ghost because it's the spec for a non-ghost closure implementation
 requires agentMessage.Mem()
 requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
-ensures err != nil ==> err.ErrorMem()
-ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
-ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
+ensures  pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
 func StreamDataHandlerSpec(agentMessage *mgsContracts.AgentMessage, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term) (err error)
 @*/
 
 // @ requires handler implements StreamDataHandlerSpec{}
 // @ requires agentMessage.Mem()
 // @ requires pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && by.gamma(agentMessageT) == agentMessage.Abs()
-// @ ensures err != nil ==> err.ErrorMem()
-// @ ensures err == nil ==> pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
-// @ ensures err != nil ==> pl.token(t) && iospec.e_OutFact(t, rid, agentMessageT) && iospec.get_e_OutFact_placeDst(t, rid, agentMessageT) == old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT))
+// @ ensures  pl.token(old(iospec.get_e_OutFact_placeDst(t, rid, agentMessageT)))
 func DataChannelForwardToMessageHandler(handler InputStreamMessageHandler, agentMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) (err error) {
 	return handler(agentMessage /*@, t, rid, agentMessageT @*/) /*@ as StreamDataHandlerSpec{} @*/
 }

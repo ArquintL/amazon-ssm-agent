@@ -29,6 +29,7 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
+
 // @ trusted
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
@@ -73,7 +74,7 @@ func (dc *dataChannel) tryReceiveResponse(responseChan chan ResponseChanPayload,
 // Since we do not constrain the result value, the verifier
 // considers both return values for any invocation of `nonDeterministicChoice()`
 ghost
-decreases _
+decreases
 func nonDeterministicChoice() bool
 
 // this models `tryReceiveMessageReceptionStatus` as Gobra does not yet support the `select` statement

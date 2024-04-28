@@ -20,6 +20,7 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
+	//@ "bytes"
 	"errors"
 	"time"
 
@@ -28,7 +29,9 @@ import (
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/cryptolib"
+	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 )
+
 
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
 // @ requires log != nil
@@ -203,6 +206,137 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	startReceivingChan <- payload
 
 	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
+	//@ fold dc.Mem()
+	return
+}
+
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(s), p)
+// @ ensures  bytes.SliceMem(res) && abs.Abs(s) == abs.Abs(res)
+func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
+	res = make([]byte, len(s))
+	//@ unfold acc(bytes.SliceMem(s), p)
+	copy(res, s /*@, p/2 @*/)
+	//@ fold acc(bytes.SliceMem(s), p)
+	//@ fold bytes.SliceMem(res)
+	// TODO: since `Abs` is not axiomatized to express that it only depends
+	// on the content of a byte slice, we have to assume this equality for now:
+	//@ assume abs.Abs(s) == abs.Abs(res)
+	return res
+}
+
+// GetClientVersion returns version of the client
+// @ requires noPerm < p
+// @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
+	if dc.getState() == Erroneous {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.hs.clientVersion, nil
+}
+
+// GetInstanceId returns id of the target
+// @ requires noPerm < p
+// @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error) {
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.instanceId, nil
+}
+
+// GetRegion returns aws region of the target
+// @ requires noPerm < p
+// @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err error) {
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetRegion(), nil
+}
+
+// IsActive returns a boolean value indicating the datachannel is actively listening
+// and communicating with service
+// @ requires noPerm < p
+// @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error) {
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.IsActive(), nil
+}
+
+// GetSeparateOutputPayload returns boolean value indicating separate
+// stdout/stderr output for non-interactive session or not
+// @ requires noPerm < p
+// @ preserves acc(dc.Mem(), p)
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error) {
+	if dc.getState() == Erroneous {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
+}
+
+// SetSeparateOutputPayload set separateOutputPayload value
+// @ preserves dc.Mem()
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures dc.getState() == old(dc.getState())
+func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
+	if dc.getState() == Erroneous || dc.getState() == IODistributed {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold dc.MemInternal(state)
+	dc.separateOutputPayload = separateOutputPayload
+	//@ fold dc.MemInternal(state)
+	//@ fold dc.Mem()
+	return
+}
+
+// @ requires log != nil
+// @ preserves dc.Mem() && acc(log.Mem(), _)
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
+func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold acc(dc.MemInternal(state), 1/4)
+	dc.dataStream.PrepareToCloseChannel(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.MemInternal(state), 1/4)
+	//@ fold dc.Mem()
+	return
+}
+
+// @ requires log != nil
+// @ preserves dc.Mem() && acc(log.Mem(), _)
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  dc.getState() == old(dc.getState())
+func (dc *dataChannel) Close(log logger.T) (err error) {
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+	//@ unfold dc.Mem()
+	//@ state := dc.dataChannelState
+	//@ unfold acc(dc.MemInternal(state), 1/4)
+	err = dc.dataStream.Close(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.MemInternal(state), 1/4)
 	//@ fold dc.Mem()
 	return
 }

@@ -21,6 +21,7 @@ package datachannel
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
@@ -30,6 +31,8 @@ import (
 
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
+	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	"github.com/aws/amazon-ssm-agent/agent/versionutil"
 	"github.com/aws/aws-sdk-go/service/kms"
 	"golang.org/x/crypto/hkdf"
@@ -37,8 +40,286 @@ import (
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
 	//@ "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
+	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
+
+
+// we assume that this function returns the initial values used by this agent session
+// according to the `Agent_Init` Tamarin rule
+// @ trusted
+// @ preserves kmsService.Mem()
+// @ requires pl.token(t) && iospec.e_Setup_Agent(t, rid)
+// @ ensures  err == nil ==> logLTPk.Mem()
+// @ ensures  err == nil ==> pl.token(old(iospec.get_e_Setup_Agent_placeDst(t, rid))) &&
+// @	by.gamma(tm.pubTerm(pub.pub_msg(agentId))) == by.gamma(old(iospec.get_e_Setup_Agent_r1(t, rid))) &&
+// @	by.gamma(tm.pubTerm(pub.pub_msg(clientId))) == by.gamma(old(iospec.get_e_Setup_Agent_r3(t, rid))) &&
+// @	by.gamma(tm.pubTerm(pub.pub_msg(logReaderId))) == by.gamma(old(iospec.get_e_Setup_Agent_r4(t, rid))) &&
+// @	by.gamma(tm.pubTerm(pub.pub_msg(agentLTKeyARN))) == by.gamma(old(iospec.get_e_Setup_Agent_r5(t, rid))) &&
+// @	logLTPk.Abs() == by.gamma(old(iospec.get_e_Setup_Agent_r6(t, rid)))
+// Patern axiom applies locally:
+// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r1(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(agentId))) ==> old(iospec.get_e_Setup_Agent_r1(t, rid)) == tm.pubTerm(pub.pub_msg(agentId))
+// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r3(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(clientId))) ==> old(iospec.get_e_Setup_Agent_r3(t, rid)) == tm.pubTerm(pub.pub_msg(clientId))
+// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r4(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(logReaderId))) ==> old(iospec.get_e_Setup_Agent_r4(t, rid)) == tm.pubTerm(pub.pub_msg(logReaderId))
+// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r5(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(agentLTKeyARN))) ==> old(iospec.get_e_Setup_Agent_r5(t, rid)) == tm.pubTerm(pub.pub_msg(agentLTKeyARN))
+// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures err != nil ==> pl.token(t) && iospec.e_Setup_Agent(t, rid) &&
+// @ 	iospec.get_e_Setup_Agent_placeDst(t, rid) == old(iospec.get_e_Setup_Agent_placeDst(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r1(t, rid) == old(iospec.get_e_Setup_Agent_r1(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r2(t, rid) == old(iospec.get_e_Setup_Agent_r2(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r3(t, rid) == old(iospec.get_e_Setup_Agent_r3(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r4(t, rid) == old(iospec.get_e_Setup_Agent_r4(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
+// @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
+func getInitialValues(dataStream *datastream.DataStream, kmsService *crypto.KMSService /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentId string, clientId string, logReaderId string, agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
+	metadata, err := kmsService.CreateKeyAssymetric()
+	if err != nil {
+		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
+		return "", "", "", "", nil, err
+	}
+
+	agentId = dataStream.GetInstanceId()
+	clientId = dataStream.GetClientId()
+	logReaderId = dataStream.GetLogReaderId()
+
+	//@ unfold metadata.Mem()
+	if metadata.Arn == nil {
+		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata", metadata /*@, perm(1/2) @*/)
+		return "", "", "", "", nil, err
+	}
+	agentLTKeyARN = *metadata.Arn
+	//@ cryptoRand.GetReaderMem()
+
+	// Note that we create an RSA key pair here but throw away the secret key.
+	// In a realistic deployment, the log reader's public key would be an input parameter.
+	// However, for now, we generate the public key here instead of taking it as an input.
+	sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096 /*@, perm(1/2) @*/)
+	if err != nil {
+		err = fmtErrorf("failed to create log secret key", err /*@, perm(1/1) @*/)
+		return "", "", "", "", nil, err
+	}
+	//@ unfold sk.Mem()
+	logLTPk = &sk.PublicKey
+
+	return
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ requires acc(handshakeRequestPayload.Mem(), p)
+// @ requires handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
+// @ ensures  acc(handshakeRequestPayload.Mem(), p)
+// @ ensures  handshakeRequestPayload.ContainsSecureSessionAction(secActionB)
+// @ ensures  err == nil ==> bytes.SliceMem(handshakeRequestPayloadBytes)
+// @ ensures  err == nil ==> abs.Abs(handshakeRequestPayloadBytes) == secActionB
+// @ ensures  err != nil ==> err.ErrorMem()
+func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost p perm, ghost secActionB by.Bytes @*/) (handshakeRequestPayloadBytes []byte, err error) {
+	return json.Marshal(handshakeRequestPayload /*@, p/2 @*/)
+}
+
+// @ trusted
+// @ requires pl.token(t0) && iospec.e_FrFact(t0, rid)
+// @ ensures  err == nil ==> bytes.SliceMem(priv)
+// @ ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
+// @ ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
+// @ ensures  err == nil ==> by.msgB(encodedPk) == by.expB(by.generatorB(), abs.Abs(priv))
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
+// @ 	iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&
+// @    iospec.get_e_FrFact_r1(t0, rid) == old(iospec.get_e_FrFact_r1(t0, rid))
+func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
+	//@ cryptoRand.GetReaderMem()
+	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
+	if err != nil { //argot:ignore
+		return nil, "", errHandshake() /*@, t0 @*/ // generic error
+	}
+
+	// Base64 encode the public part and put it in the message
+	agentShare := elliptic.MarshalCompressed(elliptic.P384(), x, y /*@, perm(1/2) @*/)
+	encodedPk = base64.StdEncoding.EncodeToString(agentShare /*@, perm(1/2) @*/)
+	return
+}
+
+// @ trusted
+// @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
+// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.tuple3B(by.msgB(compressedPublic), by.msgB(logReaderId), by.msgB(clientId))
+// @ ensures err != nil ==> err.ErrorMem()
+func getSignAgentSharePayloadBytes(compressedPublic string, clientId string, logReaderId string) (signPayloadBytes []byte, err error) {
+	signPayload := &mgsContracts.SignAgentSharePayload{
+		AgentShare:  compressedPublic,
+		ClientId:    clientId,
+		LogReaderId: logReaderId,
+	}
+
+	//@ fold signPayload.Mem()
+	return json.Marshal(signPayload /*@, perm(1/2) @*/)
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(payload), p)
+// @ ensures  handshakeResponse.Mem()
+// @ ensures  err == nil && abs.Abs(payload) == handshakeResponse.Abs()
+// @ ensures  err != nil ==> err.ErrorMem()
+func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeResponse *mgsContracts.HandshakeResponsePayload, err error) {
+	handshakeResponse = &mgsContracts.HandshakeResponsePayload{}
+	//@ fold handshakeResponse.Mem()
+	err = json.Unmarshal(payload, handshakeResponse /*@, p/2 @*/)
+	return
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(payload), p)
+// @ ensures  secureSessionResponse.Mem()
+// @ ensures  err == nil && abs.Abs(payload) == secureSessionResponse.Abs()
+// @ ensures  err != nil ==> err.ErrorMem()
+func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessionResponse *mgsContracts.SecureSessionResponse, err error) {
+	secureSessionResponse = &mgsContracts.SecureSessionResponse{}
+	//@ fold secureSessionResponse.Mem()
+	err = json.Unmarshal(payload, secureSessionResponse /*@, p/2 @*/)
+	return
+}
+
+// @ trusted
+// @ requires noPerm < p && p <= writePerm
+// @ preserves acc(bytes.SliceMem(agentSecret), p)
+// @ ensures err == nil ==> bytes.SliceMem(sharedSecret)
+// the following postcondition expresses that `IsOnCurve` guarantees that `clientShare` is a valid
+// DH pubic key. Instead of existentially quantifying over the corresponding private key, we assume
+// `privB` is the corresponding witness
+// @ ensures err == nil ==> by.msgB(clientShare) == by.expB(by.generatorB(), privB)
+// @ ensures err == nil ==> abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), privB), abs.Abs(agentSecret))
+// @ ensures err != nil ==> err.ErrorMem()
+func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p perm @*/) (sharedSecret []byte, err error /*@, privB by.Bytes @*/) {
+	var clientShareBytes []byte
+	clientShareBytes, err = base64.StdEncoding.DecodeString(clientShare)
+	if err != nil {
+		err = fmtError("failed to decode server share")
+		return
+	}
+
+	x, y := elliptic.UnmarshalCompressed(elliptic.P384(), clientShareBytes /*@, perm(1/2) @*/)
+
+	// check that the client share is on the curve
+	if !elliptic.P384().IsOnCurve(x, y /*@, perm(1/2) @*/) {
+		err = fmtError("client share is not on the curve")
+		return
+	}
+
+	ss, _ := elliptic.P384().ScalarMult(x, y, agentSecret /*@, p/2 @*/) // TODO: Double check it's fine to just use x
+	sharedSecret = ss.Bytes( /*@ perm(1/2) @*/ )
+	return
+}
+
+// @ trusted
+// @ ensures err == nil ==> bytes.SliceMem(clientSignPayload)
+// @ ensures err == nil ==> abs.Abs(clientSignPayload) == by.pairB(by.msgB(clientShare), by.msgB(agentId))
+// @ ensures err != nil ==> err.ErrorMem()
+func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayload []byte, err error) {
+	payload := &mgsContracts.SignClientSharePayload{
+		ClientShare: clientShare,
+		AgentId:     agentId,
+	}
+
+	//@ fold payload.Mem()
+	return json.Marshal(payload /*@, perm(1/2) @*/)
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(agentReadKey), p) && acc(bytes.SliceMem(agentWriteKey), p)
+// @ ensures  err == nil ==> bytes.SliceMem(sessionKeysPayload) && abs.Abs(sessionKeysPayload) == by.pairB(abs.Abs(agentWriteKey), abs.Abs(agentReadKey))
+// @ ensures  err != nil ==> err.ErrorMem()
+func getSessionKeysPayload(agentWriteKey, agentReadKey []byte /*@, ghost p perm @*/) (sessionKeysPayload []byte, err error) {
+	encodedAgentReadKey := base64.RawStdEncoding.EncodeToString(agentReadKey /*@, p/2 @*/)
+	encodedAgentWriteKey := base64.RawStdEncoding.EncodeToString(agentWriteKey /*@, p/2 @*/)
+
+	sessionKeys := &mgsContracts.SessionKeys{
+		AgentWriteKey: encodedAgentWriteKey,
+		AgentReadKey:  encodedAgentReadKey,
+	}
+	//@ fold sessionKeys.Mem()
+	return json.Marshal(sessionKeys /*@, perm(1/2) @*/)
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ preserves acc(bytes.SliceMem(payload), p) && acc(pk.Mem(), p)
+// @ ensures  err == nil ==> by.msgB(encodedCiphertext) == by.aencB(abs.Abs(payload), pk.Abs())
+// @ ensures  err != nil ==> err.ErrorMem()
+func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (encodedCiphertext string, err error) {
+	//@ cryptoRand.GetReaderMem()
+	ciphertext, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, pk, payload /*@, p > writePerm ? perm(1/1) : p/2 @*/)
+	if err != nil { //argot:ignore
+		err = errHandshake()
+		return
+	}
+	encodedCiphertext = base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
+	return
+}
+
+// @ trusted
+// @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
+// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.pairB(by.msgB(encryptedSessionKeys), by.msgB(clientId))
+// @ ensures err != nil ==> err.ErrorMem()
+func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string) (signPayloadBytes []byte, err error) {
+	signPayload := &mgsContracts.SignSessionKeysPayload{
+		EncryptedSessionKeys: encryptedSessionKeys,
+		ClientId:             clientId,
+	}
+
+	//@ fold signPayload.Mem()
+	return json.Marshal(signPayload /*@, perm(1/2) @*/)
+}
+
+// @ trusted
+// @ requires noPerm < p
+// @ requires kmsService.Mem() && acc(bytes.SliceMem(message), p)
+// @ requires m == tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(tm.pubTerm(pub.pub_msg(keyId)), messageT))
+// @ requires pl.token(t) && iospec.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(messageT) == abs.Abs(message)
+// @ requires let t1 := iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) in (
+// @     iospec.e_In_KMS(t1, rid))
+// @ ensures  kmsService.Mem() && acc(bytes.SliceMem(message), p)
+// @ ensures  err == nil ==> by.gamma(signatureT) == by.msgB(signature)
+// @ ensures  err != nil ==> err.ErrorMem()
+// @ ensures  err == nil ==> let t1 := old(iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m)) in (
+// @     pl.token(old(iospec.get_e_In_KMS_placeDst(t1, rid))) &&
+// @     kmsId == old(iospec.get_e_In_KMS_r1(t1, rid)) &&
+// @     agentId == old(iospec.get_e_In_KMS_r2(t1, rid)) &&
+// @     rid == old(iospec.get_e_In_KMS_r3(t1, rid)) &&
+// @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
+func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
+	var sig []byte
+	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/) //argot:ignore // call to function has the necessary I/O spec
+	if err != nil { //argot:ignore
+		err = errHandshake()
+		return
+	}
+	signature = base64.StdEncoding.EncodeToString(sig /*@, perm(1/2)@*/)
+	return
+}
+
+// @ trusted
+// @ ensures  err == nil ==> by.msgB(encryptedSessionKeysPayload) == by.tuple5B(by.msgB(encodedEncryptedSessionKeys), by.msgB(encodedSigSessionKeys), by.msgB(agentId), by.msgB(agentLTKeyARN), by.msgB(clientId))
+// @ ensures  err != nil ==> err.ErrorMem()
+func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, agentId, agentLTKeyARN, clientId string) (encryptedSessionKeysPayload string, err error) {
+	payload := &mgsContracts.EncryptedSessionKeysPayload{
+		EncryptedSessionKeys: encodedEncryptedSessionKeys,
+		Signature:            encodedSigSessionKeys,
+		AgentId:              agentId,
+		AgentLTKeyARN:        agentLTKeyARN,
+		ClientId:             clientId,
+	}
+	//@ fold payload.Mem()
+	encryptedSessionKeysPayloadBytes, err := json.Marshal(payload /*@, perm(1/2) @*/)
+	if err != nil { //argot:ignore
+		return
+	}
+
+	encryptedSessionKeysPayload = base64.StdEncoding.EncodeToString(encryptedSessionKeysPayloadBytes /*@, perm(1/2) @*/)
+	return
+}
 
 // We model is function as receiving the payload with the corresponding term representation from the
 // environment because we model in Tamarin that the payload is under full adversarial control.
@@ -129,135 +410,34 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-// @ requires noPerm < p
-// @ preserves acc(bytes.SliceMem(s), p)
-// @ ensures  bytes.SliceMem(res) && abs.Abs(s) == abs.Abs(res)
-func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
-	res = make([]byte, len(s))
-	//@ unfold acc(bytes.SliceMem(s), p)
-	copy(res, s /*@, p/2 @*/)
-	//@ fold acc(bytes.SliceMem(s), p)
-	//@ fold bytes.SliceMem(res)
-	// TODO: since `Abs` is not axiomatized to express that it only depends
-	// on the content of a byte slice, we have to assume this equality for now:
-	//@ assume abs.Abs(s) == abs.Abs(res)
-	return res
-}
-
-// GetClientVersion returns version of the client
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
-	if dc.getState() == Erroneous {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.hs.clientVersion, nil
-}
-
-// GetInstanceId returns id of the target
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error) {
-	if dc.getState() < Initialized {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.instanceId, nil
-}
-
-// GetRegion returns aws region of the target
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err error) {
-	if dc.getState() < Initialized {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetRegion(), nil
-}
-
-// IsActive returns a boolean value indicating the datachannel is actively listening
-// and communicating with service
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error) {
-	if dc.getState() < Initialized {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.IsActive(), nil
-}
-
-// GetSeparateOutputPayload returns boolean value indicating separate
-// stdout/stderr output for non-interactive session or not
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error) {
-	if dc.getState() == Erroneous {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
-}
-
-// SetSeparateOutputPayload set separateOutputPayload value
-// @ preserves dc.Mem()
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures dc.getState() == old(dc.getState())
-func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
-	if dc.getState() == Erroneous || dc.getState() == IODistributed {
-		err = fmtErrorInvalidState(dc.getState())
-		return
-	}
-	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold dc.MemInternal(state)
-	dc.separateOutputPayload = separateOutputPayload
-	//@ fold dc.MemInternal(state)
-	//@ fold dc.Mem()
-	return
-}
-
+// we treat this function has trusted as it does not depend on any secrets negotiated during
+// the handshake. I.e., we treat this function as being part of the application.
+// In particular, only the channel id and session status is sent.
+// @ trusted
 // @ requires log != nil
 // @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
 // @ ensures  dc.getState() == old(dc.getState())
-func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
-	if dc.getState() < Initialized {
-		err = fmtErrorInvalidState(dc.getState())
-		return
+// @ ensures  err != nil ==> err.ErrorMem()
+func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
+	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
+		SchemaVersion: schemaVersion,
+		SessionState:  string(sessionStatus),
+		SessionId:     dc.dataStream.GetChannelId(),
 	}
-	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold acc(dc.MemInternal(state), 1/4)
-	dc.dataStream.PrepareToCloseChannel(log /*@, perm(1/8) @*/)
-	//@ fold acc(dc.MemInternal(state), 1/4)
-	//@ fold dc.Mem()
-	return
-}
 
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  dc.getState() == old(dc.getState())
-func (dc *dataChannel) Close(log logger.T) (err error) {
-	if dc.getState() < Initialized {
-		err = fmtErrorInvalidState(dc.getState())
-		return
+	var agentSessionStateContentBytes []byte
+	if agentSessionStateContentBytes, err = json.Marshal(agentSessionStateContent); err != nil {
+		logErrorf(log, "Cannot serialize AgentSessionState message err", err /*@, perm(1/1) @*/)
+		return err
 	}
-	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold acc(dc.MemInternal(state), 1/4)
-	err = dc.dataStream.Close(log /*@, perm(1/8) @*/)
-	//@ fold acc(dc.MemInternal(state), 1/4)
-	//@ fold dc.Mem()
-	return
+
+	sessionStatusStr := string(sessionStatus)
+	//@ fold sessionStatusStr.Mem()
+	logDebug(log, "Send AgentSessionState message with session status"+sessionStatusStr)
+	if err := dc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes); err != nil {
+		return err
+	}
+	return nil
 }
 
 // @ trusted

@@ -1,23 +1,19 @@
 package datachannel
 
 import (
-	cryptoRand "crypto/rand"
-	"crypto/rsa"
 	"time"
 
-	contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
+	//@ contextPkg "github.com/aws/amazon-ssm-agent/agent/context"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datastream"
 	"github.com/aws/amazon-ssm-agent/agent/task"
-	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+	//@ "github.com/aws/amazon-ssm-agent/agent/iospecs/arb"
 	//@ ft "github.com/aws/amazon-ssm-agent/agent/iospecs/fact"
 	//@ "github.com/aws/amazon-ssm-agent/agent/iospecs/iospec"
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
-	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
-	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 	//@ "github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 )
+
 
 // NewDataChannel constructs datachannel objects.
 // @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
@@ -33,7 +29,7 @@ func NewDataChannel(context contextPkg.T,
 
 	// pick an arbitrary rid for this protocol session and inhale the IO specification for
 	// the SSM agent and the chosen protocol session:
-	//@ t0, rid := getArbPlace(), getArbRid()
+	//@ t0, rid := arb.GetArbPlace(), arb.GetArbTerm()
 	//@ inhale pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
 
 	tmp /*@ @ @*/ := dataChannel{}
@@ -163,69 +159,3 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error)
 	// @ fold dc.Mem()
 	return nil
 }
-
-// we assume that this function returns the initial values used by this agent session
-// according to the `Agent_Init` Tamarin rule
-// @ trusted
-// @ preserves kmsService.Mem()
-// @ requires pl.token(t) && iospec.e_Setup_Agent(t, rid)
-// @ ensures  err == nil ==> logLTPk.Mem()
-// @ ensures  err == nil ==> pl.token(old(iospec.get_e_Setup_Agent_placeDst(t, rid))) &&
-// @	by.gamma(tm.pubTerm(pub.pub_msg(agentId))) == by.gamma(old(iospec.get_e_Setup_Agent_r1(t, rid))) &&
-// @	by.gamma(tm.pubTerm(pub.pub_msg(clientId))) == by.gamma(old(iospec.get_e_Setup_Agent_r3(t, rid))) &&
-// @	by.gamma(tm.pubTerm(pub.pub_msg(logReaderId))) == by.gamma(old(iospec.get_e_Setup_Agent_r4(t, rid))) &&
-// @	by.gamma(tm.pubTerm(pub.pub_msg(agentLTKeyARN))) == by.gamma(old(iospec.get_e_Setup_Agent_r5(t, rid))) &&
-// @	logLTPk.Abs() == by.gamma(old(iospec.get_e_Setup_Agent_r6(t, rid)))
-// Patern axiom applies locally:
-// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r1(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(agentId))) ==> old(iospec.get_e_Setup_Agent_r1(t, rid)) == tm.pubTerm(pub.pub_msg(agentId))
-// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r3(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(clientId))) ==> old(iospec.get_e_Setup_Agent_r3(t, rid)) == tm.pubTerm(pub.pub_msg(clientId))
-// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r4(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(logReaderId))) ==> old(iospec.get_e_Setup_Agent_r4(t, rid)) == tm.pubTerm(pub.pub_msg(logReaderId))
-// @ ensures  by.gamma(old(iospec.get_e_Setup_Agent_r5(t, rid))) == by.gamma(tm.pubTerm(pub.pub_msg(agentLTKeyARN))) ==> old(iospec.get_e_Setup_Agent_r5(t, rid)) == tm.pubTerm(pub.pub_msg(agentLTKeyARN))
-// @ ensures err != nil ==> err.ErrorMem()
-// @ ensures err != nil ==> pl.token(t) && iospec.e_Setup_Agent(t, rid) &&
-// @ 	iospec.get_e_Setup_Agent_placeDst(t, rid) == old(iospec.get_e_Setup_Agent_placeDst(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r1(t, rid) == old(iospec.get_e_Setup_Agent_r1(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r2(t, rid) == old(iospec.get_e_Setup_Agent_r2(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r3(t, rid) == old(iospec.get_e_Setup_Agent_r3(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r4(t, rid) == old(iospec.get_e_Setup_Agent_r4(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r5(t, rid) == old(iospec.get_e_Setup_Agent_r5(t, rid)) &&
-// @ 	iospec.get_e_Setup_Agent_r6(t, rid) == old(iospec.get_e_Setup_Agent_r6(t, rid))
-func getInitialValues(dataStream *datastream.DataStream, kmsService *crypto.KMSService /*@, ghost t pl.Place, ghost rid tm.Term @*/) (agentId string, clientId string, logReaderId string, agentLTKeyARN string, logLTPk *rsa.PublicKey, err error) {
-	metadata, err := kmsService.CreateKeyAssymetric()
-	if err != nil {
-		err = fmtErrorf("failed to create agent LTK", err /*@, perm(1/1) @*/)
-		return "", "", "", "", nil, err
-	}
-
-	agentId = dataStream.GetInstanceId()
-	clientId = dataStream.GetClientId()
-	logReaderId = dataStream.GetLogReaderId()
-
-	//@ unfold metadata.Mem()
-	if metadata.Arn == nil {
-		err = fmtErrorfMetadata("asymmetric key ARN is nil, metadata", metadata /*@, perm(1/2) @*/)
-		return "", "", "", "", nil, err
-	}
-	agentLTKeyARN = *metadata.Arn
-	//@ cryptoRand.GetReaderMem()
-	sk, err := rsa.GenerateKey(cryptoRand.Reader, 4096 /*@, perm(1/2) @*/)
-	if err != nil {
-		err = fmtErrorf("failed to create log secret key", err /*@, perm(1/1) @*/)
-		return "", "", "", "", nil, err
-	}
-	//@ unfold sk.Mem()
-	logLTPk = &sk.PublicKey
-	return
-}
-
-/*@
-// we model picking an arbitrary place and rid as (impure) functions
-// returning an unconstraint return value:
-ghost
-decreases
-func getArbPlace() pl.Place
-
-ghost
-decreases
-func getArbRid() tm.Term
-@*/

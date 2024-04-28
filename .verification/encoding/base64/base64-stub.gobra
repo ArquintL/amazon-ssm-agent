@@ -20,7 +20,6 @@ type Encoding struct {
 
 requires noPerm < p
 preserves acc(bytes.SliceMem(src), p)
-// ensures  abs.Abs(src) == by.msgB(res) 
 func (encoding *Encoding) EncodeToString(src []byte, ghost p perm) (res string)
 
 ensures err == nil ==> bytes.SliceMem(res) && abs.Abs(res) == by.msgB(s)

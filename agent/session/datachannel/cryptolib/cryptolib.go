@@ -219,10 +219,3 @@ func getAEAD(plainTextKey []byte /*@, ghost p perm @*/) (aesgcm cipher.AEAD, err
 
 	return aesgcm, nil
 }
-
-// TODO what does this do?
-// var _ crypto.IBlockCipher = (*BlockCipherT)(nil)
-
-// var newBlockCipher = func(context contextPkg.T, kmsKeyId string) (blockCipher crypto.IBlockCipher, err error) {
-// 	return crypto.NewBlockCipher(context, kmsKeyId)
-// }

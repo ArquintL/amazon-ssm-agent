@@ -72,8 +72,6 @@ requires pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma
 ensures  kmsService.Mem() && acc(bytes.SliceMem(inputData), p) 
 ensures  err != nil ==> err.ErrorMem()
 ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
-/*ensures  err != nil ==> t1 == t && pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) &&
-    io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))*/
 func (kmsService *KMSService) sendSignRequest(keyID string, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost inputDataT Term, ghost m Term) (err error, ghost t1 pl.Place)
 
 requires  pl.token(t) && io.e_In_KMS(t, rid)
@@ -86,12 +84,6 @@ ensures   err == nil ==> pl.token(t1) &&
     agentId == old(io.get_e_In_KMS_r2(t, rid)) &&
     runId == old(io.get_e_In_KMS_r3(t, rid)) &&
     pair(pubTerm(const_SignResponse_pub()), dataT) == old(io.get_e_In_KMS_r4(t, rid))
-/*ensures   err != nil ==> t1 == t && pl.token(t) && io.e_In_KMS(t, rid) &&
-    io.get_e_In_KMS_placeDst(t, rid) == old(io.get_e_In_KMS_placeDst(t, rid)) &&
-    io.get_e_In_KMS_r1(t, rid) == old(io.get_e_In_KMS_r1(t, rid)) &&
-    io.get_e_In_KMS_r2(t, rid) == old(io.get_e_In_KMS_r2(t, rid)) &&
-    io.get_e_In_KMS_r3(t, rid) == old(io.get_e_In_KMS_r3(t, rid)) &&
-    io.get_e_In_KMS_r4(t, rid) == old(io.get_e_In_KMS_r4(t, rid))*/
 func (kmsService *KMSService) receiveSignResponse(ghost t pl.Place, ghost rid Term) (data []byte, err error, ghost t1 pl.Place, ghost kmsId Term, ghost agentId Term, ghost runId Term, ghost dataT Term)
 
 
@@ -134,8 +126,6 @@ requires pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma
 ensures  kmsService.Mem() && acc(bytes.SliceMem(inputData), p) && acc(bytes.SliceMem(signature), p)
 ensures  err != nil ==> err.ErrorMem()
 ensures  err == nil ==> pl.token(t1) && t1 == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))
-/*ensures  err != nil ==> t1 == t && pl.token(t) && io.e_Out_KMS(t, rid, agentId, kmsId, rid, m) &&
-    io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) == old(io.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m))*/
 func (kmsService *KMSService) sendVerifyRequest(keyID string, inputData []byte, signature []byte, ghost p perm, ghost t pl.Place, ghost rid Term, ghost agentId Term, ghost kmsId Term, ghost clientId Term, ghost keyIDT Term, ghost inputDataT Term, ghost signatureT Term, ghost m Term) (err error, ghost t1 pl.Place)
 
 requires  pl.token(t) && io.e_In_KMS(t, rid)
@@ -147,10 +137,4 @@ ensures   err == nil ==> pl.token(t1) &&
     agentId == old(io.get_e_In_KMS_r2(t, rid)) &&
     runId == old(io.get_e_In_KMS_r3(t, rid)) &&
     pubTerm(const_VerifyResponse_pub()) == old(io.get_e_In_KMS_r4(t, rid))
-/*ensures   err != nil ==> t1 == t && pl.token(t) && io.e_In_KMS(t, rid) &&
-    io.get_e_In_KMS_placeDst(t, rid) == old(io.get_e_In_KMS_placeDst(t, rid)) &&
-    io.get_e_In_KMS_r1(t, rid) == old(io.get_e_In_KMS_r1(t, rid)) &&
-    io.get_e_In_KMS_r2(t, rid) == old(io.get_e_In_KMS_r2(t, rid)) &&
-    io.get_e_In_KMS_r3(t, rid) == old(io.get_e_In_KMS_r3(t, rid)) &&
-    io.get_e_In_KMS_r4(t, rid) == old(io.get_e_In_KMS_r4(t, rid))*/
 func (kmsService *KMSService) receiveVerifyResponse(ghost t pl.Place, ghost rid Term) (err error, ghost t1 pl.Place, ghost kmsId Term, ghost agentId Term, ghost runId Term)

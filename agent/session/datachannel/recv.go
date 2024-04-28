@@ -34,6 +34,7 @@ import (
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
+
 // processStreamDataMessage gets called for all messages of type OutputStreamDataMessage
 // @ requires datastream.StreamDataHandlerFootprint(streamDataMessage)
 // @ preserves dc.RecvRoutineMem()
@@ -42,7 +43,6 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 	payload, err := dc.tryReceiveMessageReceptionStatus(channelStatusTimeout)
 	if err != nil {
-		// logInfo(log, "Timeout while receiving channel status")
 		return err
 	}
 
@@ -153,7 +153,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 			// handshake has completed.
 			// While this branch existed in the original implementation, we can actually
 			// prove that this branch cannot exist:
-			// @ assert false
+			//@ assert false
 		}
 
 		// ----- start internal I/O operation -----
@@ -216,18 +216,10 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
 		err = iosanitization.DataChannelForwardToMessageHandler(dc.inputStreamMessageHandler, streamDataMessage /*@, t2, rid, outMsgT @*/)
-		//@ fold dc.RecvRoutineMem()
-
 		if err != nil {
-			//@ unfold acc(dc.MemRecv(), 1/2)
-			//@ fold iospec.phiRG_Agent_13(t2, rid, s2)
-			//@ fold iospec.P_Agent(t2, rid, s2)
-			//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-			//@ dc.ioLock.Unlock()
-			//@ fold acc(dc.MemRecv(), 1/2)
-			dc.resendReceiveOtherResponse()
-			return err
+			err = fmtError("inputStreamMessageHandler returned an error")
 		}
+		//@ fold dc.RecvRoutineMem()
 
 		//@ unfold dc.MemRecv()
 		//@ unfold dc.IoSpecMemMain()
@@ -242,6 +234,9 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		//@ fold dc.MemRecv()
 		dc.resendReceiveOtherResponse()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

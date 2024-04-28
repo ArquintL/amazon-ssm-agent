@@ -20,16 +20,9 @@ package datachannel
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
-	"crypto/elliptic"
-	cryptoRand "crypto/rand"
-	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
-
-	//@ "bytes"
 
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	"github.com/aws/amazon-ssm-agent/agent/session/crypto"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel/iosanitization"
 	//@ abs "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
@@ -43,6 +36,7 @@ import (
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
 )
 
+
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
 // @ requires dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
@@ -52,7 +46,6 @@ import (
 // @ ensures  streamDataMessage.Mem()
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) (err error) {
-	// logDebug(log, "Received Handshake Response.")
 	//@ unfold streamDataMessage.Mem()
 	handshakeResponse, err := unmarshalHandshakeResponse(streamDataMessage.Payload /*@, perm(1/2) @*/)
 	//@ fold streamDataMessage.Mem()
@@ -113,7 +106,6 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 			default:
 				//@ fold acc(actions[i].Mem(), 1/2)
 				//@ fold acc(handshakeResponse.Mem(), 1/2)
-				// logUnknownActionType(log, action.ActionType)
 			}
 		}
 		if err != nil {
@@ -144,7 +136,6 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	//@ unfold dc.MemTransfer(state, encryptionEnabled)
 	//@ unfold acc(handshakeResponse.Mem(), 1/2)
 	dc.hs.clientVersion = handshakeResponse.ClientVersion
-	// logInfoString(log, "Client side session manager plugin version is", handshakeResponse.ClientVersion)
 	//@ fold acc(handshakeResponse.Mem(), 1/2)
 	//@ fold dc.MemTransfer(state, encryptionEnabled)
 	payload := ResponseChanPayload{encryptionEnabled, state}
@@ -153,19 +144,6 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	dc.hs.responseChan <- payload
 	//@ fold dc.RecvRoutineMem()
 	return nil
-}
-
-// @ trusted
-// @ requires noPerm < p
-// @ preserves acc(bytes.SliceMem(payload), p)
-// @ ensures  handshakeResponse.Mem()
-// @ ensures  err == nil && abs.Abs(payload) == handshakeResponse.Abs()
-// @ ensures  err != nil ==> err.ErrorMem()
-func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeResponse *mgsContracts.HandshakeResponsePayload, err error) {
-	handshakeResponse = &mgsContracts.HandshakeResponsePayload{}
-	//@ fold handshakeResponse.Mem()
-	err = json.Unmarshal(payload, handshakeResponse /*@, p/2 @*/)
-	return
 }
 
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
@@ -220,7 +198,6 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// hash the shared secret to obtain the session identifier
 	dc.secrets.sessionID = computeSHA384(sharedSecret /*@, 1/2 @*/)
-	// logDebugHex(log, "agent computed session ID", base64.StdEncoding.EncodeToString(dc.state.sessionID /*@, perm(1/2) @*/))
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
@@ -369,64 +346,6 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	state = HandshakeResponseVerified
 	//@ fold dc.MemTransfer(state, true)
 	return
-}
-
-// @ trusted
-// @ requires noPerm < p
-// @ preserves acc(bytes.SliceMem(payload), p)
-// @ ensures  secureSessionResponse.Mem()
-// @ ensures  err == nil && abs.Abs(payload) == secureSessionResponse.Abs()
-// @ ensures  err != nil ==> err.ErrorMem()
-func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessionResponse *mgsContracts.SecureSessionResponse, err error) {
-	secureSessionResponse = &mgsContracts.SecureSessionResponse{}
-	//@ fold secureSessionResponse.Mem()
-	err = json.Unmarshal(payload, secureSessionResponse /*@, p/2 @*/)
-	return
-}
-
-// @ trusted
-// @ requires noPerm < p && p <= writePerm
-// @ preserves acc(bytes.SliceMem(agentSecret), p)
-// @ ensures err == nil ==> bytes.SliceMem(sharedSecret)
-// the following postcondition expresses that `IsOnCurve` guarantees that `clientShare` is a valid
-// DH pubic key. Instead of existentially quantifying over the corresponding private key, we assume
-// `privB` is the corresponding witness
-// @ ensures err == nil ==> by.msgB(clientShare) == by.expB(by.generatorB(), privB)
-// @ ensures err == nil ==> abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), privB), abs.Abs(agentSecret))
-// @ ensures err != nil ==> err.ErrorMem()
-func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p perm @*/) (sharedSecret []byte, err error /*@, privB by.Bytes @*/) {
-	var clientShareBytes []byte
-	clientShareBytes, err = base64.StdEncoding.DecodeString(clientShare)
-	if err != nil {
-		err = fmtError("failed to decode server share")
-		return
-	}
-
-	x, y := elliptic.UnmarshalCompressed(elliptic.P384(), clientShareBytes /*@, perm(1/2) @*/)
-
-	// check that the client share is on the curve
-	if !elliptic.P384().IsOnCurve(x, y /*@, perm(1/2) @*/) {
-		err = fmtError("client share is not on the curve")
-		return
-	}
-
-	ss, _ := elliptic.P384().ScalarMult(x, y, agentSecret /*@, p/2 @*/) // TODO: Double check it's fine to just use x
-	sharedSecret = ss.Bytes( /*@ perm(1/2) @*/ )
-	return
-}
-
-// @ trusted
-// @ ensures err == nil ==> bytes.SliceMem(clientSignPayload)
-// @ ensures err == nil ==> abs.Abs(clientSignPayload) == by.pairB(by.msgB(clientShare), by.msgB(agentId))
-// @ ensures err != nil ==> err.ErrorMem()
-func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayload []byte, err error) {
-	payload := &mgsContracts.SignClientSharePayload{
-		ClientShare: clientShare,
-		AgentId:     agentId,
-	}
-
-	//@ fold payload.Mem()
-	return json.Marshal(payload /*@, perm(1/2) @*/)
 }
 
 // @ requires dc.MemTransfer(HandshakeResponseVerified, true)
@@ -592,100 +511,5 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	state = BlockCipherReady
 	dc.encryptionEnabled = true
 	//@ fold dc.MemTransfer(state, true)
-	return
-}
-
-// @ trusted
-// @ requires noPerm < p
-// @ preserves acc(bytes.SliceMem(agentReadKey), p) && acc(bytes.SliceMem(agentWriteKey), p)
-// @ ensures  err == nil ==> bytes.SliceMem(sessionKeysPayload) && abs.Abs(sessionKeysPayload) == by.pairB(abs.Abs(agentWriteKey), abs.Abs(agentReadKey))
-// @ ensures  err != nil ==> err.ErrorMem()
-func getSessionKeysPayload(agentWriteKey, agentReadKey []byte /*@, ghost p perm @*/) (sessionKeysPayload []byte, err error) {
-	encodedAgentReadKey := base64.RawStdEncoding.EncodeToString(agentReadKey /*@, p/2 @*/)
-	encodedAgentWriteKey := base64.RawStdEncoding.EncodeToString(agentWriteKey /*@, p/2 @*/)
-
-	sessionKeys := &mgsContracts.SessionKeys{
-		AgentWriteKey: encodedAgentWriteKey,
-		AgentReadKey:  encodedAgentReadKey,
-	}
-	//@ fold sessionKeys.Mem()
-	return json.Marshal(sessionKeys /*@, perm(1/2) @*/)
-}
-
-// @ trusted
-// @ requires noPerm < p
-// @ preserves acc(bytes.SliceMem(payload), p) && acc(pk.Mem(), p)
-// @ ensures  err == nil ==> by.msgB(encodedCiphertext) == by.aencB(abs.Abs(payload), pk.Abs())
-// @ ensures  err != nil ==> err.ErrorMem()
-func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (encodedCiphertext string, err error) {
-	//@ cryptoRand.GetReaderMem()
-	ciphertext, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, pk, payload /*@, p > writePerm ? perm(1/1) : p/2 @*/)
-	if err != nil { //argot:ignore
-		err = errHandshake()
-		return
-	}
-	encodedCiphertext = base64.StdEncoding.EncodeToString(ciphertext /*@, perm(1/2) @*/)
-	return
-}
-
-// @ trusted
-// @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
-// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.pairB(by.msgB(encryptedSessionKeys), by.msgB(clientId))
-// @ ensures err != nil ==> err.ErrorMem()
-func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string) (signPayloadBytes []byte, err error) {
-	signPayload := &mgsContracts.SignSessionKeysPayload{
-		EncryptedSessionKeys: encryptedSessionKeys,
-		ClientId:             clientId,
-	}
-
-	//@ fold signPayload.Mem()
-	return json.Marshal(signPayload /*@, perm(1/2) @*/)
-}
-
-// @ trusted
-// @ requires noPerm < p
-// @ requires kmsService.Mem() && acc(bytes.SliceMem(message), p)
-// @ requires m == tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(tm.pubTerm(pub.pub_msg(keyId)), messageT))
-// @ requires pl.token(t) && iospec.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(messageT) == abs.Abs(message)
-// @ requires let t1 := iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) in (
-// @     iospec.e_In_KMS(t1, rid))
-// @ ensures  kmsService.Mem() && acc(bytes.SliceMem(message), p)
-// @ ensures  err == nil ==> by.gamma(signatureT) == by.msgB(signature)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  err == nil ==> let t1 := old(iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m)) in (
-// @     pl.token(old(iospec.get_e_In_KMS_placeDst(t1, rid))) &&
-// @     kmsId == old(iospec.get_e_In_KMS_r1(t1, rid)) &&
-// @     agentId == old(iospec.get_e_In_KMS_r2(t1, rid)) &&
-// @     rid == old(iospec.get_e_In_KMS_r3(t1, rid)) &&
-// @     tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT) == old(iospec.get_e_In_KMS_r4(t1, rid)))
-func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
-	var sig []byte
-	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/) //argot:ignore // call to function has the necessary I/O spec
-	if err != nil {                                                                                                                   //argot:ignore
-		err = errHandshake()
-		return
-	}
-	signature = base64.StdEncoding.EncodeToString(sig /*@, perm(1/2)@*/)
-	return
-}
-
-// @ trusted
-// @ ensures  err == nil ==> by.msgB(encryptedSessionKeysPayload) == by.tuple5B(by.msgB(encodedEncryptedSessionKeys), by.msgB(encodedSigSessionKeys), by.msgB(agentId), by.msgB(agentLTKeyARN), by.msgB(clientId))
-// @ ensures  err != nil ==> err.ErrorMem()
-func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, agentId, agentLTKeyARN, clientId string) (encryptedSessionKeysPayload string, err error) {
-	payload := &mgsContracts.EncryptedSessionKeysPayload{
-		EncryptedSessionKeys: encodedEncryptedSessionKeys,
-		Signature:            encodedSigSessionKeys,
-		AgentId:              agentId,
-		AgentLTKeyARN:        agentLTKeyARN,
-		ClientId:             clientId,
-	}
-	//@ fold payload.Mem()
-	encryptedSessionKeysPayloadBytes, err := json.Marshal(payload /*@, perm(1/2) @*/)
-	if err != nil { //argot:ignore
-		return
-	}
-
-	encryptedSessionKeysPayload = base64.StdEncoding.EncodeToString(encryptedSessionKeysPayloadBytes /*@, perm(1/2) @*/)
 	return
 }
