@@ -431,6 +431,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 	cmdExitCode := make(chan int, 1)
 	writeStdOutResult, writeStdErrResult := appconfig.ErrorExitCode, appconfig.ErrorExitCode
 
+	execCmd := p.execCmd
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -438,13 +439,13 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 				log.Errorf("Stacktrace:\n%s", debug.Stack())
 			}
 		}()
-		log.Debugf("Start separate go routine to wait for command to complete. Pid: %v", p.execCmd.Pid())
+		log.Debugf("Start separate go routine to wait for command to complete. Pid: %v", execCmd.Pid())
 		writeStdOutResult, writeStdErrResult = <-writeStdOutDone, <-writeStdErrDone
 		log.Debugf("writeStdOutResult: %v, writeStdErrResult: %v", writeStdOutResult, writeStdErrResult)
 		close(writeStdOutDone)
 		close(writeStdErrDone)
 
-		err := p.execCmd.Wait()
+		err := execCmd.Wait()
 		if err != nil {
 			if exiterr, ok := err.(*exec.ExitError); ok {
 				log.Infof("Command Exit Status: %d", exiterr.ExitCode())
@@ -520,6 +521,7 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 
 	// Wait for session to be completed/cancelled/interrupted
 	cmdWaitDone := make(chan error, 1)
+	execCmd := p.execCmd
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -527,8 +529,8 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 				log.Errorf("Stacktrace:\n%s", debug.Stack())
 			}
 		}()
-		log.Debugf("Start separate go routine to wait for command to complete. Pid: %v", p.execCmd.Pid())
-		err := p.execCmd.Wait()
+		log.Debugf("Start separate go routine to wait for command to complete. Pid: %v", execCmd.Pid())
+		err := execCmd.Wait()
 		cmdWaitDone <- err
 	}()
 
