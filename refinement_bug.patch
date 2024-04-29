@@ -1,0 +1,17 @@
+diff --git a/agent/session/datachannel/handshake_request.go b/agent/session/datachannel/handshake_request.go
+index 9339bc5d..69b546a0 100644
+--- a/agent/session/datachannel/handshake_request.go
++++ b/agent/session/datachannel/handshake_request.go
+@@ -85,6 +85,12 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
+ 
+ 		dc.secrets.agentSecret = agentSecret
+ 
++		//@ fold dc.MemInternal(BlockCipherInitialized)
++		//@ fold dc.Mem()
++		dc.sendData(log, mgsContracts.HandshakeRequest, agentSecret /*@, agentSecretT, false, false @*/)
++		//@ unfold dc.Mem()
++		//@ unfold dc.MemInternal(BlockCipherInitialized)
++
+ 		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
+ 		if err != nil { //argot:ignore
+ 			//@ fold dc.MemInternal(BlockCipherInitialized)
