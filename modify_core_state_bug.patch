@@ -1,0 +1,44 @@
+diff --git a/agent/session/datachannel/state.go b/agent/session/datachannel/state.go
+index 475d4919..249c0a48 100644
+--- a/agent/session/datachannel/state.go
++++ b/agent/session/datachannel/state.go
+@@ -72,6 +72,13 @@ type IDataChannel interface {
+ 	// @ ensures  err != nil ==> err.ErrorMem()
+ 	SkipHandshake(log logger.T) (err error)
+ 
++	// FOR DIODON ARTIFACT ONLY:
++	// This method does not establish the Core invariant as a postcondition,
++	// therefore is unsafe to call in the Application.
++	// It leaks a pointer to the data channel state which can be used to modify
++	// the Core state outside of the Core.
++	GetStatePtr() *DataChannelState
++
+ 	// @ requires log != nil
+ 	// @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
+ 	// @ preserves Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
+@@ -220,6 +227,10 @@ func (dc *dataChannel) getState() DataChannelState {
+ 	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.dataChannelState
+ }
+ 
++func (dc *dataChannel) GetStatePtr() *DataChannelState {
++	return &dc.dataChannelState
++}
++
+ /*@
+ pred (dc *dataChannel) RecvRoutineMem() {
+ 	dc != nil &&
+diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
+index 7613e27c..437b6644 100644
+--- a/agent/session/shell/shell.go
++++ b/agent/session/shell/shell.go
+@@ -182,6 +182,10 @@ func (p *ShellPlugin) Execute(
+ 
+ 	log := p.context.Log()
+ 	p.dataChannel = dataChannel
++
++	state := dataChannel.GetStatePtr()
++	*state = datachannel.Erroneous
++
+ 	defer func() {
+ 		if err := p.stop(log); err != nil {
+ 			log.Errorf("Error occurred while closing pty: %v", err)
