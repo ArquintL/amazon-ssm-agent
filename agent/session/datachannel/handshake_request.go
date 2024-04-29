@@ -84,7 +84,6 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ fold dc.IoSpecMemMain()
 
 		dc.secrets.agentSecret = agentSecret
-		// log.Info(dc) // DIODON:SINK
 
 		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
 		if err != nil { //argot:ignore
