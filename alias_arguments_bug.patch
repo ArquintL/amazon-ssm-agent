@@ -1,0 +1,107 @@
+diff --git a/agent/session/datachannel/send.go b/agent/session/datachannel/send.go
+index e806db1c..5411133c 100644
+--- a/agent/session/datachannel/send.go
++++ b/agent/session/datachannel/send.go
+@@ -43,7 +43,8 @@ import (
+ // @ preserves acc(log.Mem(), _)
+ // @ ensures  err != nil ==> err.ErrorMem()
+ // @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/) {
++func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, data *[]byte) (err error /*@, ghost inputProcessed bool @*/) {
++	inputData := *data
+ 	if dc.getState() != IODistributed {
+ 		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
+ 	}
+diff --git a/agent/session/datachannel/state.go b/agent/session/datachannel/state.go
+index 475d4919..b0e7e52a 100644
+--- a/agent/session/datachannel/state.go
++++ b/agent/session/datachannel/state.go
+@@ -55,12 +55,17 @@ type IDataChannel interface {
+ 
+ 	// @ pred Mem()
+ 
++	// FOR DIODON ARTIFACT ONLY
++	// Leaks session ID slice to caller so that it can be used to alias datachannel state
++	GetSessionID() *[]byte
++
++	// DIODON ARTIFACT MODIFICATION: change inputData to be a pointer to a slice so it can be aliased
+ 	// @ requires log != nil
+ 	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
+ 	// @ preserves Mem() && acc(log.Mem(), _)
+ 	// @ ensures  err != nil ==> err.ErrorMem()
+ 	// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+-	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/)
++	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData *[]byte) (err error /*@, ghost inputProcessed bool @*/)
+ 
+ 	// @ requires log != nil
+ 	// @ preserves Mem() && acc(log.Mem(), _)
+@@ -169,6 +174,10 @@ type dataChannel struct {
+ 	//@ ioLockCanLocalSend bool
+ }
+ 
++func (dc *dataChannel) GetSessionID() *[]byte {
++	return &dc.secrets.sessionID
++}
++
+ // agentHandshakeSecrets represents the secrets used in the handshake.
+ type agentHandshakeSecrets struct {
+ 	agentSecret   []byte
+diff --git a/agent/session/plugins/port/port_basic.go b/agent/session/plugins/port/port_basic.go
+index 345a18eb..859172cf 100644
+--- a/agent/session/plugins/port/port_basic.go
++++ b/agent/session/plugins/port/port_basic.go
+@@ -142,7 +142,8 @@ func (p *BasicPortSession) WritePump(dataChannel datachannel.IDataChannel) (erro
+ 				return exitCode
+ 			}
+ 
+-			if err = dataChannel.SendStreamDataMessage(log, mgsContracts.Output, packet[:numBytes]); err != nil {
++			b := packet[:numBytes]
++			if err = dataChannel.SendStreamDataMessage(log, mgsContracts.Output, &b); err != nil {
+ 				log.Errorf("Unable to send stream data message: %v", err)
+ 				return appconfig.ErrorExitCode
+ 			}
+diff --git a/agent/session/plugins/port/port_mux.go b/agent/session/plugins/port/port_mux.go
+index c4838966..eb2e3874 100644
+--- a/agent/session/plugins/port/port_mux.go
++++ b/agent/session/plugins/port/port_mux.go
+@@ -242,8 +242,10 @@ func (p *MuxPortSession) transferDataToMgs(ctx context.Context, dataChannel data
+ 					log.Errorf("Unable to read from connection: %v", err)
+ 					return err
+ 				}
++				_ = numBytes
+ 
+-				if err = dataChannel.SendStreamDataMessage(log, mgsContracts.Output, packet[:numBytes]); err != nil {
++				sid := dataChannel.GetSessionID()
++				if err = dataChannel.SendStreamDataMessage(log, mgsContracts.Output, sid); err != nil {
+ 					log.Errorf("Unable to send stream data message: %v", err)
+ 					return err
+ 				}
+@@ -289,7 +291,8 @@ func (p *MuxPortSession) handleServerConnections(ctx context.Context, dataChanne
+ 				log.Errorf("Unable to dial connection to server: %v", err)
+ 				flagBuf := new(bytes.Buffer)
+ 				binary.Write(flagBuf, binary.BigEndian, mgsContracts.ConnectToPortError)
+-				dataChannel.SendStreamDataMessage(log, mgsContracts.Flag, flagBuf.Bytes())
++				b := flagBuf.Bytes()
++				dataChannel.SendStreamDataMessage(log, mgsContracts.Flag, &b)
+ 				stream.Close()
+ 			}
+ 		}
+diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
+index ff1cdb80..3697e54c 100644
+--- a/agent/session/shell/shell.go
++++ b/agent/session/shell/shell.go
+@@ -835,11 +835,12 @@ func (p *ShellPlugin) processStdoutData(
+ 		i += stdoutRuneLen
+ 	}
+ 
+-	if err := p.dataChannel.SendStreamDataMessage(log, payloadType, processedBuf.Bytes()); err != nil {
++	b := processedBuf.Bytes()
++	if err := p.dataChannel.SendStreamDataMessage(log, payloadType, &b); err != nil {
+ 		return processedBuf, fmt.Errorf("unable to send stream data message: %s", err)
+ 	}
+ 
+-	if _, err := file.Write(processedBuf.Bytes()); err != nil {
++	if _, err := file.Write(b); err != nil {
+ 		return processedBuf, fmt.Errorf("encountered an error while writing to file: %s", err)
+ 	}
+ 
