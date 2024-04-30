@@ -56,11 +56,16 @@ type PortPlugin struct {
 	session     IPortSession
 }
 
+type channelMessage struct {
+	payloadType mgsContracts.PayloadType
+	payload     []byte
+}
+
 // IPortSession interface represents functions that need to be implemented by all port sessions
 type IPortSession interface {
 	InitializeSession() (err error)
 	HandleStreamMessage(streamDataMessage mgsContracts.AgentMessage) (err error)
-	WritePump(channel datachannel.IDataChannel) (errorCode int)
+	WritePump(channel chan channelMessage) (errorCode int)
 	IsConnectionAvailable() (isAvailable bool)
 	Stop()
 }
@@ -192,7 +197,7 @@ func (p *PortPlugin) execute(
 		output.SetOutput(sessionPluginResultOutput)
 		return
 	}
-
+	cancelled := p.cancelled
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -202,7 +207,7 @@ func (p *PortPlugin) execute(
 		}()
 		cancelState := cancelFlag.Wait()
 		if cancelFlag.Canceled() {
-			p.cancelled <- struct{}{}
+			cancelled <- struct{}{}
 			log.Debug("Cancel flag set to cancelled in session")
 		}
 		log.Debugf("Cancel flag set to %v in session", cancelState)
@@ -210,6 +215,8 @@ func (p *PortPlugin) execute(
 
 	log.Debugf("Start separate go routine to read from port connection and write to data channel")
 	done := make(chan int, 1)
+	outChannel := make(chan channelMessage, 1)
+	session := p.session
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -217,30 +224,40 @@ func (p *PortPlugin) execute(
 				log.Errorf("Stacktrace:\n%s", debug.Stack())
 			}
 		}()
-		done <- p.session.WritePump(p.dataChannel)
+		done <- session.WritePump(outChannel)
 	}()
 	log.Infof("Plugin %s started", p.name())
 
-	select {
-	case <-p.cancelled:
-		log.Debug("Session cancelled. Attempting to close TCP Connection.")
-		errorCode := 0
-		output.SetExitCode(errorCode)
-		output.SetStatus(agentContracts.ResultStatusSuccess)
-		log.Info("The session was cancelled")
-
-	case exitCode := <-done:
-		if exitCode == 1 {
-			output.SetExitCode(appconfig.ErrorExitCode)
-			output.SetStatus(agentContracts.ResultStatusFailed)
-		} else {
-			output.SetExitCode(appconfig.SuccessExitCode)
-			output.SetStatus(agentContracts.ResultStatusSuccess)
+	func() {
+		for {
+			select {
+			case msg := <-outChannel:
+				if err = p.dataChannel.SendStreamDataMessage(log, msg.payloadType, msg.payload); err != nil {
+					log.Errorf("Unable to send stream data message: %v", err)
+					done <- appconfig.ErrorExitCode
+				}
+			case <-p.cancelled:
+				log.Debug("Session cancelled. Attempting to close TCP Connection.")
+				errorCode := 0
+				output.SetExitCode(errorCode)
+				output.SetStatus(agentContracts.ResultStatusSuccess)
+				log.Info("The session was cancelled")
+				return
+			case exitCode := <-done:
+				if exitCode == 1 {
+					output.SetExitCode(appconfig.ErrorExitCode)
+					output.SetStatus(agentContracts.ResultStatusFailed)
+				} else {
+					output.SetExitCode(appconfig.SuccessExitCode)
+					output.SetStatus(agentContracts.ResultStatusSuccess)
+				}
+				if cancelFlag.Canceled() {
+					log.Errorf("The cancellation failed to stop the session.")
+				}
+				return
+			}
 		}
-		if cancelFlag.Canceled() {
-			log.Errorf("The cancellation failed to stop the session.")
-		}
-	}
+	}()
 
 	log.Debug("Port session execution complete")
 }

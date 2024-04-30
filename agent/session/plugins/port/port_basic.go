@@ -27,7 +27,6 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/context"
 	mgsConfig "github.com/aws/amazon-ssm-agent/agent/session/config"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	"github.com/aws/amazon-ssm-agent/agent/session/datachannel"
 )
 
 var DialCall = func(network string, address string) (net.Conn, error) {
@@ -115,7 +114,7 @@ func (p *BasicPortSession) Stop() {
 }
 
 // WritePump reads from the instance's port and writes to datachannel
-func (p *BasicPortSession) WritePump(dataChannel datachannel.IDataChannel) (errorCode int) {
+func (p *BasicPortSession) WritePump(outChannel chan channelMessage) (errorCode int) {
 	log := p.context.Log()
 	defer func() {
 		if err := recover(); err != nil {
@@ -126,27 +125,19 @@ func (p *BasicPortSession) WritePump(dataChannel datachannel.IDataChannel) (erro
 	packet := make([]byte, mgsConfig.StreamDataPayloadSize)
 
 	for {
-		isActive, err := dataChannel.IsActive()
+		numBytes, err := p.conn.Read(packet)
 		if err != nil {
-			log.Errorf("Retrieving Data Channel's active state failed, %v", err)
-			return appconfig.ErrorExitCode
-		}
-		if isActive {
-			numBytes, err := p.conn.Read(packet)
-			if err != nil {
-				var exitCode int
-				if exitCode = p.handleTCPReadError(err); exitCode == mgsConfig.ResumeReadExitCode {
-					log.Debugf("Reconnection to port %v is successful, resume reading from port.", p.destinationAddress)
-					continue
-				}
-				return exitCode
+			var exitCode int
+			if exitCode = p.handleTCPReadError(err); exitCode == mgsConfig.ResumeReadExitCode {
+				log.Debugf("Reconnection to port %v is successful, resume reading from port.", p.destinationAddress)
+				continue
 			}
+			return exitCode
+		}
 
-			if err = dataChannel.SendStreamDataMessage(log, mgsContracts.Output, packet[:numBytes]); err != nil {
-				log.Errorf("Unable to send stream data message: %v", err)
-				return appconfig.ErrorExitCode
-			}
-		}
+		contents := make([]byte, numBytes)
+		copy(contents, packet[:numBytes])
+		outChannel <- channelMessage{mgsContracts.Output, contents}
 		// Wait for TCP to process more data
 		time.Sleep(time.Millisecond)
 	}
