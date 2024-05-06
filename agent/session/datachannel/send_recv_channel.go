@@ -15,7 +15,7 @@
 package datachannel
 
 // work arounds to make verification possible
-// - magic wands for receiving messages via callbacks instead of by calling a particular receive method
+// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
 // - ghost fields to simplify keeping track of abstract terms
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
@@ -91,11 +91,11 @@ func (dc *dataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Durati
 		res, ok = <-dc.hs.startReceivingChan
 		fold dc.RecvRoutineMem()
 		if !ok {
-			err = fmtError("Channel has been closed")
+			err = ghostFmtError("Channel has been closed")
 			return
 		}
 	} else {
-		err = fmtError("Timeout occurred waiting for receiving a message on a channel")
+		err = ghostFmtError("Timeout occurred waiting for receiving a message on a channel")
 	}
 	return
 }
@@ -116,12 +116,20 @@ func (dc *dataChannel) tryReceiveResponseModelAlt(responseChan chan ResponseChan
 		var ok bool
 		payload, ok = <-responseChan
 		if !ok {
-			err = fmtError("Channel has been closed")
+			err = ghostFmtError("Channel has been closed")
 			return
 		}
 	} else {
-		err = fmtError("Timeout occurred waiting for receiving a message on a channel")
+		err = ghostFmtError("Timeout occurred waiting for receiving a message on a channel")
 	}
 	return
+}
+
+ghost
+trusted
+decreases
+ensures err != nil && err.ErrorMem()
+func ghostFmtError(str string) (err error) {
+	return fmt.Errorf(str)
 }
 @*/

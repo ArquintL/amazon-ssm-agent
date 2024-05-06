@@ -4,7 +4,7 @@
         ".verification",
         "."
     ],
-    "gobraSettings.buildVersion": "Nightly",
+    "gobraSettings.buildVersion": "Local",
     "gobraDependencies.gobraToolsPaths": {
         "gobraToolsBasePath": {
             "mac": "$HOME/Library/Application Support/Code/User/globalStorage/viper-admin.gobra-ide/Nightly/GobraTools"

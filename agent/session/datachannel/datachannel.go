@@ -189,7 +189,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	// do not fold `MemChannelState` since we split the permission to `dataChannelState` for
 	// the threads next.
 
-	//@ dc.ioLock = &sync.Mutex{}
+	//@ ghost dc.ioLock = new(sync.GhostMutex)
 	//@ dc.ioLockDidLocalReceive = false
 	//@ dc.ioLockCanRemoteSend = false
 	//@ dc.ioLockDidRemoteReceive = false

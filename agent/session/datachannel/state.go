@@ -1,4 +1,23 @@
+// Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"). You may not
+// use this file except in compliance with the License. A copy of the
+// License is located at
+//
+// http://aws.amazon.com/apache2.0/
+//
+// or in the "license" file accompanying this file. This file is distributed
+// on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+// either express or implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+// Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
+
+// work arounds to make verification possible
+// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
+// - ghost fields to simplify keeping track of abstract terms
+// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
 import (
 	"crypto/rsa"
@@ -161,12 +180,11 @@ type dataChannel struct {
 	instanceId string
 	clientId   string
 
-	// TODO: mark the following fields as ghost as soon as Gobra supports ghost fields
-	//@ ioLock *sync.Mutex
-	//@ ioLockDidLocalReceive bool
-	//@ ioLockCanRemoteSend bool
-	//@ ioLockDidRemoteReceive bool
-	//@ ioLockCanLocalSend bool
+	//@ ghost ioLock gpointer[sync.GhostMutex]
+	//@ ghost ioLockDidLocalReceive bool
+	//@ ghost ioLockCanRemoteSend bool
+	//@ ghost ioLockDidRemoteReceive bool
+	//@ ghost ioLockCanLocalSend bool
 }
 
 // agentHandshakeSecrets represents the secrets used in the handshake.

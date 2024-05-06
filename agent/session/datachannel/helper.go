@@ -15,7 +15,7 @@
 package datachannel
 
 // work arounds to make verification possible
-// - magic wands for receiving messages via callbacks instead of by calling a particular receive method
+// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
 // - ghost fields to simplify keeping track of abstract terms
 // - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
 
