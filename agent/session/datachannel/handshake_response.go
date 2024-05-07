@@ -40,7 +40,7 @@ import (
 // @ requires dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
 // @ requires unfolding streamDataMessage.Mem() in mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, encryptionEnabled) in by.gamma(dc.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  streamDataMessage.Mem()
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -71,7 +71,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 	//@		mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse &&
 	//@ 	abs.Abs(streamDataMessage.Payload) == handshakeResponse.Abs()
 	//@ invariant i <= 1 ==> !containsSecureSessionAction
-	//@ invariant !containsSecureSessionAction ==> unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
+	//@ invariant !containsSecureSessionAction ==> unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
 	for i := 0; i < len(actions); i++ {
 		//@ unfold acc(handshakeResponse.Mem(), 1/2)
 		//@ unfold acc(actions[i].Mem(), 1/2)
@@ -146,7 +146,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 }
 
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -167,7 +167,7 @@ func (dc *dataChannel) processSecureSessionResponse(action *mgsContracts.Process
 }
 
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/8) && action.IsSuccessfulSecureSession()
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.getRid(), dc.getInFactT()) in dc.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
 // @ ensures  err == nil ==> state == HandshakeResponseVerified
 // @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
@@ -212,13 +212,13 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 		return state, errHandshake()
 	}
 
-	//@ receivedMsgT := dc.getInFactT()
-	//@ xT := dc.getAgentShareT()
+	//@ receivedMsgT := dc.io.getInFactT()
+	//@ xT := dc.io.getAgentShareT()
 	//@ sigYB := by.msgB(resp.Signature)
 	//@ clientLtKeyIdB := by.msgB(resp.ClientLTKeyARN)
-	//@ t0 := dc.getToken()
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
-	//@ s0 := dc.getAbsState()
+	//@ t0 := dc.io.getToken()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	//@ s0 := dc.io.getAbsState()
 
 	// retrieve the term representation of `clientSecretT`, `sigYT`, and `clientLtKeyIdT` by applying our term-uniqueness assumption of the received message:
 	//@ clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), by.oneTerm(clientLtKeyIdB), receivedMsgT, t0, s0)
@@ -241,16 +241,16 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold iospec.phiR_Agent_3(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_RecvSecureSessionResponse(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientSecretT, sigYT, clientLtKeyIdT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMemMain()
-	//@ unfold dc.IoSpecMemPartial()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ dc.setSharedSecretT(sharedSecretT)
-	//@ dc.setClientLtKeyIdT(clientLtKeyIdT)
-	//@ dc.setClientShareT(clientSecretT)
-	//@ dc.setClientShareSignatureT(sigYT)
-	//@ fold dc.IoSpecMemPartial()
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemPartial()
+	//@ dc.io.token = t1
+	//@ dc.io.absState = s1
+	//@ dc.io.sharedSecretT = sharedSecretT
+	//@ dc.io.clientLtKeyIdT = clientLtKeyIdT
+	//@ dc.io.clientShareT = clientSecretT
+	//@ dc.io.clientShareSignatureT = sigYT
+	//@ fold dc.io.IoSpecMemPartial()
+	//@ fold dc.io.IoSpecMemMain()
 	state = HandshakeResponseReceived
 
 	// verify client signature
@@ -336,12 +336,12 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold iospec.phiR_Agent_5(t4, rid, s4)
 	//@ t5 := iospec.internBIO_e_Agent_RecvVerifyResponse(t4, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, l3, a3, r3)
 	//@ s5 := ft.U(l3, r3, s4)
-	//@ unfold dc.IoSpecMemMain()
-	//@ unfold dc.IoSpecMemPartial()
-	//@ dc.setToken(t5)
-	//@ dc.setAbsState(s5)
-	//@ fold dc.IoSpecMemPartial()
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemPartial()
+	//@ dc.io.token = t5
+	//@ dc.io.absState = s5
+	//@ fold dc.io.IoSpecMemPartial()
+	//@ fold dc.io.IoSpecMemMain()
 	state = HandshakeResponseVerified
 	//@ fold dc.MemTransfer(state, true)
 	return
@@ -354,14 +354,14 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChannelState, err error) {
 	state = HandshakeResponseVerified
 	//@ unfold dc.MemTransfer(state, true)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
-	//@ t0 := dc.getToken()
-	//@ s0 := dc.getAbsState()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	//@ t0 := dc.io.getToken()
+	//@ s0 := dc.io.getAbsState()
 	sharedSecret := dc.secrets.sharedSecret
-	//@ sharedSecretT := dc.getSharedSecretT()
-	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
-	//@ clientSecretT := dc.getClientShareT()
-	//@ sigYT := dc.getClientShareSignatureT()
+	//@ sharedSecretT := dc.io.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+	//@ clientSecretT := dc.io.getClientShareT()
+	//@ sigYT := dc.io.getClientShareSignatureT()
 
 	// use the shared secret to generate read and write keys
 	agentWriteKey, err := computeKdf(sharedSecret, true /*@, perm(1/8) @*/)
@@ -395,7 +395,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
 	}
-	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.getLogLTPkT())
+	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.io.getLogLTPkT())
 	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
 	// sign ciphertext containing session keys using KMS:
@@ -405,7 +405,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
 	}
-	//@ messageT := tm.pair(encodedEncryptedSessionKeysT, dc.getClientIdT())
+	//@ messageT := tm.pair(encodedEncryptedSessionKeysT, dc.io.getClientIdT())
 	//@ assert abs.Abs(signSessionKeysPayloadBytes) == by.gamma(messageT)
 	//@ m := ut.tuple3(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), messageT)
 	// unfold phiR_Agent_6 to obtain Out_KMS_Agent fact
@@ -500,13 +500,13 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 		return state, errHandshake()
 	}
 
-	//@ unfold dc.IoSpecMemMain()
-	//@ unfold dc.IoSpecMemPartial()
-	//@ dc.setToken(t5)
-	//@ dc.setAbsState(s5)
-	//@ dc.setSigSessionKeysT(sigSessionKeysT)
-	//@ fold dc.IoSpecMemPartial()
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemPartial()
+	//@ dc.io.token = t5
+	//@ dc.io.absState = s5
+	//@ dc.io.sigSessionKeysT = sigSessionKeysT
+	//@ fold dc.io.IoSpecMemPartial()
+	//@ fold dc.io.IoSpecMemMain()
 	state = BlockCipherReady
 	dc.encryptionEnabled = true
 	//@ fold dc.MemTransfer(state, true)

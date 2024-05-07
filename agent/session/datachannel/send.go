@@ -54,14 +54,14 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 
 	//@ unfold dc.Mem()
 	//@ unfold acc(dc.MemInternal(IODistributed), 1/2)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
 
 	// ----- start local receive I/O operation -----
 	//@ dc.ioLock.Lock()
 	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
-	//@ t0 := dc.getToken()
-	//@ s0 := dc.getAbsState()
+	//@ t0 := dc.io.getToken()
+	//@ s0 := dc.io.getAbsState()
 
 	// receive `inputData` from environment:
 	//@ unfold iospec.P_Agent(t0, rid, s0)
@@ -70,12 +70,12 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, iospec.get_e_InFact_r1(t0, rid)) }
 	//@ inputDataT := SendStreamDataMessageViewShift(t0, rid, inputData)
 
-	//@ unfold dc.IoSpecMemMain()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ dc.setLocalInFactT(inputDataT)
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ dc.io.token = t1
+	//@ dc.io.absState = s1
+	//@ dc.io.localInFactT = inputDataT
 	//@ dc.ioLockDidLocalReceive = true
-	//@ fold dc.IoSpecMemMain()
+	//@ fold dc.io.IoSpecMemMain()
 
 	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	//@ dc.ioLock.Unlock()
@@ -84,13 +84,13 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	// ----- start internal I/O operation -----
 	//@ dc.ioLock.Lock()
 	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-	//@ t1 = dc.getToken()
-	//@ s1 = dc.getAbsState()
-	//@ sharedSecretT := dc.getSharedSecretT()
-	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
-	//@ clientSecretT := dc.getClientShareT()
-	//@ sigYT := dc.getClientShareSignatureT()
-	//@ sigSessionKeysT := dc.getSigSessionKeysT()
+	//@ t1 = dc.io.getToken()
+	//@ s1 = dc.io.getAbsState()
+	//@ sharedSecretT := dc.io.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+	//@ clientSecretT := dc.io.getClientShareT()
+	//@ sigYT := dc.io.getClientShareSignatureT()
+	//@ sigSessionKeysT := dc.io.getSigSessionKeysT()
 
 	// obtain permission to send the ciphertext containing `inputData`:
 	/*@
@@ -112,13 +112,13 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ t2 := iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
 	//@ s2 := ft.U(l, r, s1)
 
-	//@ unfold dc.IoSpecMemMain()
-	//@ dc.setToken(t2)
-	//@ dc.setAbsState(s2)
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ dc.io.token = t2
+	//@ dc.io.absState = s2
 	//@ dc.ioLockDidLocalReceive = false
-	//@ dc.setRemoteOutFactT(tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT))))
+	//@ dc.io.remoteOutFactT = tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT)))
 	//@ dc.ioLockCanRemoteSend = true
-	//@ fold dc.IoSpecMemMain()
+	//@ fold dc.io.IoSpecMemMain()
 
 	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 	//@ dc.ioLock.Unlock()
@@ -144,7 +144,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 // @ requires dc.getState() >= (requiresEncryption ? BlockCipherReady : BlockCipherInitialized)
 // @ requires requiresLock ==>
 // @ 	dc.getState() == IODistributed && requiresEncryption &&
-// @ 	unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.getRemoteOutFactTInternal() == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
+// @ 	unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.io.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.io.remoteOutFactT == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
 // @ requires !requiresLock ==>
 // @	dc.getState() < IODistributed &&
 // @	(requiresEncryption ?
@@ -180,14 +180,14 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 		unfold acc(dc.MemInternal(state), 1/2)
 	}
 
-	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
-	t0 := dc.getToken()
-	s0 := dc.getAbsState()
-	sharedSecretT := dc.getSharedSecretT()
-	clientLtKeyIdT := dc.getClientLtKeyIdT()
-	clientSecretT := dc.getClientShareT()
-	sigYT := dc.getClientShareSignatureT()
-	sigSessionKeysT := dc.getSigSessionKeysT()
+	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	t0 := dc.io.getToken()
+	s0 := dc.io.getAbsState()
+	sharedSecretT := dc.io.getSharedSecretT()
+	clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+	clientSecretT := dc.io.getClientShareT()
+	sigYT := dc.io.getClientShareSignatureT()
+	sigSessionKeysT := dc.io.getSigSessionKeysT()
 	m := tm.pair(mgsContracts.payloadTypeTerm(payloadType), inputDataT)
 	unfold iospec.P_Agent(t0, rid, s0)
 	unfold iospec.phiRG_Agent_13(t0, rid, s0)
@@ -212,11 +212,11 @@ func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadTy
 	}
 
 	/*@
-	unfold dc.IoSpecMemMain()
-	dc.setToken(t1)
+	unfold dc.io.IoSpecMemMain()
+	dc.io.token = t1
 	s1 := s0 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, m) }
-	dc.setAbsState(s1)
-	fold dc.IoSpecMemMain()
+	dc.io.absState = s1
+	fold dc.io.IoSpecMemMain()
 	ghost if requiresLock {
 		dc.ioLockCanRemoteSend = false
 		fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()

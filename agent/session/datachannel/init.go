@@ -74,17 +74,13 @@ func NewDataChannel(context contextPkg.T,
 	dc.inputStreamMessageHandler = inputStreamMessageHandler
 	dc.hs.responseChan = make(chan ResponseChanPayload)
 	//@ dc.hs.responseChan.Init(ResponseChanInv!<dc, _!>, PredTrue!<!>)
-	// we allocate some ghost heap space:
-	//@ inhale dc.IoSpecMem()
-	//@ unfold dc.IoSpecMem()
-	// the following assertion is needed:
-	//@ assert dc.TokenMem()
-	//@ dc.setToken(t0)
-	//@ dc.setRid(rid)
-	//@ dc.setAbsState(mset[ft.Fact]{})
+	//@ ghost dc.io = new(ioSpecFields)
+	//@ dc.io.token = t0
+	//@ dc.io.rid = rid
+	//@ dc.io.absState = mset[ft.Fact]{}
 	// fold dc.IoSpecMem()
-	//@ fold dc.IoSpecMemMain()
-	//@ fold dc.IoSpecMemPartial()
+	//@ fold dc.io.IoSpecMemMain()
+	//@ fold dc.io.IoSpecMemPartial()
 
 	//@ fold dc.RecvRoutineMem()
 	//@ fold acc(dc.MemChannelState(), 1/2)
@@ -115,7 +111,7 @@ func NewDataChannel(context contextPkg.T,
 
 // initialize populates datachannel object.
 // @ requires dc.Mem() && dc.getState() == Uninitialized && dataStream.Mem()
-// @ requires dc.IoSpecMemMain() && dc.IoSpecMemPartial() && pl.token(dc.getToken()) && iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())
+// @ requires acc(&dc.io, 1/2) && dc.io.IoSpecMemMain() && dc.io.IoSpecMemPartial() && pl.token(dc.io.getToken()) && iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState())
 // @ ensures  dc.Mem()
 // @ ensures  err == nil ==> dc.getState() == Initialized
 func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error) {
@@ -136,9 +132,9 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error)
 		return fmtErrorf("failed to initialize KMS service", err /*@, perm(1/2) @*/)
 	}
 
-	// @ t0 := dc.getToken()
-	// @ rid := dc.getRid()
-	// @ s0 := dc.getAbsState()
+	// @ t0 := dc.io.getToken()
+	// @ rid := dc.io.getRid()
+	// @ s0 := dc.io.getAbsState()
 	// @ unfold iospec.P_Agent(t0, rid, s0)
 	// @ unfold iospec.phiRF_Agent_17(t0, rid, s0)
 	// @ t1 := iospec.get_e_Setup_Agent_placeDst(t0, rid)
@@ -159,17 +155,17 @@ func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error)
 	}
 
 	// @ s1 := s0 union mset[ft.Fact]{ setupFact }
-	// @ unfold dc.IoSpecMemMain()
-	// @ unfold dc.IoSpecMemPartial()
-	// @ dc.setToken(t1)
-	// @ dc.setAbsState(s1)
-	// @ dc.setAgentIdT(agentIdT)
-	// @ dc.setKMSIdT(kmsIdT)
-	// @ dc.setClientIdT(clientIdT)
-	// @ dc.setReaderIdT(readerIdT)
-	// @ dc.setLogLTPkT(logLTPkT)
-	// @ fold dc.IoSpecMemPartial()
-	// @ fold dc.IoSpecMemMain()
+	// @ unfold dc.io.IoSpecMemMain()
+	// @ unfold dc.io.IoSpecMemPartial()
+	// @ dc.io.token = t1
+	// @ dc.io.absState = s1
+	// @ dc.io.agentIdT = agentIdT
+	// @ dc.io.kMSIdT = kmsIdT
+	// @ dc.io.clientIdT = clientIdT
+	// @ dc.io.readerIdT = readerIdT
+	// @ dc.io.logLTPkT = logLTPkT
+	// @ fold dc.io.IoSpecMemPartial()
+	// @ fold dc.io.IoSpecMemMain()
 	// @ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = Initialized
 	// @ fold acc(dc.MemChannelState(), 1/2)

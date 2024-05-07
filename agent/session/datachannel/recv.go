@@ -49,21 +49,21 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 	switch payload.status {
 	case ReceiveHandshakeResponeEncryptionEnabled:
 		//@ unfold dc.MemTransfer(HandshakeRequestSent, true)
-		//@ t0 := dc.getToken()
-		//@ rid := dc.getRid()
-		//@ s0 := dc.getAbsState()
+		//@ t0 := dc.io.getToken()
+		//@ rid := dc.io.getRid()
+		//@ s0 := dc.io.getAbsState()
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
 		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-		//@ unfold dc.IoSpecMemMain()
-		//@ unfold dc.IoSpecMemPartial()
-		//@ dc.setToken(t1)
-		//@ dc.setAbsState(s1)
-		//@ dc.setInFactT(receivedMsgT)
-		//@ fold dc.IoSpecMemPartial()
-		//@ fold dc.IoSpecMemMain()
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ unfold dc.io.IoSpecMemPartial()
+		//@ dc.io.token = t1
+		//@ dc.io.absState = s1
+		//@ dc.io.inFactT = receivedMsgT
+		//@ fold dc.io.IoSpecMemPartial()
+		//@ fold dc.io.IoSpecMemMain()
 		//@ assert by.gamma(receivedMsgT) == streamDataMessage.Abs()
 		//@ fold dc.MemTransfer(HandshakeRequestSent, true)
 		payloadType := /*@ unfolding streamDataMessage.Mem() in @*/ streamDataMessage.PayloadType
@@ -102,21 +102,21 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
-		//@ t0 := dc.getToken()
-		//@ rid := dc.getRid()
-		//@ s0 := dc.getAbsState()
+		//@ t0 := dc.io.getToken()
+		//@ rid := dc.io.getRid()
+		//@ s0 := dc.io.getAbsState()
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
 		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
 
-		//@ unfold dc.IoSpecMemMain()
-		//@ dc.setToken(t1)
-		//@ dc.setAbsState(s1)
-		//@ dc.setRemoteInFactT(receivedMsgT)
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ dc.io.token = t1
+		//@ dc.io.absState = s1
+		//@ dc.io.remoteInFactT = receivedMsgT
 		//@ dc.ioLockDidRemoteReceive = true
-		//@ fold dc.IoSpecMemMain()
+		//@ fold dc.io.IoSpecMemMain()
 
 		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
@@ -158,14 +158,14 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		// ----- start internal I/O operation -----
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-		//@ t1 = dc.getToken()
-		//@ s1 = dc.getAbsState()
-		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
-		//@ sharedSecretT := dc.getSharedSecretT()
-		//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
-		//@ clientSecretT := dc.getClientShareT()
-		//@ sigYT := dc.getClientShareSignatureT()
-		//@ sigSessionKeysT := dc.getSigSessionKeysT()
+		//@ t1 = dc.io.getToken()
+		//@ s1 = dc.io.getAbsState()
+		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+		//@ sharedSecretT := dc.io.getSharedSecretT()
+		//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+		//@ clientSecretT := dc.io.getClientShareT()
+		//@ sigYT := dc.io.getClientShareSignatureT()
+		//@ sigSessionKeysT := dc.io.getSigSessionKeysT()
 		// temporarily unfolding the block cipher's memory to learn the relation between the decryption term and its byte representation:
 		//@ assert unfolding acc(dc.blockCipher.Mem(), _) in dc.blockCipher.GetDecKeyB() == by.gamma(dc.blockCipher.GetDecKeyT())
 		//@ payloadT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t1, s1)
@@ -189,13 +189,13 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ t2 := iospec.internBIO_e_Agent_ReceiveMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
 		//@ s2 := ft.U(l, r, s1)
 
-		//@ unfold dc.IoSpecMemMain()
-		//@ dc.setToken(t2)
-		//@ dc.setAbsState(s2)
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ dc.io.token = t2
+		//@ dc.io.absState = s2
 		//@ dc.ioLockDidRemoteReceive = false
-		//@ dc.setLocalOutFactT(outMsgT)
+		//@ dc.io.localOutFactT = outMsgT
 		//@ dc.ioLockCanLocalSend = true
-		//@ fold dc.IoSpecMemMain()
+		//@ fold dc.io.IoSpecMemMain()
 
 		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()
@@ -205,8 +205,8 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
-		//@ t2 = dc.getToken()
-		//@ s2 = dc.getAbsState()
+		//@ t2 = dc.io.getToken()
+		//@ s2 = dc.io.getAbsState()
 		//@ unfold iospec.P_Agent(t2, rid, s2)
 		//@ unfold iospec.phiRG_Agent_13(t2, rid, s2)
 		//@ t3 := iospec.get_e_OutFact_placeDst(t2, rid, outMsgT)
@@ -221,11 +221,11 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ fold dc.RecvRoutineMem()
 
 		//@ unfold dc.MemRecv()
-		//@ unfold dc.IoSpecMemMain()
-		//@ dc.setToken(t3)
-		//@ dc.setAbsState(s3)
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ dc.io.token = t3
+		//@ dc.io.absState = s3
 		//@ dc.ioLockCanLocalSend = false
-		//@ fold dc.IoSpecMemMain()
+		//@ fold dc.io.IoSpecMemMain()
 
 		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 		//@ dc.ioLock.Unlock()

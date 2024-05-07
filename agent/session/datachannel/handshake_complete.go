@@ -48,9 +48,9 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 	//@ unfold dc.Mem()
 	//@ state := dc.dataChannelState
 	//@ unfold dc.MemInternal(state)
-	//@ t0 := dc.getToken()
-	//@ rid := dc.getRid()
-	//@ s0 := dc.getAbsState()
+	//@ t0 := dc.io.getToken()
+	//@ rid := dc.io.getRid()
+	//@ s0 := dc.io.getAbsState()
 	//@ unfold iospec.P_Agent(t0, rid, s0)
 	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
 	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
@@ -65,13 +65,13 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 		return
 	}
 	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, payloadT) }
-	//@ unfold dc.IoSpecMemMain()
-	//@ unfold dc.IoSpecMemPartial()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ dc.setInFactT(payloadT)
-	//@ fold dc.IoSpecMemPartial()
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemPartial()
+	//@ dc.io.token = t1
+	//@ dc.io.absState = s1
+	//@ dc.io.inFactT = payloadT
+	//@ fold dc.io.IoSpecMemPartial()
+	//@ fold dc.io.IoSpecMemMain()
 	//@ fold dc.MemInternal(state)
 	//@ fold dc.Mem()
 
@@ -90,7 +90,7 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 // @ requires ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem()
-// @ ensures err == nil ==> dc.getState() == HandshakeCompleted && unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(HandshakeCompleted), _) in dc.hs.complete
+// @ ensures err == nil ==> dc.getState() == HandshakeCompleted && dc.isHandshakeCompleted()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
 	handshakeCompletePayloadBytes, err := marshalHandshakeComplete(handshakeCompletePayload /*@, perm(1/2) @*/)
@@ -105,14 +105,14 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 
 	//@ unfold dc.Mem()
 	//@ unfold dc.MemInternal(BlockCipherReady)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()
-	//@ t0 := dc.getToken()
-	//@ s0 := dc.getAbsState()
-	//@ sharedSecretT := dc.getSharedSecretT()
-	//@ clientLtKeyIdT := dc.getClientLtKeyIdT()
-	//@ clientSecretT := dc.getClientShareT()
-	//@ sigYT := dc.getClientShareSignatureT()
-	//@ sigSessionKeysT := dc.getSigSessionKeysT()
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	//@ t0 := dc.io.getToken()
+	//@ s0 := dc.io.getAbsState()
+	//@ sharedSecretT := dc.io.getSharedSecretT()
+	//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+	//@ clientSecretT := dc.io.getClientShareT()
+	//@ sigYT := dc.io.getClientShareSignatureT()
+	//@ sigSessionKeysT := dc.io.getSigSessionKeysT()
 	/*@
 		l := mset[ft.Fact] {
 			ft.St_Agent_9(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
@@ -138,10 +138,10 @@ func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayl
 	//@ unfold iospec.phiR_Agent_9(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_SendHandshakeComplete(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMemMain()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ dc.io.token = t1
+	//@ dc.io.absState = s1
+	//@ fold dc.io.IoSpecMemMain()
 	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = HandshakeCompleted
 	//@ fold acc(dc.MemChannelState(), 1/2)

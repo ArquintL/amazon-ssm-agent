@@ -44,7 +44,7 @@ import (
 // @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
 // @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
 // @ ensures  err == nil && encryptionRequested ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in (
-// @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))))
+// @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))))
 // @ ensures  err != nil ==> err.ErrorMem() && request.Mem()
 func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
@@ -62,9 +62,9 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ cryptoRand.GetReaderMem()
 		//@ unfold dc.Mem()
 		//@ unfold dc.MemInternal(BlockCipherInitialized)
-		//@ t0 := dc.getToken()
-		//@ rid := dc.getRid()
-		//@ s0 := dc.getAbsState()
+		//@ t0 := dc.io.getToken()
+		//@ rid := dc.io.getRid()
+		//@ s0 := dc.io.getAbsState()
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_14(t0, rid, s0)
 		//@ agentSecretT := iospec.get_e_FrFact_r1(t0, rid)
@@ -78,10 +78,10 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			return nil, err
 		}
 		//@ s1 := s0 union mset[ft.Fact]{ ft.FrFact_Agent(rid, agentSecretT) }
-		//@ unfold dc.IoSpecMemMain()
-		//@ dc.setToken(t1)
-		//@ dc.setAbsState(s1)
-		//@ fold dc.IoSpecMemMain()
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ dc.io.token = t1
+		//@ dc.io.absState = s1
+		//@ fold dc.io.IoSpecMemMain()
 
 		dc.secrets.agentSecret = agentSecret
 
@@ -95,12 +95,12 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 		// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
 		/*@
-			agentIdT := dc.getAgentIdT()
-			kmsIdT := dc.getKMSIdT()
-			clientIdT := dc.getClientIdT()
-			readerIdT := dc.getReaderIdT()
+			agentIdT := dc.io.getAgentIdT()
+			kmsIdT := dc.io.getKMSIdT()
+			clientIdT := dc.io.getClientIdT()
+			readerIdT := dc.io.getReaderIdT()
 			agentLtKeyIdT := tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN))
-			logPkT := dc.getLogLTPkT()
+			logPkT := dc.io.getLogLTPkT()
 			m := tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
 			l := mset[ft.Fact] {
 				ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT),
@@ -164,14 +164,14 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ t5 := iospec.internBIO_e_Agent_RecvSignResponse(t4, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l2, a2, r2)
 		//@ s5 := ft.U(l2, r2, s4)
 
-		//@ unfold dc.IoSpecMemMain()
-		//@ unfold dc.IoSpecMemPartial()
-		//@ dc.setToken(t5)
-		//@ dc.setAbsState(s5)
-		//@ dc.setAgentShareT(agentSecretT)
-		//@ dc.setAgentShareSignatureT(signatureT)
-		//@ fold dc.IoSpecMemPartial()
-		//@ fold dc.IoSpecMemMain()
+		//@ unfold dc.io.IoSpecMemMain()
+		//@ unfold dc.io.IoSpecMemPartial()
+		//@ dc.io.token = t5
+		//@ dc.io.absState = s5
+		//@ dc.io.agentShareT = agentSecretT
+		//@ dc.io.agentShareSignatureT = signatureT
+		//@ fold dc.io.IoSpecMemPartial()
+		//@ fold dc.io.IoSpecMemMain()
 		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = AgentSecretCreatedAndSigned
 		//@ fold acc(dc.MemChannelState(), 1/2)
@@ -217,13 +217,13 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 // @ requires dc.Mem() && dc.getState() >= BlockCipherInitialized
 // @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==>
 // @	dc.dataChannelState == AgentSecretCreatedAndSigned &&
-// @	handshakeRequestPayload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId)))
+// @	handshakeRequestPayload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId)))
 // @ preserves acc(log.Mem(), _)
 // @ ensures  dc.Mem() && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
 // @ ensures  err == nil ==> dc.getState() == HandshakeRequestSent
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost request mgsContracts.SessionTypeRequest @*/) (err error) {
-	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.getAgentShareT())), by.gamma(dc.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))
+	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {
 		return fmtErrorf("Could not serialize HandshakeRequest message", err /*@, perm(1/1) @*/)
@@ -235,19 +235,19 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ unfold dc.Mem()
 	//@ state := dc.dataChannelState
 	//@ unfold dc.MemInternal(state)
-	//@ secActionT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getAgentShareT()), tm.pair(dc.getAgentShareSignatureT(), tm.pair(tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), tm.pubTerm(pub.pub_msg(dc.logReaderId)))))
-	//@ t0 := dc.getToken()
-	//@ rid := dc.getRid()
-	//@ s0 := dc.getAbsState()
+	//@ secActionT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getAgentShareT()), tm.pair(dc.io.getAgentShareSignatureT(), tm.pair(tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), tm.pubTerm(pub.pub_msg(dc.logReaderId)))))
+	//@ t0 := dc.io.getToken()
+	//@ rid := dc.io.getRid()
+	//@ s0 := dc.io.getAbsState()
 	/*@
-	agentIdT := dc.getAgentIdT()
-	kmsIdT := dc.getKMSIdT()
-	clientIdT := dc.getClientIdT()
-	readerIdT := dc.getReaderIdT()
+	agentIdT := dc.io.getAgentIdT()
+	kmsIdT := dc.io.getKMSIdT()
+	clientIdT := dc.io.getClientIdT()
+	readerIdT := dc.io.getReaderIdT()
 	agentLtKeyIdT := tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN))
-	logPkT := dc.getLogLTPkT()
-	agentSecretT := dc.getAgentShareT()
-	signatureT := dc.getAgentShareSignatureT()
+	logPkT := dc.io.getLogLTPkT()
+	agentSecretT := dc.io.getAgentShareT()
+	signatureT := dc.io.getAgentShareSignatureT()
 	l := mset[ft.Fact] {
 		ft.St_Agent_2(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT),
 	}
@@ -264,10 +264,10 @@ func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayloa
 	//@ unfold iospec.phiR_Agent_2(t0, rid, s0)
 	//@ t1 := iospec.internBIO_e_Agent_SendSecureSessionRequest(t0, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l, a, r)
 	//@ s1 := ft.U(l, r, s0)
-	//@ unfold dc.IoSpecMemMain()
-	//@ dc.setToken(t1)
-	//@ dc.setAbsState(s1)
-	//@ fold dc.IoSpecMemMain()
+	//@ unfold dc.io.IoSpecMemMain()
+	//@ dc.io.token = t1
+	//@ dc.io.absState = s1
+	//@ fold dc.io.IoSpecMemMain()
 	//@ unfold acc(dc.MemChannelState(), 1/2)
 	dc.dataChannelState = HandshakeRequestSent
 	//@ fold acc(dc.MemChannelState(), 1/2)

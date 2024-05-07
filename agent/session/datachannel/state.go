@@ -180,12 +180,38 @@ type dataChannel struct {
 	instanceId string
 	clientId   string
 
+	//@ ghost io gpointer[ioSpecFields]
 	//@ ghost ioLock gpointer[sync.GhostMutex]
 	//@ ghost ioLockDidLocalReceive bool
 	//@ ghost ioLockCanRemoteSend bool
 	//@ ghost ioLockDidRemoteReceive bool
 	//@ ghost ioLockCanLocalSend bool
 }
+
+/*@
+type ioSpecFields struct {
+	ghost token pl.Place
+	ghost rid tm.Term
+	ghost absState mset[ft.Fact]
+	ghost agentIdT tm.Term
+	ghost kMSIdT tm.Term
+	ghost clientIdT tm.Term
+	ghost readerIdT tm.Term
+	ghost logLTPkT tm.Term
+	ghost agentShareT tm.Term
+	ghost agentShareSignatureT tm.Term
+	ghost inFactT tm.Term
+	ghost sharedSecretT tm.Term
+	ghost clientLtKeyIdT tm.Term
+	ghost clientShareT tm.Term
+	ghost clientShareSignatureT tm.Term
+	ghost sigSessionKeysT tm.Term
+	ghost localInFactT tm.Term
+	ghost remoteInFactT tm.Term
+	ghost localOutFactT tm.Term
+	ghost remoteOutFactT tm.Term
+}
+@*/
 
 // agentHandshakeSecrets represents the secrets used in the handshake.
 type agentHandshakeSecrets struct {
@@ -236,6 +262,13 @@ type handshake struct {
 // @ pure
 func (dc *dataChannel) getState() DataChannelState {
 	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.dataChannelState
+}
+
+// @ decreases
+// @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
+// @ pure
+func (dc *dataChannel) isHandshakeCompleted() bool {
+	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.hs.complete
 }
 
 /*@
@@ -326,25 +359,27 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		acc(&dc.logLTPk) &&
 		acc(&dc.instanceId) &&
 		acc(&dc.clientId) &&
-		acc(&dc.ioLock)) &&
+		acc(&dc.ioLock) &&
+		acc(&dc.io, 1/2)) &&
 	(state != Erroneous && state < IODistributed ==>
 		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
 		acc(&dc.ioLockDidRemoteReceive) && acc(&dc.ioLockCanLocalSend) &&
-		dc.LocalInFactTMem() && dc.RemoteInFactTMem() &&
-		dc.LocalOutFactTMem() && dc.RemoteOutFactTMem()) &&
+		acc(&dc.io.localInFactT) && acc(&dc.io.remoteInFactT) &&
+		acc(&dc.io.localOutFactT) && acc(&dc.io.remoteOutFactT)) &&
 	(state >= Initialized ==>
-		dc.IoSpecMemPartial() &&
+		dc.io.IoSpecMemPartial() &&
 		dc.dataStream.Mem() &&
 		dc.kmsService.Mem() &&
 		dc.logLTPk.Mem()) &&
 	(state >= Initialized && state < IODistributed ==>
-		dc.IoSpecMemMain() &&
-		pl.token(dc.getToken()) &&
-		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
-		tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.getAgentIdT() &&
-		tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.getClientIdT() &&
-		tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
-		by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs()) &&
+		acc(&dc.io, 1/2) &&
+		dc.io.IoSpecMemMain() &&
+		pl.token(dc.io.getToken()) &&
+		iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState()) &&
+		tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.io.getAgentIdT() &&
+		tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.io.getClientIdT() &&
+		tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.io.getReaderIdT() &&
+		by.gamma(dc.io.getLogLTPkT()) == dc.logLTPk.Abs()) &&
 	(state == Initialized ==>
 		!dc.hs.skipped) &&
 	(state == HandshakeSkipped ==>
@@ -355,27 +390,27 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		dc.blockCipher != nil && dc.blockCipher.Mem()) &&
 	(state >= AgentSecretCreatedAndSigned && state < HandshakeCompleted ==>
 		bytes.SliceMem(dc.secrets.agentSecret) &&
-		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.secrets.agentSecret)) &&
+		by.gamma(dc.io.getAgentShareT()) == abs.Abs(dc.secrets.agentSecret)) &&
 	(state >= BlockCipherReady && dc.encryptionEnabled ==>
 		dc.blockCipher.IsReady() &&
-		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
-		dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT())) &&
+		dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
+		dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
+		dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT())) &&
 	// relate state to abstract state:
 	(state == Initialized || state == BlockCipherInitialized ==>
-		ft.Setup_Agent(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT()) in dc.getAbsState()) &&
+		ft.Setup_Agent(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT()) in dc.io.getAbsState()) &&
 	(state == AgentSecretCreatedAndSigned ==>
-		ft.St_Agent_2(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+		ft.St_Agent_2(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
 	(state == HandshakeRequestSent ==>
-		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
 	(state == BlockCipherReady ==>
-		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState()) &&
 	(state == HandshakeCompleted ==>
-		ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState()) &&
+		ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState()) &&
 	(state == IODistributed ==>
 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
 		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
-		dc.LocalInFactTMem() && dc.RemoteOutFactTMem() &&
+		acc(&dc.io.localInFactT) && acc(&dc.io.remoteOutFactT) &&
 		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>)
 }
 
@@ -413,12 +448,13 @@ pred (dc *dataChannel) MemRecv() {
 	acc(&dc.kmsService, 1/2) &&
 	acc(dc.kmsService.Mem(), 1/2) &&
 	acc(dc.logLTPk.Mem(), 1/2) &&
-	acc(dc.IoSpecMemPartial(), 1/4) &&
-	dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-	dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
-	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT()) &&
+	acc(&dc.io, 1/4) &&
+	acc(dc.io.IoSpecMemPartial(), 1/4) &&
+	dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
+	dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
+	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT()) &&
 	acc(&dc.ioLockCanLocalSend, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2) &&
-	acc(dc.LocalOutFactTMem(), 1/2) && acc(dc.RemoteInFactTMem(), 1/2) &&
+	acc(&dc.io.localOutFactT, 1/2) && acc(&dc.io.remoteInFactT, 1/2) &&
 	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>
 }
 
@@ -452,35 +488,36 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	!dc.hs.skipped &&
 	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
 	dc.blockCipher != nil && dc.blockCipher.Mem() &&
-	dc.IoSpecMemMain() &&
-	dc.IoSpecMemPartial() &&
+	acc(&dc.io, 1/2) &&
+	dc.io.IoSpecMemMain() &&
+	dc.io.IoSpecMemPartial() &&
 	(state != Erroneous ==>
-		pl.token(dc.getToken()) &&
-		iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState())) &&
-	tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.getAgentIdT() &&
-	tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.getClientIdT() &&
-	tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.getReaderIdT() &&
-	by.gamma(dc.getLogLTPkT()) == dc.logLTPk.Abs() &&
+		pl.token(dc.io.getToken()) &&
+		iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState())) &&
+	tm.pubTerm(pub.pub_msg(dc.instanceId)) == dc.io.getAgentIdT() &&
+	tm.pubTerm(pub.pub_msg(dc.clientId)) == dc.io.getClientIdT() &&
+	tm.pubTerm(pub.pub_msg(dc.logReaderId)) == dc.io.getReaderIdT() &&
+	by.gamma(dc.io.getLogLTPkT()) == dc.logLTPk.Abs() &&
 	(encryptionEnabled ==>
 		dc.logLTPk.Mem() &&
 		dc.kmsService.Mem() &&
 		bytes.SliceMem(dc.secrets.agentSecret) &&
-		by.gamma(dc.getAgentShareT()) == abs.Abs(dc.secrets.agentSecret)) &&
+		by.gamma(dc.io.getAgentShareT()) == abs.Abs(dc.secrets.agentSecret)) &&
 	(state == HandshakeRequestSent ==>
-		ft.St_Agent_3(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT()) in dc.getAbsState()) &&
+		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
 	(state >= HandshakeResponseReceived ==>
 		bytes.SliceMem(dc.secrets.sharedSecret) &&
 		// TODO: we could technically remove `getSharedSecretT` as it only acts as an abbreviation:
-		dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-		by.gamma(dc.getSharedSecretT()) == abs.Abs(dc.secrets.sharedSecret)) &&
+		dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
+		by.gamma(dc.io.getSharedSecretT()) == abs.Abs(dc.secrets.sharedSecret)) &&
 	(state == HandshakeResponseVerified ==>
-		ft.St_Agent_6(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT()) in dc.getAbsState()) &&
+		ft.St_Agent_6(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT()) in dc.io.getAbsState()) &&
 	(state == BlockCipherReady ==>
 		(encryptionEnabled ==>
 			dc.blockCipher.IsReady() &&
-			dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.getSharedSecretT()) &&
-			dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.getSharedSecretT())) &&
-		ft.St_Agent_9(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState())
+			dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
+			dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT())) &&
+		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState())
 }
 
 pred (dc *dataChannel) Inv() {
@@ -507,575 +544,274 @@ pred ResponseChanInv(dc *dataChannel, payload ResponseChanPayload) {
 }
 
 pred IoLockInv(dc *dataChannel, instanceId, clientId, agentLTKeyARN string) {
-	// dc.IoSpecMem() &&
-	acc(dc.IoSpecMemPartial(), 1/4) &&
+	acc(&dc.io, 1/4) &&
+	acc(dc.io.IoSpecMemPartial(), 1/4) &&
 	acc(&dc.ioLockDidLocalReceive, 1/2) &&
 	acc(&dc.ioLockCanRemoteSend, 1/2) &&
 	acc(&dc.ioLockDidRemoteReceive, 1/2) &&
 	acc(&dc.ioLockCanLocalSend, 1/2) &&
-	acc(dc.LocalInFactTMem(), 1/2) &&
-	acc(dc.RemoteInFactTMem(), 1/2) &&
-	acc(dc.LocalOutFactTMem(), 1/2) &&
-	acc(dc.RemoteOutFactTMem(), 1/2) &&
-	// dc.TokenMem() &&
-	// dc.AbsStateMem() &&
-	// pl.token(dc.getTokenInternal()) &&
-	// iospec.P_Agent(dc.getTokenInternal(), dc.getRidPartial(), dc.getAbsStateInternal()) &&
-	// unfolding acc(dc.IoSpecMemPartial(), 1/2) in
-	// 	tm.pubTerm(pub.pub_msg(instanceId)) == dc.getAgentIdTInternal() &&
-	// 	tm.pubTerm(pub.pub_msg(clientId)) == dc.getClientIdTInternal() &&
-	// 	ft.St_Agent_10(dc.getRidInternal(), dc.getAgentIdTInternal(), dc.getKMSIdTInternal(), dc.getClientIdTInternal(), dc.getReaderIdTInternal(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.getLogLTPkTInternal(), dc.getAgentShareTInternal(), dc.getAgentShareSignatureTInternal(), dc.getClientLtKeyIdTInternal(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareTInternal()), dc.getClientShareSignatureTInternal(), dc.getSigSessionKeysTInternal()) in dc.getAbsStateInternal() &&
-	// 	(dc.ioLockDidLocalReceive ==> ft.InFact_Agent(dc.getRidInternal(), dc.getLocalInFactTInternal()) in dc.getAbsStateInternal()) &&
-	// 	(dc.ioLockCanRemoteSend ==> ft.OutFact_Agent(dc.getRidInternal(), dc.getRemoteOutFactTInternal()) in dc.getAbsStateInternal()) &&
-	// 	(dc.ioLockDidRemoteReceive ==> ft.InFact_Agent(dc.getRidInternal(), dc.getRemoteInFactTInternal()) in dc.getAbsStateInternal()) &&
-	// 	(dc.ioLockCanLocalSend ==> ft.OutFact_Agent(dc.getRidInternal(), dc.getLocalOutFactTInternal()) in dc.getAbsStateInternal())
-	dc.IoSpecMemMain() &&
-	pl.token(dc.getToken()) &&
-	iospec.P_Agent(dc.getToken(), dc.getRid(), dc.getAbsState()) &&
-	tm.pubTerm(pub.pub_msg(instanceId)) == dc.getAgentIdT() &&
-	tm.pubTerm(pub.pub_msg(clientId)) == dc.getClientIdT() &&
-	ft.St_Agent_10(dc.getRid(), dc.getAgentIdT(), dc.getKMSIdT(), dc.getClientIdT(), dc.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.getLogLTPkT(), dc.getAgentShareT(), dc.getAgentShareSignatureT(), dc.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getClientShareSignatureT(), dc.getSigSessionKeysT()) in dc.getAbsState() &&
-	dc.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.getClientShareT()), dc.getAgentShareT()) &&
-	(((dc.ioLockDidLocalReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.getRid(), dc.getLocalInFactTInternal()) } : mset[ft.Fact]{ }) union
-		(dc.ioLockCanRemoteSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.getRid(), dc.getRemoteOutFactTInternal()) } : mset[ft.Fact]{ } ) union
-		(dc.ioLockDidRemoteReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.getRid(), dc.getRemoteInFactTInternal()) } : mset[ft.Fact]{ } ) union
-		(dc.ioLockCanLocalSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.getRid(), dc.getLocalOutFactTInternal()) } : mset[ft.Fact]{ } )) subset dc.getAbsState())
+	acc(&dc.io.localInFactT, 1/2) &&
+	acc(&dc.io.remoteInFactT, 1/2) &&
+	acc(&dc.io.localOutFactT, 1/2) &&
+	acc(&dc.io.remoteOutFactT, 1/2) &&
+	dc.io.IoSpecMemMain() &&
+	pl.token(dc.io.getToken()) &&
+	iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState()) &&
+	tm.pubTerm(pub.pub_msg(instanceId)) == dc.io.getAgentIdT() &&
+	tm.pubTerm(pub.pub_msg(clientId)) == dc.io.getClientIdT() &&
+	ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState() &&
+	dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
+	(((dc.ioLockDidLocalReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.io.getRid(), dc.io.localInFactT) } : mset[ft.Fact]{ }) union
+		(dc.ioLockCanRemoteSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.io.getRid(), dc.io.remoteOutFactT) } : mset[ft.Fact]{ } ) union
+		(dc.ioLockDidRemoteReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.io.getRid(), dc.io.remoteInFactT) } : mset[ft.Fact]{ } ) union
+		(dc.ioLockCanLocalSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.io.getRid(), dc.io.localOutFactT) } : mset[ft.Fact]{ } )) subset dc.io.getAbsState())
 }
 
-// conceptually, this predicate contains write permissions to
-// ghost heap locations storing the parameters for the IO spec
-pred (dc *dataChannel) IoSpecMem() {
-	dc.TokenMem() &&
-	dc.RidMem() &&
-	dc.AbsStateMem() &&
-	dc.AgentIdTMem() &&
-	dc.KMSIdTMem() &&
-	dc.ClientIdTMem() &&
-	dc.ReaderIdTMem() &&
-	dc.LogLTPkTMem() &&
-	dc.AgentShareTMem() &&
-	dc.AgentShareSignatureTMem() &&
-	dc.InFactTMem() &&
-	dc.SharedSecretTMem() &&
-	dc.ClientLtKeyIdTMem() &&
-	dc.ClientShareTMem() &&
-	dc.ClientShareSignatureTMem() &&
-	dc.SigSessionKeysTMem() &&
-	dc.LocalInFactTMem() &&
-	dc.RemoteInFactTMem() &&
-	dc.LocalOutFactTMem() &&
-	dc.RemoteOutFactTMem()
+pred (io gpointer[ioSpecFields]) IoSpecMemMain() {
+	acc(&io.token) &&
+	acc(&io.absState)
 }
 
-pred (dc *dataChannel) IoSpecMemMain() {
-	dc.TokenMem() &&
-	dc.AbsStateMem()
+pred (io gpointer[ioSpecFields]) IoSpecMemPartial() {
+	acc(&io.rid) &&
+	acc(&io.agentIdT) &&
+	acc(&io.kMSIdT) &&
+	acc(&io.clientIdT) &&
+	acc(&io.readerIdT) &&
+	acc(&io.logLTPkT) &&
+	acc(&io.agentShareT) &&
+	acc(&io.agentShareSignatureT) &&
+	acc(&io.inFactT) &&
+	acc(&io.sharedSecretT) &&
+	acc(&io.clientLtKeyIdT) &&
+	acc(&io.clientShareT) &&
+	acc(&io.clientShareSignatureT) &&
+	acc(&io.sigSessionKeysT)
 }
-
-pred (dc *dataChannel) IoSpecMemPartial() {
-	dc.RidMem() &&
-	dc.AgentIdTMem() &&
-	dc.KMSIdTMem() &&
-	dc.ClientIdTMem() &&
-	dc.ReaderIdTMem() &&
-	dc.LogLTPkTMem() &&
-	dc.AgentShareTMem() &&
-	dc.AgentShareSignatureTMem() &&
-	dc.InFactTMem() &&
-	dc.SharedSecretTMem() &&
-	dc.ClientLtKeyIdTMem() &&
-	dc.ClientShareTMem() &&
-	dc.ClientShareSignatureTMem() &&
-	dc.SigSessionKeysTMem() // &&
-	// dc.LocalInFactTMem() &&
-	// dc.RemoteInFactTMem() &&
-	// dc.LocalOutFactTMem() &&
-	// dc.RemoteOutFactTMem()
-}
-
-pred (dc *dataChannel) TokenMem()
-
-ghost
-decreases _
-requires acc(dc.TokenMem(), _)
-pure func (dc *dataChannel) getTokenInternal() pl.Place
 
 ghost
 decreases
-requires acc(dc.IoSpecMemMain(), _)
-pure func (dc *dataChannel) getToken() pl.Place {
-	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getTokenInternal()
+requires acc(io.IoSpecMemMain(), _)
+pure func (io gpointer[ioSpecFields]) getToken() pl.Place {
+	return unfolding acc(io.IoSpecMemMain(), _) in io.token
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetToken() pl.Place {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getToken()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getToken()
 }
 
 ghost
-decreases _
-preserves dc.TokenMem()
-ensures dc.getTokenInternal() == token
-func (dc *dataChannel) setToken(token pl.Place)
-
-pred (dc *dataChannel) RidMem()
-
-ghost
-decreases _
-requires acc(dc.RidMem(), _)
-pure func (dc *dataChannel) getRidInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getRid() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getRidInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getRid() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.rid
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetRid() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getRid()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getRid()
 }
 
 ghost
-decreases _
-preserves dc.RidMem()
-ensures dc.getRidInternal() == rid
-func (dc *dataChannel) setRid(rid tm.Term)
-
-pred (dc *dataChannel) AbsStateMem()
-
-ghost
-decreases _
-requires acc(dc.AbsStateMem(), _)
-pure func (dc *dataChannel) getAbsStateInternal() mset[ft.Fact]
-
-ghost
 decreases
-requires acc(dc.IoSpecMemMain(), _)
-pure func (dc *dataChannel) getAbsState() mset[ft.Fact] {
-	return unfolding acc(dc.IoSpecMemMain(), _) in dc.getAbsStateInternal()
+requires acc(io.IoSpecMemMain(), _)
+pure func (io gpointer[ioSpecFields]) getAbsState() mset[ft.Fact] {
+	return unfolding acc(io.IoSpecMemMain(), _) in io.absState
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
 pure func (dc *dataChannel) GetAbsState() mset[ft.Fact] {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAbsState()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAbsState()
 }
 
 ghost
-decreases _
-preserves dc.AbsStateMem()
-ensures dc.getAbsStateInternal() == state
-func (dc *dataChannel) setAbsState(state mset[ft.Fact])
-
-pred (dc *dataChannel) AgentIdTMem()
-
-ghost
-decreases _
-requires acc(dc.AgentIdTMem(), _)
-pure func (dc *dataChannel) getAgentIdTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getAgentIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentIdTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getAgentIdT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.agentIdT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAgentIdT()
 }
 
 ghost
-decreases _
-preserves dc.AgentIdTMem()
-ensures dc.getAgentIdTInternal() == agentIdT
-func (dc *dataChannel) setAgentIdT(agentIdT tm.Term)
-
-pred (dc *dataChannel) KMSIdTMem()
-
-ghost
-decreases _
-requires acc(dc.KMSIdTMem(), _)
-pure func (dc *dataChannel) getKMSIdTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getKMSIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getKMSIdTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getKMSIdT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.kMSIdT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetKMSIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getKMSIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getKMSIdT()
 }
 
 ghost
-decreases _
-preserves dc.KMSIdTMem()
-ensures dc.getKMSIdTInternal() == kmsIdT
-func (dc *dataChannel) setKMSIdT(kmsIdT tm.Term)
-
-pred (dc *dataChannel) ClientIdTMem()
-
-ghost
-decreases _
-requires acc(dc.ClientIdTMem(), _)
-pure func (dc *dataChannel) getClientIdTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getClientIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientIdTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getClientIdT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.clientIdT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getClientIdT()
 }
 
 ghost
-decreases _
-preserves dc.ClientIdTMem()
-ensures dc.getClientIdTInternal() == clientIdT
-func (dc *dataChannel) setClientIdT(clientIdT tm.Term)
-
-pred (dc *dataChannel) ReaderIdTMem()
-
-ghost
-decreases _
-requires acc(dc.ReaderIdTMem(), _)
-pure func (dc *dataChannel) getReaderIdTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getReaderIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getReaderIdTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getReaderIdT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.readerIdT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetReaderIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getReaderIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getReaderIdT()
 }
 
 ghost
-decreases _
-preserves dc.ReaderIdTMem()
-ensures dc.getReaderIdTInternal() == readerIdT
-func (dc *dataChannel) setReaderIdT(readerIdT tm.Term)
-
-pred (dc *dataChannel) LogLTPkTMem()
-
-ghost
-decreases _
-requires acc(dc.LogLTPkTMem(), _)
-pure func (dc *dataChannel) getLogLTPkTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getLogLTPkT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getLogLTPkTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getLogLTPkT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.logLTPkT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetLogLTPkT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getLogLTPkT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getLogLTPkT()
 }
 
 ghost
-decreases _
-preserves dc.LogLTPkTMem()
-ensures dc.getLogLTPkTInternal() == logLTPkT
-func (dc *dataChannel) setLogLTPkT(logLTPkT tm.Term)
-
-pred (dc *dataChannel) AgentShareTMem()
-
-ghost
-decreases _
-requires acc(dc.AgentShareTMem(), _)
-pure func (dc *dataChannel) getAgentShareTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getAgentShareT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getAgentShareT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.agentShareT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAgentShareT()
 }
 
 ghost
-decreases _
-preserves dc.AgentShareTMem()
-ensures dc.getAgentShareTInternal() == shareT
-func (dc *dataChannel) setAgentShareT(shareT tm.Term)
-
-pred (dc *dataChannel) AgentShareSignatureTMem()
-
-ghost
-decreases _
-requires acc(dc.AgentShareSignatureTMem(), _)
-pure func (dc *dataChannel) getAgentShareSignatureTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getAgentShareSignatureT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getAgentShareSignatureTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getAgentShareSignatureT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.agentShareSignatureT
 }
 
 ghost
 decreases _
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetAgentShareSignatureT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getAgentShareSignatureT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAgentShareSignatureT()
 }
 
 ghost
 decreases
-preserves dc.AgentShareSignatureTMem()
-ensures dc.getAgentShareSignatureTInternal() == signatureT
-func (dc *dataChannel) setAgentShareSignatureT(signatureT tm.Term)
-
-pred (dc *dataChannel) InFactTMem()
-
-ghost
-decreases _
-requires acc(dc.InFactTMem(), _)
-pure func (dc *dataChannel) getInFactTInternal() tm.Term
-
-ghost
-decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getInFactT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getInFactTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getInFactT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.inFactT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetInFactT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getInFactT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getInFactT()
 }
 
 ghost
-decreases _
-preserves dc.InFactTMem()
-ensures dc.getInFactTInternal() == inFactT
-func (dc *dataChannel) setInFactT(inFactT tm.Term)
-
-pred (dc *dataChannel) SharedSecretTMem()
-
-ghost
-decreases _
-requires acc(dc.SharedSecretTMem(), _)
-pure func (dc *dataChannel) getSharedSecretTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getSharedSecretT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSharedSecretTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getSharedSecretT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.sharedSecretT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSharedSecretT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSharedSecretT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getSharedSecretT()
 }
 
 ghost
-decreases _
-preserves dc.SharedSecretTMem()
-ensures dc.getSharedSecretTInternal() == sharedSecretT
-func (dc *dataChannel) setSharedSecretT(sharedSecretT tm.Term)
-
-pred (dc *dataChannel) ClientLtKeyIdTMem()
-
-ghost
-decreases _
-requires acc(dc.ClientLtKeyIdTMem(), _)
-pure func (dc *dataChannel) getClientLtKeyIdTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getClientLtKeyIdT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientLtKeyIdTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getClientLtKeyIdT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.clientLtKeyIdT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientLtKeyIdT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientLtKeyIdT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getClientLtKeyIdT()
 }
 
 ghost
-decreases _
-preserves dc.ClientLtKeyIdTMem()
-ensures dc.getClientLtKeyIdTInternal() == clientLtKeyIdT
-func (dc *dataChannel) setClientLtKeyIdT(clientLtKeyIdT tm.Term)
-
-pred (dc *dataChannel) ClientShareTMem()
-
-ghost
-decreases _
-requires acc(dc.ClientShareTMem(), _)
-pure func (dc *dataChannel) getClientShareTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getClientShareT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getClientShareT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.clientShareT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getClientShareT()
 }
 
 ghost
-decreases _
-preserves dc.ClientShareTMem()
-ensures dc.getClientShareTInternal() == clientShareT
-func (dc *dataChannel) setClientShareT(clientShareT tm.Term)
-
-pred (dc *dataChannel) ClientShareSignatureTMem()
-
-ghost
-decreases _
-requires acc(dc.ClientShareSignatureTMem(), _)
-pure func (dc *dataChannel) getClientShareSignatureTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getClientShareSignatureT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getClientShareSignatureTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getClientShareSignatureT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.clientShareSignatureT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetClientShareSignatureT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getClientShareSignatureT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getClientShareSignatureT()
 }
 
 ghost
-decreases _
-preserves dc.ClientShareSignatureTMem()
-ensures dc.getClientShareSignatureTInternal() == clientShareSignatureT
-func (dc *dataChannel) setClientShareSignatureT(clientShareSignatureT tm.Term)
-
-pred (dc *dataChannel) SigSessionKeysTMem()
-
-ghost
-decreases _
-requires acc(dc.SigSessionKeysTMem(), _)
-pure func (dc *dataChannel) getSigSessionKeysTInternal() tm.Term
-
-ghost
 decreases
-requires acc(dc.IoSpecMemPartial(), _)
-pure func (dc *dataChannel) getSigSessionKeysT() tm.Term {
-	return unfolding acc(dc.IoSpecMemPartial(), _) in dc.getSigSessionKeysTInternal()
+requires acc(io.IoSpecMemPartial(), _)
+pure func (io gpointer[ioSpecFields]) getSigSessionKeysT() tm.Term {
+	return unfolding acc(io.IoSpecMemPartial(), _) in io.sigSessionKeysT
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
 pure func (dc *dataChannel) GetSigSessionKeysT() tm.Term {
-	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.getSigSessionKeysT()
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getSigSessionKeysT()
 }
-
-ghost
-decreases _
-preserves dc.SigSessionKeysTMem()
-ensures dc.getSigSessionKeysTInternal() == sigSessionKeysT
-func (dc *dataChannel) setSigSessionKeysT(sigSessionKeysT tm.Term)
-
-pred (dc *dataChannel) LocalInFactTMem()
-
-ghost
-decreases _
-requires acc(dc.LocalInFactTMem(), _)
-pure func (dc *dataChannel) getLocalInFactTInternal() tm.Term
-
-ghost
-decreases _
-preserves dc.LocalInFactTMem()
-ensures dc.getLocalInFactTInternal() == inFactT
-func (dc *dataChannel) setLocalInFactT(inFactT tm.Term)
-
-pred (dc *dataChannel) RemoteInFactTMem()
-
-ghost
-decreases _
-requires acc(dc.RemoteInFactTMem(), _)
-pure func (dc *dataChannel) getRemoteInFactTInternal() tm.Term
-
-ghost
-decreases _
-preserves dc.RemoteInFactTMem()
-ensures dc.getRemoteInFactTInternal() == inFactT
-func (dc *dataChannel) setRemoteInFactT(inFactT tm.Term)
-
-pred (dc *dataChannel) LocalOutFactTMem()
-
-ghost
-decreases _
-requires acc(dc.LocalOutFactTMem(), _)
-pure func (dc *dataChannel) getLocalOutFactTInternal() tm.Term
-
-ghost
-decreases _
-preserves dc.LocalOutFactTMem()
-ensures dc.getLocalOutFactTInternal() == outFactT
-func (dc *dataChannel) setLocalOutFactT(outFactT tm.Term)
-
-pred (dc *dataChannel) RemoteOutFactTMem()
-
-ghost
-decreases _
-requires acc(dc.RemoteOutFactTMem(), _)
-pure func (dc *dataChannel) getRemoteOutFactTInternal() tm.Term
-
-ghost
-decreases _
-preserves dc.RemoteOutFactTMem()
-ensures dc.getRemoteOutFactTInternal() == outFactT
-func (dc *dataChannel) setRemoteOutFactT(outFactT tm.Term)
 
 ghost
 decreases

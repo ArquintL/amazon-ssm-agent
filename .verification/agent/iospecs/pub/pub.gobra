@@ -34,9 +34,6 @@ type Pub domain {
 
     func const_Message_pub() Pub
 
-    // TODO!: Add base constructors as uninterpreted functions
-    // Example:
     func pub_msg(string) Pub
-    func pub_integer64(uint64) Pub
 }
 
