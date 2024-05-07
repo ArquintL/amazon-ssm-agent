@@ -272,53 +272,6 @@ func (dc *dataChannel) isHandshakeCompleted() bool {
 }
 
 /*@
-pred (dc *dataChannel) RecvRoutineMem() {
-	dc != nil &&
-	acc(&dc.inputStreamMessageHandler) &&
-	dc.inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{} &&
-	acc(&dc.hs.startReceivingChan, _) &&
-	acc(dc.hs.startReceivingChan.RecvChannel(), _) &&
-	dc.hs.startReceivingChan.RecvGivenPerm() == PredTrue!<!> &&
-	dc.hs.startReceivingChan.RecvGotPerm() == StartReceivingChanInv!<dc, _!> &&
-	acc(&dc.hs.responseChan, _) &&
-	acc(dc.hs.responseChan.SendChannel(), _) &&
-	dc.hs.responseChan.SendGivenPerm() == ResponseChanInv!<dc, _!> &&
-	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
-}
-
-pred (dc *dataChannel) MemFields(state DataChannelState) {
-	acc(&dc.dataStream) &&
-	acc(&dc.hs.clientVersion) &&
-	acc(&dc.hs.error) &&
-	acc(&dc.hs.complete) &&
-	acc(&dc.hs.skipped) &&
-	acc(&dc.hs.handshakeStartTime) &&
-	acc(&dc.hs.handshakeEndTime) &&
-	acc(&dc.blockCipher) &&
-	acc(&dc.kmsService) &&
-	acc(&dc.encryptionEnabled) &&
-	acc(&dc.separateOutputPayload) &&
-	acc(&dc.secrets) &&
-	acc(&dc.logReaderId) &&
-	acc(&dc.logLTPk) &&
-	acc(&dc.hs.startReceivingChan, _) &&
-	acc(&dc.hs.responseChan, _) &&
-	acc(&dc.ioLock) &&
-	(state >= Initialized ==>
-		dc.dataStream.Mem() &&
-		dc.kmsService.Mem() &&
-		dc.logLTPk.Mem())
-}
-
-pred (dc *dataChannel) MemOld() {
-	dc != nil &&
-	acc(&dc.dataChannelState, 1/2) &&
-	acc(dc.MemInternal(dc.dataChannelState), 1/2) &&
-	(dc.dataChannelState != IODistributed ==>
-		acc(&dc.dataChannelState, 1/2) &&
-		acc(dc.MemInternal(dc.dataChannelState), 1/2))
-}
-
 pred (dc *dataChannel) Mem() {
 	dc != nil &&
 	acc(&dc.dataChannelState, 1/2) &&
@@ -414,50 +367,6 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>)
 }
 
-// `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
-// TODO move below `MemTransfer`
-pred (dc *dataChannel) MemRecv() {
-	dc != nil &&
-	acc(&dc.dataChannelState, 1/2) &&
-	dc.dataChannelState == IODistributed &&
-	acc(&dc.ioLock, 1/2) &&
-	acc(&dc.hs.startReceivingChan, _) &&
-	acc(&dc.hs.responseChan, _) &&
-	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
-	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
-	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
-	acc(&dc.dataStream, 1/2) &&
-	acc(&dc.hs.clientVersion, 1/2) &&
-	acc(&dc.hs.error, 1/2) &&
-	acc(&dc.hs.complete, 1/2) &&
-	acc(&dc.hs.skipped, 1/2) &&
-	acc(&dc.hs.handshakeStartTime, 1/2) &&
-	acc(&dc.hs.handshakeEndTime, 1/2) &&
-	acc(&dc.encryptionEnabled, 1/2) &&
-	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
-	acc(&dc.blockCipher, 1/2) &&
-	acc(dc.blockCipher.Mem(), 1/2) &&
-	(dc.encryptionEnabled ==> dc.blockCipher.IsReady()) &&
-	acc(&dc.separateOutputPayload, 1/2) &&
-	acc(&dc.secrets, 1/2) &&
-	acc(&dc.logReaderId, 1/2) &&
-	acc(&dc.logLTPk, 1/2) &&
-	acc(&dc.instanceId, 1/2) &&
-	acc(&dc.clientId, 1/2) &&
-	acc(dc.dataStream.Mem(), 1/2) &&
-	acc(&dc.kmsService, 1/2) &&
-	acc(dc.kmsService.Mem(), 1/2) &&
-	acc(dc.logLTPk.Mem(), 1/2) &&
-	acc(&dc.io, 1/4) &&
-	acc(dc.io.IoSpecMemPartial(), 1/4) &&
-	dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
-	dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
-	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT()) &&
-	acc(&dc.ioLockCanLocalSend, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2) &&
-	acc(&dc.io.localOutFactT, 1/2) && acc(&dc.io.remoteInFactT, 1/2) &&
-	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>
-}
-
 // `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
 // the handshake.
 pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
@@ -520,8 +429,65 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState())
 }
 
+// `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
+pred (dc *dataChannel) MemRecv() {
+	dc != nil &&
+	acc(&dc.dataChannelState, 1/2) &&
+	dc.dataChannelState == IODistributed &&
+	acc(&dc.ioLock, 1/2) &&
+	acc(&dc.hs.startReceivingChan, _) &&
+	acc(&dc.hs.responseChan, _) &&
+	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
+	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
+	acc(&dc.dataStream, 1/2) &&
+	acc(&dc.hs.clientVersion, 1/2) &&
+	acc(&dc.hs.error, 1/2) &&
+	acc(&dc.hs.complete, 1/2) &&
+	acc(&dc.hs.skipped, 1/2) &&
+	acc(&dc.hs.handshakeStartTime, 1/2) &&
+	acc(&dc.hs.handshakeEndTime, 1/2) &&
+	acc(&dc.encryptionEnabled, 1/2) &&
+	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
+	acc(&dc.blockCipher, 1/2) &&
+	acc(dc.blockCipher.Mem(), 1/2) &&
+	(dc.encryptionEnabled ==> dc.blockCipher.IsReady()) &&
+	acc(&dc.separateOutputPayload, 1/2) &&
+	acc(&dc.secrets, 1/2) &&
+	acc(&dc.logReaderId, 1/2) &&
+	acc(&dc.logLTPk, 1/2) &&
+	acc(&dc.instanceId, 1/2) &&
+	acc(&dc.clientId, 1/2) &&
+	acc(dc.dataStream.Mem(), 1/2) &&
+	acc(&dc.kmsService, 1/2) &&
+	acc(dc.kmsService.Mem(), 1/2) &&
+	acc(dc.logLTPk.Mem(), 1/2) &&
+	acc(&dc.io, 1/4) &&
+	acc(dc.io.IoSpecMemPartial(), 1/4) &&
+	dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
+	dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
+	dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT()) &&
+	acc(&dc.ioLockCanLocalSend, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2) &&
+	acc(&dc.io.localOutFactT, 1/2) && acc(&dc.io.remoteInFactT, 1/2) &&
+	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>
+}
+
 pred (dc *dataChannel) Inv() {
 	dc.RecvRoutineMem()
+}
+
+pred (dc *dataChannel) RecvRoutineMem() {
+	dc != nil &&
+	acc(&dc.inputStreamMessageHandler) &&
+	dc.inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{} &&
+	acc(&dc.hs.startReceivingChan, _) &&
+	acc(dc.hs.startReceivingChan.RecvChannel(), _) &&
+	dc.hs.startReceivingChan.RecvGivenPerm() == PredTrue!<!> &&
+	dc.hs.startReceivingChan.RecvGotPerm() == StartReceivingChanInv!<dc, _!> &&
+	acc(&dc.hs.responseChan, _) &&
+	acc(dc.hs.responseChan.SendChannel(), _) &&
+	dc.hs.responseChan.SendGivenPerm() == ResponseChanInv!<dc, _!> &&
+	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
 }
 
 pred StartReceivingChanInv(dc *dataChannel, payload MessageReceptionPayload) {
