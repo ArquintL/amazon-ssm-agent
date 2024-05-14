@@ -271,6 +271,20 @@ func (dc *dataChannel) isHandshakeCompleted() bool {
 	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.hs.complete
 }
 
+// @ decreases
+// @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
+// @ pure
+func (dc *dataChannel) getAgentLTKeyARN() string {
+	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.secrets.agentLTKeyARN
+}
+
+// @ decreases
+// @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
+// @ pure
+func (dc *dataChannel) getLogReaderId() string {
+	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.logReaderId
+}
+
 /*@
 pred (dc *dataChannel) Mem() {
 	dc != nil &&

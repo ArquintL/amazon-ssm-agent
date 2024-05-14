@@ -100,25 +100,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-
-		//@ t0 := dc.io.getToken()
-		//@ rid := dc.io.getRid()
-		//@ s0 := dc.io.getAbsState()
-		//@ unfold iospec.P_Agent(t0, rid, s0)
-		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
-		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
-		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
-
-		//@ unfold dc.io.IoSpecMemMain()
-		//@ dc.io.token = t1
-		//@ dc.io.absState = s1
-		//@ dc.io.remoteInFactT = receivedMsgT
-		//@ dc.ioLockDidRemoteReceive = true
-		//@ fold dc.io.IoSpecMemMain()
-
-		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
+		//@ dc.performRemoteReceive(dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN, streamDataMessage)
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
 
@@ -157,47 +139,9 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		// ----- start internal I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-		//@ t1 = dc.io.getToken()
-		//@ s1 = dc.io.getAbsState()
-		//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
-		//@ sharedSecretT := dc.io.getSharedSecretT()
-		//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
-		//@ clientSecretT := dc.io.getClientShareT()
-		//@ sigYT := dc.io.getClientShareSignatureT()
-		//@ sigSessionKeysT := dc.io.getSigSessionKeysT()
 		// temporarily unfolding the block cipher's memory to learn the relation between the decryption term and its byte representation:
 		//@ assert unfolding acc(dc.blockCipher.Mem(), _) in dc.blockCipher.GetDecKeyB() == by.gamma(dc.blockCipher.GetDecKeyT())
-		//@ payloadT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t1, s1)
-		//@ outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)
-		// obtain permission to send the ciphertext containing `inputData`:
-		/*@
-			l := mset[ft.Fact] {
-				ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-				ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
-			}
-			a := mset[cl.Claim] {
-				cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
-			}
-			r := mset[ft.Fact] {
-		    	ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-				ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
-			}
-			@*/
-		//@ unfold iospec.P_Agent(t1, rid, s1)
-		//@ unfold iospec.phiR_Agent_10(t1, rid, s1)
-		//@ t2 := iospec.internBIO_e_Agent_ReceiveMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
-		//@ s2 := ft.U(l, r, s1)
-
-		//@ unfold dc.io.IoSpecMemMain()
-		//@ dc.io.token = t2
-		//@ dc.io.absState = s2
-		//@ dc.ioLockDidRemoteReceive = false
-		//@ dc.io.localOutFactT = outMsgT
-		//@ dc.ioLockCanLocalSend = true
-		//@ fold dc.io.IoSpecMemMain()
-
-		//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
+		//@ dc.performTransition_10(dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN, plaintextB)
 		//@ dc.ioLock.Unlock()
 		// ----- end internal I/O operation -----
 
@@ -205,16 +149,18 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ dc.ioLock.Lock()
 		//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
 
-		//@ t2 = dc.io.getToken()
-		//@ s2 = dc.io.getAbsState()
-		//@ unfold iospec.P_Agent(t2, rid, s2)
-		//@ unfold iospec.phiRG_Agent_13(t2, rid, s2)
-		//@ t3 := iospec.get_e_OutFact_placeDst(t2, rid, outMsgT)
-		//@ s3 := s2 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, outMsgT) }
+		//@ t0 := dc.io.getToken()
+		//@ rid := dc.io.getRid()
+		//@ s0 := dc.io.getAbsState()
+		//@ outMsgT := dc.io.localOutFactT
+		//@ unfold iospec.P_Agent(t0, rid, s0)
+		//@ unfold iospec.phiRG_Agent_13(t0, rid, s0)
+		//@ t1 := iospec.get_e_OutFact_placeDst(t0, rid, outMsgT)
+		//@ s1 := s0 setminus mset[ft.Fact]{ ft.OutFact_Agent(rid, outMsgT) }
 
 		//@ fold dc.MemRecv()
 		//@ unfold dc.RecvRoutineMem()
-		err = iosanitization.DataChannelForwardToMessageHandler(dc.inputStreamMessageHandler, streamDataMessage /*@, t2, rid, outMsgT @*/)
+		err = iosanitization.DataChannelForwardToMessageHandler(dc.inputStreamMessageHandler, streamDataMessage /*@, t0, rid, outMsgT @*/)
 		if err != nil {
 			err = fmtError("inputStreamMessageHandler returned an error")
 		}
@@ -222,8 +168,8 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		//@ unfold dc.MemRecv()
 		//@ unfold dc.io.IoSpecMemMain()
-		//@ dc.io.token = t3
-		//@ dc.io.absState = s3
+		//@ dc.io.token = t1
+		//@ dc.io.absState = s1
 		//@ dc.ioLockCanLocalSend = false
 		//@ fold dc.io.IoSpecMemMain()
 
@@ -241,7 +187,88 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 	return nil
 }
 
-// requires acc(dc.Mem(), 1/2) && dc.getState() == AgentSecretCreatedAndSigned && unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in dc.hs.complete
+/*@
+ghost
+decreases
+requires datastream.StreamDataHandlerFootprint(streamDataMessage)
+preserves IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>() && acc(&dc.io, 1/8)
+preserves acc(&dc.io.remoteInFactT, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2)
+ensures  streamDataMessage.Mem()
+ensures  by.gamma(dc.io.remoteInFactT) == streamDataMessage.Abs()
+ensures  dc.ioLockDidRemoteReceive
+func (dc *dataChannel) performRemoteReceive(instanceId, clientId, agentLTKeyARN string, streamDataMessage *mgsContracts.AgentMessage) {
+	unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+
+	t0 := dc.io.getToken()
+	rid := dc.io.getRid()
+	s0 := dc.io.getAbsState()
+	unfold iospec.P_Agent(t0, rid, s0)
+	unfold iospec.phiRF_Agent_16(t0, rid, s0)
+	t1 := iospec.get_e_InFact_placeDst(t0, rid)
+	receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
+	s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
+
+	unfold dc.io.IoSpecMemMain()
+	dc.io.token = t1
+	dc.io.absState = s1
+	dc.io.remoteInFactT = receivedMsgT
+	dc.ioLockDidRemoteReceive = true
+	fold dc.io.IoSpecMemMain()
+
+	fold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+}
+
+ghost
+decreases
+requires acc(&dc.ioLockDidRemoteReceive, 1/2) && dc.ioLockDidRemoteReceive
+preserves acc(&dc.io, 1/8) && acc(dc.io.IoSpecMemPartial(), 1/8)
+preserves acc(&dc.io.remoteInFactT, 1/4) && by.gamma(dc.io.remoteInFactT) == by.gamma(tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(by.oneTerm(plaintextB), tm.kdf2(dc.io.getSharedSecretT()))))
+preserves IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+preserves acc(&dc.io.localOutFactT, 1/2) && acc(&dc.ioLockCanLocalSend, 1/2)
+ensures  acc(&dc.ioLockDidRemoteReceive, 1/2)
+ensures  dc.ioLockCanLocalSend && by.gamma(dc.io.localOutFactT) == by.pairB(by.gamma(tm.pubTerm(pub.const_Message_pub())), plaintextB)
+func (dc *dataChannel) performTransition_10(instanceId, clientId, agentLTKeyARN string, plaintextB by.Bytes) {
+	unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+	t0 := dc.io.getToken()
+	s0 := dc.io.getAbsState()
+	rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	sharedSecretT := dc.io.getSharedSecretT()
+	clientLtKeyIdT := dc.io.getClientLtKeyIdT()
+	clientSecretT := dc.io.getClientShareT()
+	sigYT := dc.io.getClientShareSignatureT()
+	sigSessionKeysT := dc.io.getSigSessionKeysT()
+	receivedMsgT := dc.io.remoteInFactT
+	payloadT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t0, s0)
+	outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)
+	// obtain permission to send the ciphertext containing `inputData`:
+	l := mset[ft.Fact] {
+		ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+		ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
+	}
+	a := mset[cl.Claim] {
+		cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
+	}
+	r := mset[ft.Fact] {
+		ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
+		ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
+	}
+	unfold iospec.P_Agent(t0, rid, s0)
+	unfold iospec.phiR_Agent_10(t0, rid, s0)
+	t1 := iospec.internBIO_e_Agent_ReceiveMessages(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
+	s1 := ft.U(l, r, s0)
+
+	unfold dc.io.IoSpecMemMain()
+	dc.io.token = t1
+	dc.io.absState = s1
+	dc.ioLockDidRemoteReceive = false
+	dc.io.localOutFactT = outMsgT
+	dc.ioLockCanLocalSend = true
+	fold dc.io.IoSpecMemMain()
+
+	fold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+}
+@*/
+
 // @ requires dc.MemRecv() && unfolding acc(dc.MemRecv(), _) in dc.dataChannelState == IODistributed && dc.hs.complete
 // @ preserves dc.RecvRoutineMem()
 func (dc *dataChannel) resendReceiveOtherResponse() {

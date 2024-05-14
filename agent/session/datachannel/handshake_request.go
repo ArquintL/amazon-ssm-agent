@@ -33,6 +33,7 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
 )
 
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
@@ -43,8 +44,7 @@ import (
 // @ ensures  err == nil ==> ((payload.Mem() && payload.ContainsSessionTypeAction(request)) --* request.Mem())
 // @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
 // @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
-// @ ensures  err == nil && encryptionRequested ==> unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(AgentSecretCreatedAndSigned), _) in (
-// @	payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))))
+// @ ensures  err == nil && encryptionRequested ==> payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.GetAgentShareT())), by.gamma(dc.GetAgentShareSignatureT()), by.msgB(dc.getAgentLTKeyARN()), by.msgB(dc.getLogReaderId())))
 // @ ensures  err != nil ==> err.ErrorMem() && request.Mem()
 func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
@@ -91,46 +91,11 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			//@ fold dc.Mem()
 			return nil, errHandshake()
 		}
-		//@ signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(dc.clientId))))
 
-		// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
-		/*@
-			agentIdT := dc.io.getAgentIdT()
-			kmsIdT := dc.io.getKMSIdT()
-			clientIdT := dc.io.getClientIdT()
-			readerIdT := dc.io.getReaderIdT()
-			agentLtKeyIdT := tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN))
-			logPkT := dc.io.getLogLTPkT()
-			m := tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
-			l := mset[ft.Fact] {
-				ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT),
-				ft.FrFact_Agent(rid, agentSecretT),
-			}
-			a := mset[cl.Claim] {
-				cl.AgentStarted(),
-			}
-			r := mset[ft.Fact] {
-		    	ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
-		        ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m),
-			}
-			@*/
-		//@ unfold iospec.P_Agent(t1, rid, s1)
-		//@ unfold iospec.phiR_Agent_0(t1, rid, s1)
-		//@ t2 := iospec.internBIO_e_Agent_SendSignRequest(t1, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, l, a, r)
-		//@ s2 := ft.U(l, r, s1)
+		//@ signPayloadT := ut.tuple3(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pubTerm(pub.pub_msg(dc.logReaderId)), tm.pubTerm(pub.pub_msg(dc.clientId)))
+		//@ t2, t3, t4, s4, m := dc.performTransitions_0_12_15(t1, rid, s1, agentSecretT, dc.secrets.agentLTKeyARN)
 
-		// unfold phiRG_Agent_12 to obtain e_Out_KMS permission
-		//@ unfold iospec.P_Agent(t2, rid, s2)
-		//@ unfold iospec.phiRG_Agent_12(t2, rid, s2)
-		//@ t3 := iospec.get_e_Out_KMS_placeDst(t2, rid, agentIdT, kmsIdT, rid, m)
-		//@ s3 := s2 setminus mset[ft.Fact] { ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m) }
-
-		// unfold phiRF_Agent_15 to obtain e_In_KMS permission since `signAndEncode` performs a send and receive operation
-		//@ unfold iospec.P_Agent(t3, rid, s3)
-		//@ unfold iospec.phiRF_Agent_15(t3, rid, s3)
-		//@ t4 := iospec.get_e_In_KMS_placeDst(t3, rid)
-
-		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, agentIdT, kmsIdT, signPayloadT, m @*/)
+		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), signPayloadT, m @*/)
 		if err != nil { //argot:ignore
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
@@ -144,26 +109,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 			return nil, errHandshake()
 		}
 
-		//@ s4 := s3 union mset[ft.Fact] { ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) }
-
-		// unfold phiR_Agent_1 to transition to St_Agent_2
-		/*@
-			l2 := mset[ft.Fact] {
-				ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
-				ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
-			}
-			a2 := mset[cl.Claim] {
-				cl.AgentSignResponse(kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
-			}
-			r2 := mset[ft.Fact] {
-		    	ft.St_Agent_2(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT),
-			}
-			@*/
-		//@ unfold iospec.P_Agent(t4, rid, s4)
-		//@ unfold iospec.phiR_Agent_1(t4, rid, s4)
-		//@ t5 := iospec.internBIO_e_Agent_RecvSignResponse(t4, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l2, a2, r2)
-		//@ s5 := ft.U(l2, r2, s4)
-
+		//@ t5, s5 := dc.performTransition_1(t4, rid, s4, agentSecretT, dc.secrets.agentLTKeyARN, signatureT)
 		//@ unfold dc.io.IoSpecMemMain()
 		//@ unfold dc.io.IoSpecMemPartial()
 		//@ dc.io.token = t5
@@ -211,6 +157,96 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 
 	return handshakeRequest, nil
 }
+
+/*@
+ghost
+decreases
+requires acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
+requires pl.token(t0) && iospec.P_Agent(t0, rid, s0)
+requires ft.Setup_Agent(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT()) in s0
+requires ft.FrFact_Agent(rid, agentSecretT) in s0
+ensures  acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
+ensures  pl.token(t1) && iospec.P_Agent(t3, rid, s3)
+ensures  iospec.e_Out_KMS(t1, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), rid, m) && t2 == iospec.get_e_Out_KMS_placeDst(t1, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), rid, m)
+ensures  iospec.e_In_KMS(t2, rid) && t3 == iospec.get_e_In_KMS_placeDst(t2, rid)
+ensures  ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) in s3
+ensures  ft.In_KMS_Agent(rid, iospec.get_e_In_KMS_r1(t2, rid), iospec.get_e_In_KMS_r2(t2, rid), iospec.get_e_In_KMS_r3(t2, rid), iospec.get_e_In_KMS_r4(t2, rid)) in s3
+ensures  m == ut.tuple5(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), dc.io.getReaderIdT(), dc.io.getClientIdT())
+func (dc *dataChannel) performTransitions_0_12_15(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string) (t1, t2, t3 pl.Place, s3 mset[ft.Fact], m tm.Term) {
+	agentIdT := dc.io.getAgentIdT()
+	kmsIdT := dc.io.getKMSIdT()
+	clientIdT := dc.io.getClientIdT()
+	readerIdT := dc.io.getReaderIdT()
+	agentLtKeyIdT := tm.pubTerm(pub.pub_msg(agentLTKeyARN))
+	signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(readerIdT, clientIdT))
+	logPkT := dc.io.getLogLTPkT()
+	
+	// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
+	m = tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
+	l := mset[ft.Fact] {
+		ft.Setup_Agent(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT),
+		ft.FrFact_Agent(rid, agentSecretT),
+	}
+	a := mset[cl.Claim] {
+		cl.AgentStarted(),
+	}
+	r := mset[ft.Fact] {
+		ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
+        ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m),
+	}
+	unfold iospec.P_Agent(t0, rid, s0)
+	unfold iospec.phiR_Agent_0(t0, rid, s0)
+	t1 = iospec.internBIO_e_Agent_SendSignRequest(t0, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, l, a, r)
+	s1 := ft.U(l, r, s0)
+
+	// unfold phiRG_Agent_12 to obtain e_Out_KMS permission
+	unfold iospec.P_Agent(t1, rid, s1)
+	unfold iospec.phiRG_Agent_12(t1, rid, s1)
+	t2 = iospec.get_e_Out_KMS_placeDst(t1, rid, agentIdT, kmsIdT, rid, m)
+	s2 := s1 setminus mset[ft.Fact] { ft.Out_KMS_Agent(rid, agentIdT, kmsIdT, rid, m) }
+
+	// unfold phiRF_Agent_15 to obtain e_In_KMS permission since `signAndEncode` performs a send and receive operation
+	unfold iospec.P_Agent(t2, rid, s2)
+	unfold iospec.phiRF_Agent_15(t2, rid, s2)
+	t3 = iospec.get_e_In_KMS_placeDst(t2, rid)
+	s3 = s2 union mset[ft.Fact] { ft.In_KMS_Agent(rid, iospec.get_e_In_KMS_r1(t2, rid), iospec.get_e_In_KMS_r2(t2, rid), iospec.get_e_In_KMS_r3(t2, rid), iospec.get_e_In_KMS_r4(t2, rid)) }
+}
+
+ghost
+decreases
+requires acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
+requires pl.token(t0) && iospec.P_Agent(t0, rid, s0)
+requires ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) in s0
+requires ft.In_KMS_Agent(rid, dc.io.getKMSIdT(), dc.io.getAgentIdT(), rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) in s0
+ensures  acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
+ensures  pl.token(t1) && iospec.P_Agent(t1, rid, s1)
+ensures  ft.St_Agent_2(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT, signatureT) in s1
+func (dc *dataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string, signatureT tm.Term) (t1 pl.Place, s1 mset[ft.Fact]) {
+	agentIdT := dc.io.getAgentIdT()
+	kmsIdT := dc.io.getKMSIdT()
+	clientIdT := dc.io.getClientIdT()
+	readerIdT := dc.io.getReaderIdT()
+	agentLtKeyIdT := tm.pubTerm(pub.pub_msg(agentLTKeyARN))
+	signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(readerIdT, clientIdT))
+	logPkT := dc.io.getLogLTPkT()
+	
+	// unfold phiR_Agent_1 to transition to St_Agent_2
+	l := mset[ft.Fact] {
+		ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),
+		ft.In_KMS_Agent(rid, kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
+	}
+	a := mset[cl.Claim] {
+		cl.AgentSignResponse(kmsIdT, agentIdT, rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)),
+	}
+	r := mset[ft.Fact] {
+		ft.St_Agent_2(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT),
+	}
+	unfold iospec.P_Agent(t0, rid, s0)
+	unfold iospec.phiR_Agent_1(t0, rid, s0)
+	t1 = iospec.internBIO_e_Agent_RecvSignResponse(t0, rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT, signatureT, l, a, r)
+	s1 = ft.U(l, r, s0)
+}
+@*/
 
 // sendHandshakeRequest sends handshake request
 // @ requires log != nil && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
