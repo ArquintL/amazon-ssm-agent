@@ -20,4 +20,23 @@
     "gobraSettings.loglevel": "DEBUG",
     "gobraSettings.autoVerify": false,
     "gobraSettings.verifyPackage": true,
+    "viperSettings.verificationBackends": [
+        {
+            "v": "674a514867b1",
+            "name": "silicon",
+            "type": "silicon",
+            "paths": [],
+            "engine": "ViperServer",
+            "timeout": 1000000,
+            "stages": [
+                {
+                    "name": "verify",
+                    "isVerification": true,
+                    "mainMethod": "viper.silicon.SiliconRunner",
+                    "customArguments": "--z3Exe $z3Exe$ $disableCaching$ --enableMoreCompleteExhale --assumeInjectivityOnInhale $fileToVerify$"
+                }
+            ],
+            "stoppingTimeout": 5000
+        }
+    ]
 }

@@ -723,6 +723,20 @@ pure func (dc *dataChannel) GetEncKeyT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.blockCipher.GetEncKeyT()
 }
 
+ghost
+decreases
+requires acc(dc.Mem(), _) && dc.getState() != Erroneous && dc.getState() <= IODistributed
+pure func (dc *dataChannel) GetIoLockCanRemoteSend() bool {
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.ioLockCanRemoteSend
+}
+
+ghost
+decreases
+requires acc(dc.Mem(), _) && dc.getState() != Erroneous && dc.getState() <= IODistributed
+pure func (dc *dataChannel) GetRemoteOutFactT() tm.Term {
+	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.remoteOutFactT
+}
+
 // while assuming that verification is enabled is not necessary to prove
 // memory safety, we need this assumption for verifying refinement.
 // Leaving this function abstract will consider both cases, i.e.,

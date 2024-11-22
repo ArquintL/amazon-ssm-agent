@@ -144,7 +144,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 // @ requires dc.getState() >= (requiresEncryption ? BlockCipherReady : BlockCipherInitialized)
 // @ requires requiresLock ==>
 // @ 	dc.getState() == IODistributed && requiresEncryption &&
-// @ 	unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(IODistributed), _) in unfolding acc(dc.io.IoSpecMemPartial(), _) in dc.ioLockCanRemoteSend && dc.io.remoteOutFactT == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
+// @	dc.GetIoLockCanRemoteSend() && dc.GetRemoteOutFactT() == tm.pair(mgsContracts.payloadTypeTerm(payloadType), tm.senc(inputDataT, dc.GetEncKeyT()))
 // @ requires !requiresLock ==>
 // @	dc.getState() < IODistributed &&
 // @	(requiresEncryption ?
