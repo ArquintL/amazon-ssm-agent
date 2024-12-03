@@ -112,7 +112,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 		}
 	}
 
-	if err == nil && encryptionEnabled && !containsSecureSessionAction { //argot:ignore
+	if err == nil && encryptionEnabled && !containsSecureSessionAction {
 		err = fmtError("No 'SecureSession' action found despite encryption being enabled")
 	}
 	if err != nil {
@@ -187,7 +187,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ unfold resp.Mem()
 	//@ unfold dc.MemTransfer(state, true)
 	sharedSecret, err /*@, clientSecretB @*/ := unmarshalAndCheckClientShare(resp.ClientShare, dc.secrets.agentSecret /*@, perm(1/2) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -200,13 +200,13 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// decode the session ID
 	sessionIDBytes, err := base64.StdEncoding.DecodeString(resp.SessionID)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
 	}
 
-	if !equal(dc.secrets.sessionID, sessionIDBytes) { //argot:ignore
+	if !equal(dc.secrets.sessionID, sessionIDBytes) {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -255,7 +255,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 
 	// verify client signature
 	sig, err := base64.StdEncoding.DecodeString(resp.Signature)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		err = errHandshake()
@@ -266,7 +266,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 	//@ fold dc.MemTransfer(state, true)
 
 	clientSignPayloadBytes, err := getVerifyPayloadBytes(resp.ClientShare, agentId)
-	if err != nil { //argot:ignore
+	if err != nil {
 		//@ unfold dc.MemTransfer(state, true)
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
@@ -311,7 +311,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 		err = errHandshake()
 		return
 	}
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		err = errHandshake()
@@ -365,7 +365,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 
 	// use the shared secret to generate read and write keys
 	agentWriteKey, err := computeKdf(sharedSecret, true /*@, perm(1/8) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -373,7 +373,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	dc.secrets.agentWriteKey = agentWriteKey
 
 	agentReadKey, err := computeKdf(sharedSecret, false /*@, perm(1/8) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -381,7 +381,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	dc.secrets.agentReadKey = agentReadKey
 
 	sessionKeysBytes, err := getSessionKeysPayload(agentWriteKey, agentReadKey /*@, perm(1/8) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -390,7 +390,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ assert abs.Abs(sessionKeysBytes) == by.gamma(sessionKeysBytesT)
 
 	encodedEncryptedSessionKeys, err := encryptAndEncode(sessionKeysBytes, dc.logLTPk /*@, perm(1/2) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -400,7 +400,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 
 	// sign ciphertext containing session keys using KMS:
 	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.clientId)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -438,7 +438,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	//@ unfold iospec.phiRF_Agent_15(t2, rid, s2)
 	//@ t3 := iospec.get_e_In_KMS_placeDst(t2, rid)
 	encodedSigSessionKeys, err /*@, sigSessionKeysT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signSessionKeysPayloadBytes /*@, perm(1/2), t1, rid, AgentId, KMSId, messageT, m @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -479,7 +479,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 
 	// send ciphertext containing session keys and the corresponding signature to the log server:
 	encodedEncryptedSessionKeysPayloadBytes, err := getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, dc.instanceId, dc.secrets.agentLTKeyARN, dc.clientId)
-	if err != nil { //argot:ignore
+	if err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()
@@ -494,7 +494,7 @@ func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChan
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
 	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
 
-	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil { //argot:ignore
+	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
 		state = Erroneous
 		//@ fold dc.MemTransfer(state, true)
 		return state, errHandshake()

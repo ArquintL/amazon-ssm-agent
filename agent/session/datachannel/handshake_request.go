@@ -86,7 +86,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		dc.secrets.agentSecret = agentSecret
 
 		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
-		if err != nil { //argot:ignore
+		if err != nil {
 			//@ fold dc.MemInternal(BlockCipherInitialized)
 			//@ fold dc.Mem()
 			return nil, errHandshake()
@@ -96,7 +96,7 @@ func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
 		//@ t2, t3, t4, s4, m := dc.performTransitions_0_12_15(t1, rid, s1, agentSecretT, dc.secrets.agentLTKeyARN)
 
 		sig, err /*@, signatureT @*/ := signAndEncode(dc.kmsService, dc.secrets.agentLTKeyARN, signPayloadBytes /*@, perm(1/2), t2, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), signPayloadT, m @*/)
-		if err != nil { //argot:ignore
+		if err != nil {
 			// since we have already performed `internBIO_e_Agent_SendSignRequest` and potentially partially `signAndEncode`,
 			// there is no way we can get back into a regular state that would allow re-execution of this function by, e.g.,
 			// folding I/O predicates. This is in accordance to the Tamarin model, which also does not foresee a participant

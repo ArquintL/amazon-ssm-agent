@@ -13,5 +13,5 @@ index 9339bc5d..69b546a0 100644
 +		//@ unfold dc.MemInternal(BlockCipherInitialized)
 +
  		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
- 		if err != nil { //argot:ignore
+ 		if err != nil {
  			//@ fold dc.MemInternal(BlockCipherInitialized)

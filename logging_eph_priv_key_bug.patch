@@ -9,4 +9,4 @@ index 9339bc5d..82e48a3c 100644
 +		log.Info(dc)
  
  		signPayloadBytes, err := getSignAgentSharePayloadBytes(compressedPublic, dc.clientId, dc.logReaderId)
- 		if err != nil { //argot:ignore
+ 		if err != nil {

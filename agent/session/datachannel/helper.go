@@ -132,12 +132,12 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ ) (priv []byte, encodedPk string, err error /*@, ghost t1 pl.Place @*/) {
 	//@ cryptoRand.GetReaderMem()
 	priv, x, y, err /*@, t1 @*/ := elliptic.GenerateKey(elliptic.P384(), cryptoRand.Reader /*@, t0, rid @*/)
-	if err != nil { //argot:ignore
+	if err != nil { //argot:ignore diodon-agent-io-independence
 		return nil, "", errHandshake() /*@, t0 @*/ // generic error
 	}
 
 	// Base64 encode the public part and put it in the message
-	agentShare := elliptic.MarshalCompressed(elliptic.P384(), x, y /*@, perm(1/2) @*/)
+	agentShare := elliptic.MarshalCompressed(elliptic.P384(), x, y /*@, perm(1/2) @*/) //argot:ignore diodon-agent-io-independence
 	encodedPk = base64.StdEncoding.EncodeToString(agentShare /*@, perm(1/2) @*/)
 	return
 }
@@ -253,7 +253,7 @@ func getSessionKeysPayload(agentWriteKey, agentReadKey []byte /*@, ghost p perm 
 func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (encodedCiphertext string, err error) {
 	//@ cryptoRand.GetReaderMem()
 	ciphertext, err := rsa.EncryptPKCS1v15(cryptoRand.Reader, pk, payload /*@, p > writePerm ? perm(1/1) : p/2 @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		err = errHandshake()
 		return
 	}
@@ -294,7 +294,7 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /*@, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost agentId tm.Term, ghost kmsId tm.Term, ghost messageT tm.Term, ghost m tm.Term @*/) (signature string, err error /*@, ghost signatureT tm.Term @*/) {
 	var sig []byte
 	sig, err /*@, signatureT @*/ = iosanitization.KMSSign(kmsService, keyId, message /*@, p, t, rid, agentId, kmsId, messageT, m @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		err = errHandshake()
 		return
 	}
@@ -315,7 +315,7 @@ func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessi
 	}
 	//@ fold payload.Mem()
 	encryptedSessionKeysPayloadBytes, err := json.Marshal(payload /*@, perm(1/2) @*/)
-	if err != nil { //argot:ignore
+	if err != nil {
 		return
 	}
 
@@ -388,7 +388,7 @@ func computeSHA384(input []byte /*@, ghost p perm @*/) (res []byte) {
 // @ ensures err == nil ==> (bytes.SliceMem(res) &&
 // @ 	(isKdf1 ? abs.Abs(res) == by.kdf1B(abs.Abs(input)) : abs.Abs(res) == by.kdf2B(abs.Abs(input))))
 // @ ensures err != nil ==> err.ErrorMem()
-func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, err error) { //argot:ignore
+func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, err error) {
 	hash512 := sha512.New
 	hkPRK := hkdf.Extract(hash512, input, nil) //it's pretty complicated what using a salt with HKDF means, we should double check this
 
@@ -396,17 +396,17 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	res = make([]byte, keySize)
 
 	var ctx string
-	if isKdf1 { //argot:ignore
+	if isKdf1 {
 		ctx = "S"
-	} else { //argot:ignore
+	} else {
 		ctx = "C"
 	}
 
 	bytesRead, err := hkdf.Expand(hash512, hkPRK, []byte(ctx)).Read(res)
-	if err != nil { //argot:ignore
+	if err != nil {
 		return nil, errHandshake()
 	}
-	if bytesRead != keySize { //argot:ignore
+	if bytesRead != keySize {
 		return nil, errHandshake()
 	}
 	return

@@ -107,7 +107,7 @@ func (bc *BlockCipherT) IsReady() bool {
 // @ ensures  err == nil ==> bc.IsReady() && bc.GetEncKeyT() == writeKeyT && bc.GetDecKeyT() == readKeyT
 // @ ensures  err != nil ==> err.ErrorMem()
 func (bc *BlockCipherT) UpdateEncryptionKeys(readKey, writeKey []byte /*@, ghost p perm, ghost readKeyT tm.Term, ghost writeKeyT tm.Term @*/) (err error) {
-	if len(readKey) != 32 || len(writeKey) != 32 { //argot:ignore
+	if len(readKey) != 32 || len(writeKey) != 32 {
 		return fmt.Errorf("read or write key have invalid length")
 	}
 	newEncryptionKey := make([]byte, 2*32)
@@ -133,7 +133,7 @@ func (bc *BlockCipherT) UpdateEncryptionKey(cipherTextBlob []byte, _, _ string /
 	}
 	dec, err := getAEAD(bc.decryptionKey)
 	bc.decryptionCipher = dec
-	if err != nil { //argot:ignore
+	if err != nil {
 		return fmt.Errorf("failed to get decryption cipher: %v", err)
 	}
 

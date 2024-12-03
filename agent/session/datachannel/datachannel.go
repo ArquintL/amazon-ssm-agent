@@ -102,13 +102,13 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	logInfo(log, "Initiating Handshake")
 	handshakeRequestPayload, err :=
 		dc.buildHandshakeRequestPayload(log, encryptionEnabled, sessionTypeRequest)
-	if err != nil { //argot:ignore
+	if err != nil { //argot:ignore diodon-agent-io-independence
 		return errHandshake() // safe generic error
 	}
 	err = dc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
 	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
 	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
-	if err != nil { //argot:ignore
+	if err != nil {
 		return errHandshake()
 	}
 
@@ -145,7 +145,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	}
 	// we send the flag `encryptionEnabled` back via the channel such that we are able to express the data channel's
 	// state. This flag is expected to be identical to `encryptionEnabled`:
-	if res.encryptionEnabled != encryptionEnabled { //argot:ignore
+	if res.encryptionEnabled != encryptionEnabled {
 		//@ unfold acc(dc.MemChannelState(), 1/2)
 		dc.dataChannelState = Erroneous
 		//@ fold acc(dc.MemChannelState(), 1/2)
