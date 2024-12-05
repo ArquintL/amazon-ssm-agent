@@ -67,7 +67,7 @@ func (p *SessionPlugin) Execute(
 
 	kmsKeyId := config.KmsKeyId
 
-	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn)
+	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
 	if err != nil {
 		errorString := fmt.Errorf("Setting up data channel with id %s failed: %s", config.SessionId, err)
 		output.MarkAsFailed(errorString)
@@ -129,7 +129,7 @@ func (p *SessionPlugin) isEncryptionEnabled(kmsKeyId string, pluginName string) 
 }
 
 // getDataChannelForSessionPlugin opens new data channel to MGS service
-var getDataChannelForSessionPlugin = func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+func getDataChannelForSessionPlugin(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 	retryer := retry.ExponentialRetryer{
 		CallableFunc: func() (channel interface{}, err error) {
 			return datachannel.NewDataChannel(

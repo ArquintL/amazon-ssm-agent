@@ -203,16 +203,6 @@ func (p *ShellPlugin) Execute(
 	}
 }
 
-var getCommandExecutor = func(
-	log log.T,
-	shellProps mgsContracts.ShellProperties,
-	isSessionLogger bool,
-	config agentContracts.Configuration,
-	plugin *ShellPlugin) (err error) {
-
-	return StartCommandExecutor(log, shellProps, isSessionLogger, config, plugin)
-}
-
 // execute starts command execution.
 // It reads incoming message from data channel and executes it by either writing to pty.stdin or relying on exec.Cmd.
 // It reads message from pty.stdout and writes to data channel.
@@ -260,7 +250,7 @@ func (p *ShellPlugin) execute(config agentContracts.Configuration,
 	}()
 
 	// Get the command executor, which is either pseudo terminal or exec.Cmd depending on the plugin type
-	if err := getCommandExecutor(log, shellProps, false, config, p); err != nil {
+	if err := StartCommandExecutor(log, shellProps, false, config, p); err != nil {
 		errorString := fmt.Errorf("Unable to start command: %s\n", err)
 		log.Error(errorString)
 		time.Sleep(2 * time.Second)
