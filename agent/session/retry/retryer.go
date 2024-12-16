@@ -65,7 +65,6 @@ func (retryer *ExponentialRetryer) Call() (channel interface{}, err error) {
 	failedAttemptsSoFar := 0
 	for {
 		channel, err := retryer.CallableFunc()
-		// TODO imprecision because retryer is tainted
 		if err == nil || failedAttemptsSoFar == retryer.MaxAttempts || retryer.isNonRetryableError(err) {
 			return channel, err
 		}
