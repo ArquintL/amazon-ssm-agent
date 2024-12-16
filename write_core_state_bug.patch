@@ -1,10 +1,10 @@
 diff --git a/agent/session/datachannel/state.go b/agent/session/datachannel/state.go
-index 475d4919..249c0a48 100644
+index 4c8c83e3..59c08463 100644
 --- a/agent/session/datachannel/state.go
 +++ b/agent/session/datachannel/state.go
-@@ -72,6 +72,13 @@ type IDataChannel interface {
- 	// @ ensures  err != nil ==> err.ErrorMem()
- 	SkipHandshake(log logger.T) (err error)
+@@ -74,6 +74,13 @@ type IDataChannel interface {
+ 
+ 	// @ pred Mem()
  
 +	// FOR DIODON ARTIFACT ONLY:
 +	// This method does not establish the Core invariant as a postcondition,
@@ -14,10 +14,10 @@ index 475d4919..249c0a48 100644
 +	GetStatePtr() *DataChannelState
 +
  	// @ requires log != nil
- 	// @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
- 	// @ preserves Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
-@@ -220,6 +227,10 @@ func (dc *dataChannel) getState() DataChannelState {
- 	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.dataChannelState
+ 	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
+ 	// @ preserves Mem() && acc(log.Mem(), _)
+@@ -188,6 +195,10 @@ type dataChannel struct {
+ 	//@ ghost ioLockCanLocalSend bool
  }
  
 +func (dc *dataChannel) GetStatePtr() *DataChannelState {
@@ -25,10 +25,10 @@ index 475d4919..249c0a48 100644
 +}
 +
  /*@
- pred (dc *dataChannel) RecvRoutineMem() {
- 	dc != nil &&
+ type ioSpecFields struct {
+ 	ghost token pl.Place
 diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
-index 7613e27c..437b6644 100644
+index 420409b1..87bba0b6 100644
 --- a/agent/session/shell/shell.go
 +++ b/agent/session/shell/shell.go
 @@ -182,6 +182,10 @@ func (p *ShellPlugin) Execute(
