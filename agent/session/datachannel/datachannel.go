@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	//@ "bytes"
 	"errors"
@@ -33,11 +28,15 @@ import (
 )
 
 // SkipHandshake is used to skip handshake if the plugin decides it is not necessary
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures err == nil ==> dc.getState() == HandshakeSkipped
-// @ ensures  err != nil ==> err.ErrorMem()
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// @ ensures   err == nil ==> dc != nil && dc.getState() == HandshakeSkipped
+// @ ensures   err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
+	if dc == nil || log == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() != Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return
@@ -58,15 +57,23 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 // Note that sessionplugin.go first calls `NewDataChannel` followed by at most 1 call to `PerformHandshake`.
 // Hence, we can require in the specification that no other handshake is currently on-going for `dataChannel` without
 // restricting the current client of `DataChannel`.
-// @ requires log != nil
-// @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
-// @ preserves dc.Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
-// @ ensures err == nil ==> dc.getState() == IODistributed
-// @ ensures  err != nil ==> err.ErrorMem()
+// @ requires  encryptionEnabled == assumeEncryptionEnabledForVerification()
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// `sessionTypeRequest` is passed by value and contains a field `Properties` that remains opaque to the DataChannel.
+// Alternatively, we could move serializing of this parameter to JSON to the caller.
+// @ preserves sessionTypeRequest.Mem()
+// @ ensures   err == nil ==> dc != nil && dc.getState() == IODistributed
+// @ ensures   err != nil ==> err.ErrorMem()
 func (dc *dataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
+
+	if dc == nil || log == nil {
+		err = fmtErrorNil()
+		return
+	}
 
 	if dc.getState() != Initialized {
 		err = fmtErrorInvalidState(dc.getState())
@@ -78,17 +85,7 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	//@ unfold dc.Mem()
 	//@ unfold dc.MemInternal(Initialized)
 
-	if encryptionEnabled {
-		// if dc.blockCipher, err = newBlockCipher(dc.context, kmsKeyId); err != nil {
-		// 	return fmtErrorf("Initializing BlockCipher failed: %s", err)
-		// }
-		logInfo(log, "Encryption enabled: initializing block cipher")
-		// dc.blockCipher = &cryptolib.BlockCipherT{}
-	}
-	// initializing the block cipher independently of `encryptionEnabled` simplifies reasoning
 	dc.blockCipher = &cryptolib.BlockCipherT{}
-	// we inhale the permissions for the modeled ghost fields of this block cipher:
-	//@ inhale dc.blockCipher.EncKeyTMem() && dc.blockCipher.DecKeyTMem()
 	//@ fold dc.blockCipher.Mem()
 
 	dc.hs.handshakeStartTime = time.Now()
@@ -225,72 +222,92 @@ func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
 }
 
 // GetClientVersion returns version of the client
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
+func (dc *dataChannel) GetClientVersion() (version string, err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() == Erroneous {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.hs.clientVersion, nil
+	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.hs.clientVersion, nil
 }
 
 // GetInstanceId returns id of the target
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetInstanceId() (instanceId string, err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.instanceId, nil
+	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.instanceId, nil
 }
 
 // GetRegion returns aws region of the target
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetRegion( /*@ ghost p perm @*/ ) (region string, err error) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetRegion() (region string, err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.GetRegion(), nil
+	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.dataStream.GetRegion(), nil
 }
 
 // IsActive returns a boolean value indicating the datachannel is actively listening
 // and communicating with service
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *dataChannel) IsActive() (isActive bool, err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), p) in unfolding acc(dc.MemInternal(dc.dataChannelState), p/2) in @*/ dc.dataStream.IsActive(), nil
+	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.dataStream.IsActive(), nil
 }
 
 // GetSeparateOutputPayload returns boolean value indicating separate
 // stdout/stderr output for non-interactive session or not
-// @ requires noPerm < p
-// @ preserves acc(dc.Mem(), p)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *dataChannel) GetSeparateOutputPayload() (res bool, err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() == Erroneous {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
+	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
 }
 
 // SetSeparateOutputPayload set separateOutputPayload value
-// @ preserves dc.Mem()
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures dc.getState() == old(dc.getState())
+// @ preserves dc != nil ==> dc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
+	if dc == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() == Erroneous || dc.getState() == IODistributed {
 		err = fmtErrorInvalidState(dc.getState())
 		return
@@ -304,11 +321,15 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 	return
 }
 
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  dc.getState() == old(dc.getState())
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
+	if dc == nil || log == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return
@@ -322,11 +343,15 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 	return
 }
 
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  dc.getState() == old(dc.getState())
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) Close(log logger.T) (err error) {
+	if dc == nil || log == nil {
+		err = fmtErrorNil()
+		return
+	}
 	if dc.getState() < Initialized {
 		err = fmtErrorInvalidState(dc.getState())
 		return

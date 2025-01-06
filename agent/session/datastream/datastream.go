@@ -96,6 +96,10 @@ func NewDataStream(context context.T,
 	streamDataHandler func(msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) (*DataStream, error) {
 
+	if context == nil || streamDataHandler == nil || cancelFlag == nil {
+		return nil, errors.New("nil arguments provided to DataStream.NewDataStream")
+	}
+
 	log := context.Log()
 	identity := context.Identity()
 	appConfig := context.AppConfig()

@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	//@ "bytes"
 
@@ -37,13 +32,15 @@ import (
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
-// @ requires log != nil
-// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
-// @ preserves dc.Mem()
-// @ preserves acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+// @ requires  inputData != nil ==> SendStreamDataMessageViewShiftFootprint(inputData)
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   inputData != nil ==> (inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData))
 func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/) {
+	if dc == nil || log == nil || inputData == nil {
+		return fmtErrorNil() /*@, false @*/
+	}
 	if dc.getState() != IODistributed {
 		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
 	}

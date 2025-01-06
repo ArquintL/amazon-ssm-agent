@@ -19,36 +19,29 @@ type BlockCipherT struct {
 	decryptionKey    []byte
 	encryptionCipher cipher.AEAD
 	decryptionCipher cipher.AEAD
+	//@ ghost encKeyT tm.Term
+	//@ ghost decKeyT tm.Term
 }
 
 /*@
 pred (bc *BlockCipherT) Mem() {
 	acc(bc) &&
-	bc.EncKeyTMem() &&
-	bc.DecKeyTMem() &&
 	(bc.ready ==>
 		bytes.SliceMem(bc.cipherTextKey) &&
 		bytes.SliceMem(bc.encryptionKey) &&
-		by.gamma(bc.getEncKeyT()) == abs.Abs(bc.encryptionKey) &&
+		by.gamma(bc.encKeyT) == abs.Abs(bc.encryptionKey) &&
 		bytes.SliceMem(bc.decryptionKey) &&
-		by.gamma(bc.getDecKeyT()) == abs.Abs(bc.decryptionKey) &&
+		by.gamma(bc.decKeyT) == abs.Abs(bc.decryptionKey) &&
 		bc.encryptionCipher.Mem() &&
 		bc.decryptionCipher.Mem())
 }
-
-pred (bc *BlockCipherT) EncKeyTMem()
-
-ghost
-decreases _
-requires acc(bc.EncKeyTMem(), _)
-pure func (bc *BlockCipherT) getEncKeyT() tm.Term
 
 ghost
 decreases
 requires acc(bc.Mem(), _)
 ensures  bc.IsReady() ==> by.gamma(res) == bc.GetEncKeyB()
 pure func (bc *BlockCipherT) GetEncKeyT() (res tm.Term) {
-	return unfolding acc(bc.Mem(), _) in bc.getEncKeyT()
+	return unfolding acc(bc.Mem(), _) in bc.encKeyT
 }
 
 ghost
@@ -59,23 +52,10 @@ pure func (bc *BlockCipherT) GetEncKeyB() by.Bytes {
 }
 
 ghost
-decreases _
-preserves bc.EncKeyTMem()
-ensures bc.getEncKeyT() == encKeyT
-func (bc *BlockCipherT) setEncKeyT(encKeyT tm.Term)
-
-pred (bc *BlockCipherT) DecKeyTMem()
-
-ghost
-decreases _
-requires acc(bc.DecKeyTMem(), _)
-pure func (bc *BlockCipherT) getDecKeyT() tm.Term
-
-ghost
 decreases
 requires acc(bc.Mem(), _)
 pure func (bc *BlockCipherT) GetDecKeyT() tm.Term {
-	return unfolding acc(bc.Mem(), _) in bc.getDecKeyT()
+	return unfolding acc(bc.Mem(), _) in bc.decKeyT
 }
 
 ghost
@@ -84,12 +64,6 @@ requires acc(bc.Mem(), _) && bc.IsReady()
 pure func (bc *BlockCipherT) GetDecKeyB() by.Bytes {
 	return unfolding acc(bc.Mem(), _) in abs.Abs(bc.decryptionKey)
 }
-
-ghost
-decreases _
-preserves bc.DecKeyTMem()
-ensures bc.getDecKeyT() == decKeyT
-func (bc *BlockCipherT) setDecKeyT(decKeyT tm.Term)
 @*/
 
 // @ decreases
@@ -113,6 +87,8 @@ func (bc *BlockCipherT) UpdateEncryptionKeys(readKey, writeKey []byte /*@, ghost
 	newEncryptionKey := make([]byte, 2*32)
 	copy(newEncryptionKey[:32], readKey)
 	copy(newEncryptionKey[32:], writeKey)
+	//@ bc.decKeyT = readKeyT
+	//@ bc.encKeyT = writeKeyT
 	return bc.UpdateEncryptionKey(newEncryptionKey, "", "" /*@, p @*/)
 }
 

@@ -53,7 +53,8 @@ preserves cs.Inv()
 ensures err != nil ==> err.ErrorMem()
 func StreamDataHandlerSpec(ghost cs Calls, msg *mgsContracts.AgentMessage) (err error)
 
-requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
+requires context != nil ==> acc(context.Mem(), _)
+requires cancelFlag != nil ==> acc(cancelFlag.Mem(), _)
 // the following precondition allows `NewDataStream` or a started go routine to invoke `streamDataHandler`:
 requires cs != nil && cs.Inv() && streamDataHandler implements StreamDataHandlerSpec{cs}
 ensures  err == nil ==> res.Mem() && res.GetChannelId() == channelId

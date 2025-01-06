@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	"bytes"
 	"crypto/elliptic"
@@ -412,13 +407,13 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-// we treat this function has trusted as it does not depend on any secrets negotiated during
-// the handshake. I.e., we treat this function as being part of the application.
+// we treat this function as being part of the APPLICATION because it does not
+// depend on any secrets negotiated during the handshake. Hence, we mark it as
+// `trusted` such that Gobra does not attempt to verify it.
 // In particular, only the channel id and session status is sent.
 // @ trusted
-// @ requires log != nil
-// @ preserves dc.Mem() && acc(log.Mem(), _)
-// @ ensures  dc.getState() == old(dc.getState())
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
 	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
@@ -519,6 +514,12 @@ func fmtErrorf(prefix string, param error /*@, ghost p perm @*/) (err error) {
 // @ ensures err != nil && err.ErrorMem()
 func fmtError(str string) (err error) {
 	return fmt.Errorf(str)
+}
+
+// @ trusted
+// @ ensures err != nil && err.ErrorMem()
+func fmtErrorNil() (err error) {
+	return errors.New("Nil parameter passed to DataChannel")
 }
 
 // @ trusted

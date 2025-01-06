@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	"time"
 	//@ mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"

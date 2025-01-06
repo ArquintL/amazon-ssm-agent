@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	"crypto/rsa"
 	"time"
@@ -74,66 +69,62 @@ type IDataChannel interface {
 
 	// @ pred Mem()
 
-	// @ requires log != nil
-	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
-	// @ preserves Mem() && acc(log.Mem(), _)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
+	// @ requires  inputData != nil ==> SendStreamDataMessageViewShiftFootprint(inputData)
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ ensures   err != nil ==> err.ErrorMem()
+	// @ ensures   inputData != nil ==> (inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData))
 	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/)
 
-	// @ requires log != nil
-	// @ preserves Mem() && acc(log.Mem(), _)
-	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ ensures   err != nil ==> err.ErrorMem()
 	SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error)
 
-	// @ requires log != nil
-	// @ preserves Mem() && acc(log.Mem(), _)
-	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ ensures   err != nil ==> err.ErrorMem()
 	SkipHandshake(log logger.T) (err error)
 
-	// @ requires log != nil
-	// @ requires encryptionEnabled == assumeEncryptionEnabledForVerification()
-	// @ preserves Mem() && acc(log.Mem(), _) && sessionTypeRequest.Mem()
-	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ requires  encryptionEnabled == assumeEncryptionEnabledForVerification()
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ preserves sessionTypeRequest.Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
 	PerformHandshake(log logger.T, kmsKeyId string, encryptionEnabled bool, sessionTypeRequest mgsContracts.SessionTypeRequest) (err error)
 
-	// @ requires noPerm < p
-	// @ preserves acc(Mem(), p)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	GetClientVersion( /*@ ghost p perm @*/ ) (version string, err error)
+	// @ preserves Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
+	GetClientVersion() (version string, err error)
 
-	// @ requires noPerm < p
-	// @ preserves acc(Mem(), p)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	GetInstanceId( /*@ ghost p perm @*/ ) (instanceId string, err error)
+	// @ preserves Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
+	GetInstanceId() (instanceId string, err error)
 
-	// @ requires noPerm < p
-	// @ preserves acc(Mem(), p)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	GetRegion( /*@ ghost p perm @*/ ) (region string, err error)
+	// @ preserves Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
+	GetRegion() (region string, err error)
 
-	// @ requires noPerm < p
-	// @ preserves acc(Mem(), p)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	IsActive( /*@ ghost p perm @*/ ) (isActive bool, err error)
+	// @ preserves Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
+	IsActive() (isActive bool, err error)
 
-	// @ requires noPerm < p
-	// @ preserves acc(Mem(), p)
-	// @ ensures  err != nil ==> err.ErrorMem()
-	GetSeparateOutputPayload( /*@ ghost p perm @*/ ) (res bool, err error)
+	// @ preserves Mem()
+	// @ ensures   err != nil ==> err.ErrorMem()
+	GetSeparateOutputPayload() (res bool, err error)
 
 	// @ preserves Mem()
 	// @ ensures  err != nil ==> err.ErrorMem()
 	SetSeparateOutputPayload(separateOutputPayload bool) (err error)
 
-	// @ requires log != nil
-	// @ preserves Mem() && acc(log.Mem(), _)
-	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ ensures   err != nil ==> err.ErrorMem()
 	PrepareToCloseChannel(log logger.T) (err error)
 
-	// @ requires log != nil
-	// @ preserves Mem() && acc(log.Mem(), _)
-	// @ ensures  err != nil ==> err.ErrorMem()
+	// @ preserves Mem()
+	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ ensures   err != nil ==> err.ErrorMem()
 	Close(log logger.T) (err error)
 }
 
@@ -181,6 +172,7 @@ type dataChannel struct {
 	clientId   string
 
 	//@ ghost io gpointer[ioSpecFields]
+	// ghost lock to synchronize consuming I/O permissions for sending and receiving transport messages
 	//@ ghost ioLock gpointer[sync.GhostMutex]
 	//@ ghost ioLockDidLocalReceive bool
 	//@ ghost ioLockCanRemoteSend bool
