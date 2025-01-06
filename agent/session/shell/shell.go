@@ -890,6 +890,8 @@ func (p *ShellPlugin) startStreamingLogs(
 	}
 
 	// starts streaming
+	logger := p.logger
+	controlCharsNeeded := p.isCleanupOfControlCharactersRequired()
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -897,20 +899,20 @@ func (p *ShellPlugin) startStreamingLogs(
 				log.Errorf("Stacktrace:\n%s", debug.Stack())
 			}
 		}()
-		p.logger.cloudWatchStreamingFinished <- p.logger.cwl.StreamData(
+		logger.cloudWatchStreamingFinished <- logger.cwl.StreamData(
 			config.CloudWatchLogGroup,
 			config.SessionId,
 			streamingFilePath,
 			false,
 			false,
-			p.logger.ptyTerminated,
-			p.isCleanupOfControlCharactersRequired(),
+			logger.ptyTerminated,
+			controlCharsNeeded,
 			true)
 	}()
 
 	// check if log streaming is interrupted
 	go func() {
-		checkForLoggingInterruption(log, ipcFile, p)
+		checkForLoggingInterruption(log, ipcFile, nil) // plugin is unnecessary outside tests
 	}()
 
 	log.Debug("Streaming of logs to CloudWatch has started")
