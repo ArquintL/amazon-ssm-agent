@@ -1,0 +1,44 @@
+diff --git a/agent/session/communicator/websocketchannel.go b/agent/session/communicator/websocketchannel.go
+index bac136b7..bb122a44 100644
+--- a/agent/session/communicator/websocketchannel.go
++++ b/agent/session/communicator/websocketchannel.go
+@@ -168,7 +168,7 @@ func (webSocketChannel *WebSocketChannel) Open(log log.T, dialer *websocket.Dial
+ 	webSocketChannel.StartPings(log, mgsconfig.WebSocketPingInterval)
+ 
+ 	// spin up a different routine to listen to the incoming traffic
+-	go func() {
++	func() {
+ 		defer log.Info("Ending websocket listener")
+ 		log.Info("Starting websocket listener")
+ 
+@@ -219,7 +219,7 @@ func (webSocketChannel *WebSocketChannel) Open(log log.T, dialer *websocket.Dial
+ // StartPings starts the pinging process to keep the websocket channel alive.
+ func (webSocketChannel *WebSocketChannel) StartPings(log log.T, pingInterval time.Duration) {
+ 
+-	go func(done chan bool) {
++	func(done chan bool) {
+ 		log.Info("Starting websocket pinger")
+ 		defer log.Info("Ending websocket pinger")
+ 
+diff --git a/agent/session/datastream/datastream.go b/agent/session/datastream/datastream.go
+index 6647970e..38b90a53 100644
+--- a/agent/session/datastream/datastream.go
++++ b/agent/session/datastream/datastream.go
+@@ -353,7 +353,7 @@ func (dataStream *DataStream) Close(log log.T) error {
+ // PrepareToCloseChannel waits for all messages to be sent to MGS
+ func (dataStream *DataStream) PrepareToCloseChannel(log log.T) {
+ 	done := make(chan bool)
+-	go func() {
++	func() {
+ 		dataStream.OutgoingMessageBuffer.Mutex.Lock()
+ 		len := dataStream.OutgoingMessageBuffer.Messages.Len()
+ 		dataStream.OutgoingMessageBuffer.Mutex.Unlock()
+@@ -425,7 +425,7 @@ func (dataStream *DataStream) Send(log log.T, payloadType mgsContracts.PayloadTy
+ // ResendStreamDataMessageScheduler spawns a separate go thread which keeps checking OutgoingMessageBuffer at fixed interval
+ // and resends first message if time elapsed since lastSentTime of the message is more than acknowledge wait time
+ func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error {
+-	go func() {
++	func() {
+ 		defer func() {
+ 			if r := recover(); r != nil {
+ 				log.Errorf("Resend stream data message scheduler panic: %v", r)
