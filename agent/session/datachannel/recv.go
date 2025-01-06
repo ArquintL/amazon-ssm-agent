@@ -30,9 +30,9 @@ import (
 )
 
 // processStreamDataMessage gets called for all messages of type OutputStreamDataMessage
-// @ requires datastream.StreamDataHandlerFootprint(streamDataMessage)
+// @ requires  streamDataMessage.Mem()
 // @ preserves dc.RecvRoutineMem()
-// @ ensures err != nil ==> err.ErrorMem()
+// @ ensures   err != nil ==> err.ErrorMem()
 func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
 	payload, err := dc.tryReceiveMessageReceptionStatus(channelStatusTimeout)
@@ -49,8 +49,8 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 		//@ s0 := dc.io.getAbsState()
 		//@ unfold iospec.P_Agent(t0, rid, s0)
 		//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
-		//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
-		//@ receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
+		/*@ t1, receivedMsgT := @*/
+		iosanitization.PerformVirtualInputOperationAgentMessage(streamDataMessage /*@, t0, rid @*/)
 		//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
 		//@ unfold dc.io.IoSpecMemMain()
 		//@ unfold dc.io.IoSpecMemPartial()
@@ -95,7 +95,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 
 		// ----- start remote receive I/O operation -----
 		//@ dc.ioLock.Lock()
-		//@ dc.performRemoteReceive(dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN, streamDataMessage)
+		dc.performRemoteReceive(dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN, streamDataMessage)
 		//@ dc.ioLock.Unlock()
 		// ----- end remote receive I/O operation -----
 
@@ -182,37 +182,36 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 	return nil
 }
 
-/*@
-ghost
-decreases
-requires datastream.StreamDataHandlerFootprint(streamDataMessage)
-preserves IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>() && acc(&dc.io, 1/8)
-preserves acc(&dc.io.remoteInFactT, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2)
-ensures  streamDataMessage.Mem()
-ensures  by.gamma(dc.io.remoteInFactT) == streamDataMessage.Abs()
-ensures  dc.ioLockDidRemoteReceive
+// @ decreases
+// @ preserves IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>() && acc(&dc.io, 1/8)
+// @ preserves acc(&dc.io.remoteInFactT, 1/2) && acc(&dc.ioLockDidRemoteReceive, 1/2)
+// @ preserves  streamDataMessage.Mem()
+// @ ensures  by.gamma(dc.io.remoteInFactT) == streamDataMessage.Abs()
+// @ ensures  dc.ioLockDidRemoteReceive
 func (dc *dataChannel) performRemoteReceive(instanceId, clientId, agentLTKeyARN string, streamDataMessage *mgsContracts.AgentMessage) {
-	unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+	// @ unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
 
-	t0 := dc.io.getToken()
-	rid := dc.io.getRid()
-	s0 := dc.io.getAbsState()
-	unfold iospec.P_Agent(t0, rid, s0)
-	unfold iospec.phiRF_Agent_16(t0, rid, s0)
-	t1 := iospec.get_e_InFact_placeDst(t0, rid)
-	receivedMsgT := datastream.StreamDataHandlerViewShift(t0, rid, streamDataMessage)
-	s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
+	// @ t0 := dc.io.getToken()
+	// @ rid := dc.io.getRid()
+	// @ s0 := dc.io.getAbsState()
+	// @ unfold iospec.P_Agent(t0, rid, s0)
+	// @ unfold iospec.phiRF_Agent_16(t0, rid, s0)
+	/*@ t1, receivedMsgT := @*/
+	iosanitization.PerformVirtualInputOperationAgentMessage(streamDataMessage /*@, t0, rid @*/)
+	// @ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, receivedMsgT) }
 
-	unfold dc.io.IoSpecMemMain()
-	dc.io.token = t1
-	dc.io.absState = s1
-	dc.io.remoteInFactT = receivedMsgT
-	dc.ioLockDidRemoteReceive = true
-	fold dc.io.IoSpecMemMain()
+	// @ unfold dc.io.IoSpecMemMain()
+	// @ dc.io.token = t1
+	// @ dc.io.absState = s1
+	// @ dc.io.remoteInFactT = receivedMsgT
+	// @ dc.ioLockDidRemoteReceive = true
+	// @ fold dc.io.IoSpecMemMain()
 
-	fold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+	// @ fold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
+	return
 }
 
+/*@
 ghost
 decreases
 requires acc(&dc.ioLockDidRemoteReceive, 1/2) && dc.ioLockDidRemoteReceive

@@ -30,27 +30,10 @@ type Calls interface {
 	pred Inv()
 }
 
-// the body of this predicate is only provided for illustration purposes
-// obtaining `msg.Mem()` is however only possible by
-// applying `SendStreamDataMessageViewShift` and, thus, giving up the
-// corresponding token and fact.
-pred StreamDataHandlerFootprint(msg *mgsContracts.AgentMessage) // {
-// 	msg.Mem()
-// }
-
-ghost
-decreases
-requires pl.token(t) && iospec.e_InFact(t, rid)
-requires StreamDataHandlerFootprint(msg)
-ensures  pl.token(old(iospec.get_e_InFact_placeDst(t, rid)))
-ensures  msg.Mem() && by.gamma(inputDataT) == msg.Abs()
-ensures  inputDataT == old(iospec.get_e_InFact_r1(t, rid))
-func StreamDataHandlerViewShift(t pl.Place, rid tm.Term, msg *mgsContracts.AgentMessage) (inputDataT tm.Term)
-
 requires cs != nil
-requires StreamDataHandlerFootprint(msg)
+requires msg != nil ==> msg.Mem()
 preserves cs.Inv()
-ensures err != nil ==> err.ErrorMem()
+ensures err != nil ==>  err.ErrorMem()
 func StreamDataHandlerSpec(ghost cs Calls, msg *mgsContracts.AgentMessage) (err error)
 
 requires context != nil ==> acc(context.Mem(), _)

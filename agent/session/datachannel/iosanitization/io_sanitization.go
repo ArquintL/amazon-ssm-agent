@@ -94,3 +94,31 @@ func StreamDataHandlerSpec(agentMessage *mgsContracts.AgentMessage, ghost t pl.P
 func DataChannelForwardToMessageHandler(handler InputStreamMessageHandler, agentMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) (err error) {
 	return handler(agentMessage /*@, t, rid, agentMessageT @*/) /*@ as StreamDataHandlerSpec{} @*/
 }
+
+// calling this function results in treating `data` being treated as received from the environment / attacker (on the
+// level of the abstract model). Thus, this function can be seen as performing a virtual input operation.
+// However, since `data` is treated as coming from the attacker, `data` must not be tainted.
+// @ trusted
+// @ decreases
+// @ requires acc(bytes.SliceMem(data), 1/16)
+// @ requires pl.token(t) && iospec.e_InFact(t, rid)
+// @ ensures  acc(bytes.SliceMem(data), 1/16) && by.gamma(dataT) == abs.Abs(data)
+// @ ensures  pl.token(t1) && t1 == old(iospec.get_e_InFact_placeDst(t, rid))
+// @ ensures  dataT == old(iospec.get_e_InFact_r1(t, rid))
+func PerformVirtualInputOperation(data []byte /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, dataT tm.Term) @*/ {
+	return
+}
+
+// calling this function results in treating `msg` being treated as received from the environment / attacker (on the
+// level of the abstract model). Thus, this function can be seen as performing a virtual input operation.
+// However, since `msg` is treated as coming from the attacker, `msg` must not be tainted.
+// @ trusted
+// @ decreases
+// @ requires acc(msg.Mem(), 1/16)
+// @ requires pl.token(t) && iospec.e_InFact(t, rid)
+// @ ensures  acc(msg.Mem(), 1/16) && by.gamma(dataT) == msg.Abs()
+// @ ensures  pl.token(t1) && t1 == old(iospec.get_e_InFact_placeDst(t, rid))
+// @ ensures  dataT == old(iospec.get_e_InFact_r1(t, rid))
+func PerformVirtualInputOperationAgentMessage(msg *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, dataT tm.Term) @*/ {
+	return
+}

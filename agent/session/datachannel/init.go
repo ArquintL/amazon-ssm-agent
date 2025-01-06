@@ -50,10 +50,13 @@ func NewDataChannel(context contextPkg.T,
 	tmp /*@ @ @*/ := dataChannel{}
 	dc := &tmp
 	cl :=
-		// @ requires datastream.StreamDataHandlerFootprint(msg)
+		// @ requires  msg != nil ==> msg.Mem()
 		// @ preserves tmp.RecvRoutineMem()
-		// @ ensures err != nil ==> err.ErrorMem()
+		// @ ensures   err != nil ==> err.ErrorMem()
 		func /*@ callHandler @*/ (msg *mgsContracts.AgentMessage) (err error) {
+			if msg == nil {
+				return fmtError("received agent message is nil")
+			}
 			err = tmp.processStreamDataMessage(msg)
 			return
 		}

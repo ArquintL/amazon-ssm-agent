@@ -46,35 +46,15 @@ const (
 	channelStatusTimeout                    = 150 * time.Millisecond
 )
 
-/*@
-// the body of this predicate is only provided for illustration purposes
-// obtaining `bytes.SliceMem(inputData)` is however only possible by
-// applying `SendStreamDataMessageViewShift` and, thus, giving up the
-// corresponding token and fact.
-pred SendStreamDataMessageViewShiftFootprint(inputData []byte) // {
-// 	bytes.SliceMem(inputData)
-// }
-
-ghost
-decreases
-requires pl.token(t) && iospec.e_InFact(t, rid)
-requires SendStreamDataMessageViewShiftFootprint(inputData)
-ensures  pl.token(old(iospec.get_e_InFact_placeDst(t, rid)))
-ensures  bytes.SliceMem(inputData) && by.gamma(inputDataT) == abs.Abs(inputData)
-ensures  inputDataT == old(iospec.get_e_InFact_r1(t, rid))
-func SendStreamDataMessageViewShift(t pl.Place, rid tm.Term, inputData []byte) (inputDataT tm.Term)
-@*/
-
 type IDataChannel interface {
 
 	// @ pred Mem()
 
-	// @ requires  inputData != nil ==> SendStreamDataMessageViewShiftFootprint(inputData)
 	// @ preserves Mem()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
+	// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
 	// @ ensures   err != nil ==> err.ErrorMem()
-	// @ ensures   inputData != nil ==> (inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData))
-	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/)
+	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error)
 
 	// @ preserves Mem()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
