@@ -1,0 +1,14 @@
+diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
+index f5f8f03b..194048f5 100644
+--- a/agent/session/shell/shell.go
++++ b/agent/session/shell/shell.go
+@@ -756,6 +756,9 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
+ 			log.Errorf("Error processing command pipeline output data, %v", err)
+ 		}
+ 		m := <-outChannel
++		go func() {
++			m.payload[0] = 0
++		}()
+ 		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.payloadType, m.payload)
+ 	} else {
+ 		return fmt.Errorf("failed to send exit code as data channel closed")
