@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	"time"
 
@@ -34,7 +29,9 @@ import (
 )
 
 // NewDataChannel constructs datachannel objects.
-// @ requires context != nil && acc(context.Mem(), _) && acc(cancelFlag.Mem(), _)
+// `context` and `cancelFlag` are opaque to the core. We assume that they are thread safe
+// @ requires context != nil ==> acc(context.Mem(), _)
+// @ requires cancelFlag != nil ==> acc(cancelFlag.Mem(), _)
 // @ requires inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{}
 // @ ensures  res.Mem() && typeOf(res) == *dataChannel
 // @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
@@ -53,10 +50,13 @@ func NewDataChannel(context contextPkg.T,
 	tmp /*@ @ @*/ := dataChannel{}
 	dc := &tmp
 	cl :=
-		// @ requires datastream.StreamDataHandlerFootprint(msg)
+		// @ requires  msg != nil ==> msg.Mem()
 		// @ preserves tmp.RecvRoutineMem()
-		// @ ensures err != nil ==> err.ErrorMem()
+		// @ ensures   err != nil ==> err.ErrorMem()
 		func /*@ callHandler @*/ (msg *mgsContracts.AgentMessage) (err error) {
+			if msg == nil {
+				return fmtError("received agent message is nil")
+			}
 			err = tmp.processStreamDataMessage(msg)
 			return
 		}

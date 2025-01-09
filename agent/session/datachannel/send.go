@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	//@ "bytes"
 
@@ -37,19 +32,20 @@ import (
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
-// @ requires log != nil
-// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
-// @ preserves dc.Mem()
-// @ preserves acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/) {
+// @ preserves dc != nil ==> dc.Mem()
+// @ preserves log != nil ==> acc(log.Mem(), _)
+// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
+	if dc == nil || log == nil || inputData == nil {
+		return fmtErrorNil()
+	}
 	if dc.getState() != IODistributed {
-		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
+		return fmtErrorInvalidState(dc.getState())
 	}
 
 	if payloadType != mgsContracts.Output && payloadType != mgsContracts.StdErr && payloadType != mgsContracts.ExitCode {
-		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType) /*@, false @*/
+		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType)
 	}
 
 	//@ unfold dc.Mem()
@@ -66,9 +62,9 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	// receive `inputData` from environment:
 	//@ unfold iospec.P_Agent(t0, rid, s0)
 	//@ unfold iospec.phiRF_Agent_16(t0, rid, s0)
-	//@ t1 := iospec.get_e_InFact_placeDst(t0, rid)
 	//@ s1 := s0 union mset[ft.Fact]{ ft.InFact_Agent(rid, iospec.get_e_InFact_r1(t0, rid)) }
-	//@ inputDataT := SendStreamDataMessageViewShift(t0, rid, inputData)
+	/*@ t1, inputDataT := @*/
+	iosanitization.PerformVirtualInputOperation(inputData /*@, t0, rid @*/)
 
 	//@ unfold dc.io.IoSpecMemMain()
 	//@ dc.io.token = t1
@@ -135,7 +131,7 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
 	//@ fold dc.Mem()
 
-	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/) /*@, true @*/
+	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/)
 }
 
 // @ requires log != nil

@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	logger "github.com/aws/amazon-ssm-agent/agent/log"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
@@ -40,7 +35,7 @@ import (
 // @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
-	clientVersion, err := dc.GetClientVersion( /*@ perm(1/2) @*/ )
+	clientVersion, err := dc.GetClientVersion()
 	if err != nil {
 		return
 	}

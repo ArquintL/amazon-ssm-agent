@@ -14,11 +14,6 @@
 // Package datachannel implements data channel which is used to interactively run commands.
 package datachannel
 
-// work arounds to make verification possible
-// - view shifts for receiving messages via callbacks instead of by calling a particular receive method
-// - ghost fields to simplify keeping track of abstract terms
-// - ghost lock to enable concurrently sending and receiving messages by assuming atomicity of these operations
-
 import (
 	//@ cryptoRand "crypto/rand"
 
@@ -180,7 +175,7 @@ func (dc *dataChannel) performTransitions_0_12_15(t0 pl.Place, rid tm.Term, s0 m
 	agentLtKeyIdT := tm.pubTerm(pub.pub_msg(agentLTKeyARN))
 	signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(readerIdT, clientIdT))
 	logPkT := dc.io.getLogLTPkT()
-	
+
 	// unfold phiR_Agent_0 to obtain Out_KMS_Agent fact
 	m = tm.pair(tm.pubTerm(pub.const_SignRequest_pub()), tm.pair(agentLtKeyIdT, signPayloadT))
 	l := mset[ft.Fact] {
@@ -229,7 +224,7 @@ func (dc *dataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.
 	agentLtKeyIdT := tm.pubTerm(pub.pub_msg(agentLTKeyARN))
 	signPayloadT := tm.pair(tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), tm.pair(readerIdT, clientIdT))
 	logPkT := dc.io.getLogLTPkT()
-	
+
 	// unfold phiR_Agent_1 to transition to St_Agent_2
 	l := mset[ft.Fact] {
 		ft.St_Agent_1(rid, agentIdT, kmsIdT, clientIdT, readerIdT, agentLtKeyIdT, logPkT, agentSecretT),

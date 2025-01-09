@@ -96,6 +96,10 @@ func NewDataStream(context context.T,
 	streamDataHandler func(msg *mgsContracts.AgentMessage) error,
 	cancelFlag task.CancelFlag) (*DataStream, error) {
 
+	if context == nil || streamDataHandler == nil || cancelFlag == nil {
+		return nil, errors.New("nil arguments provided to DataStream.NewDataStream")
+	}
+
 	log := context.Log()
 	identity := context.Identity()
 	appConfig := context.AppConfig()
@@ -480,11 +484,11 @@ func (dataStream *DataStream) ProcessAcknowledgedMessage(log log.T, acknowledgeM
 }
 
 // SendAcknowledgeMessage sends acknowledge message for stream data over data channel
-func (dataStream *DataStream) SendAcknowledgeMessage(log log.T, streamDataMessage *mgsContracts.AgentMessage) error {
+func (dataStream *DataStream) SendAcknowledgeMessage(log log.T, messageType string, messageId string, sequenceNumber int64) error {
 	dataStreamAcknowledgeContent := &mgsContracts.AcknowledgeContent{
-		MessageType:         streamDataMessage.MessageType,
-		MessageId:           streamDataMessage.MessageId.String(),
-		SequenceNumber:      streamDataMessage.SequenceNumber,
+		MessageType:         messageType,
+		MessageId:           messageId,
+		SequenceNumber:      sequenceNumber,
 		IsSequentialMessage: true,
 	}
 
@@ -495,7 +499,7 @@ func (dataStream *DataStream) SendAcknowledgeMessage(log log.T, streamDataMessag
 		return err
 	}
 
-	log.Tracef("Send %s message for stream data: %d", mgsContracts.AcknowledgeMessage, streamDataMessage.SequenceNumber)
+	log.Tracef("Send %s message for stream data: %d", mgsContracts.AcknowledgeMessage, sequenceNumber)
 	if err := dataStream.SendAgentMessage(log, mgsContracts.AcknowledgeMessage, acknowledgeContentBytes); err != nil {
 		return err
 	}
@@ -614,20 +618,25 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 	streamDataMessage *mgsContracts.AgentMessage,
 	rawMessage []byte) (err error) {
 
+	// since we forward `streamDataMessage` to a closure over which we do not have any control,
+	// we copy the few fields we need such that we do not rely on the closure leaving `streamDataMessage` unmodified.
+	streamDataMessageType := streamDataMessage.MessageType
+	streamDataMessageId := streamDataMessage.MessageId.String()
+	streamDataMessageSequenceNumber := streamDataMessage.SequenceNumber
+
 	dataStream.Pause = false
 	// On receiving expected stream data message, send acknowledgement, process it and increment expected sequence number by 1.
 	// Further process messages from IncomingMessageBuffer
-	if streamDataMessage.SequenceNumber == dataStream.ExpectedSequenceNumber {
+	if streamDataMessageSequenceNumber == dataStream.ExpectedSequenceNumber {
 		log.Tracef("Process new incoming stream data message. Sequence Number: %d", streamDataMessage.SequenceNumber)
 		if err = dataStream.streamDataHandler(streamDataMessage); err != nil {
 			if errors.Is(err, mgsContracts.ErrHandlerNotReady) {
 				return nil
 			}
-			// log.Errorf("Unable to process stream data payload %v, err: %v.", streamDataMessage, err)
 			return err
 		}
 
-		if err = dataStream.SendAcknowledgeMessage(log, streamDataMessage); err != nil {
+		if err = dataStream.SendAcknowledgeMessage(log, streamDataMessageType, streamDataMessageId, streamDataMessageSequenceNumber); err != nil {
 			return err
 		}
 
@@ -635,22 +644,22 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 		dataStream.ExpectedSequenceNumber = dataStream.ExpectedSequenceNumber + 1
 		return dataStream.processIncomingMessageBufferItems(log)
 
-	} else if streamDataMessage.SequenceNumber > dataStream.ExpectedSequenceNumber {
+	} else if streamDataMessageSequenceNumber > dataStream.ExpectedSequenceNumber {
 		// If incoming message sequence number is greater than expected sequence number and IncomingMessageBuffer has capacity,
 		// add message to IncomingMessageBuffer and send acknowledgement
 		log.Debugf("Unexpected sequence message received. Received Sequence Number: %d. Expected Sequence Number: %d",
-			streamDataMessage.SequenceNumber, dataStream.ExpectedSequenceNumber)
+			streamDataMessageSequenceNumber, dataStream.ExpectedSequenceNumber)
 
 		dataStream.IncomingMessageBuffer.Mutex.Lock()
 		defer dataStream.IncomingMessageBuffer.Mutex.Unlock()
 		if len(dataStream.IncomingMessageBuffer.Messages) < dataStream.IncomingMessageBuffer.Capacity {
-			if err = dataStream.SendAcknowledgeMessage(log, streamDataMessage); err != nil {
+			if err = dataStream.SendAcknowledgeMessage(log, streamDataMessageType, streamDataMessageId, streamDataMessageSequenceNumber); err != nil {
 				return err
 			}
 
 			streamingMessage := StreamingMessage{
 				rawMessage,
-				streamDataMessage.SequenceNumber,
+				streamDataMessageSequenceNumber,
 				time.Now(),
 			}
 
@@ -660,7 +669,7 @@ func (dataStream *DataStream) handleStreamDataMessage(log log.T,
 		}
 	} else {
 		log.Tracef("Discarding already processed message. Received Sequence Number: %d. Expected Sequence Number: %d",
-			streamDataMessage.SequenceNumber, dataStream.ExpectedSequenceNumber)
+			streamDataMessageSequenceNumber, dataStream.ExpectedSequenceNumber)
 	}
 	return nil
 }
