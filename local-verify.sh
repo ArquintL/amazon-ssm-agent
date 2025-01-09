@@ -13,7 +13,7 @@ INPUT_FILES="\
     agent/session/datachannel/send.go\
     agent/session/datachannel/state.go"
 
-java -Xss128m -jar $GOBRA_JAR \
+time java -Xss128m -jar $GOBRA_JAR \
     --module "github.com/aws/amazon-ssm-agent" \
     --include ".verification" --include "." \
     --input $INPUT_FILES \
