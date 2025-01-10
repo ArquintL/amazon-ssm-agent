@@ -1,8 +1,8 @@
 diff --git a/agent/session/datachannel/state.go b/agent/session/datachannel/state.go
-index 4c8c83e3..59c08463 100644
+index 3a84bf20..65f91f00 100644
 --- a/agent/session/datachannel/state.go
 +++ b/agent/session/datachannel/state.go
-@@ -74,6 +74,13 @@ type IDataChannel interface {
+@@ -50,6 +50,13 @@ type IDataChannel interface {
  
  	// @ pred Mem()
  
@@ -13,10 +13,10 @@ index 4c8c83e3..59c08463 100644
 +	// the Core state outside of the Core.
 +	GetStatePtr() *DataChannelState
 +
- 	// @ requires log != nil
- 	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
- 	// @ preserves Mem() && acc(log.Mem(), _)
-@@ -188,6 +195,10 @@ type dataChannel struct {
+ 	// @ preserves Mem()
+ 	// @ preserves log != nil ==> acc(log.Mem(), _)
+ 	// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
+@@ -160,6 +167,10 @@ type dataChannel struct {
  	//@ ghost ioLockCanLocalSend bool
  }
  
@@ -28,7 +28,7 @@ index 4c8c83e3..59c08463 100644
  type ioSpecFields struct {
  	ghost token pl.Place
 diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
-index 420409b1..87bba0b6 100644
+index f5f8f03b..eec11190 100644
 --- a/agent/session/shell/shell.go
 +++ b/agent/session/shell/shell.go
 @@ -182,6 +182,10 @@ func (p *ShellPlugin) Execute(
