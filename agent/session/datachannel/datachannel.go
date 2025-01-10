@@ -33,7 +33,7 @@ import (
 // @ ensures   err == nil ==> dc != nil && dc.getState() == HandshakeSkipped
 // @ ensures   err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
-	if dc == nil || log == nil {
+	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
@@ -226,7 +226,7 @@ func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) GetClientVersion() (version string, err error) {
-	if dc == nil {
+	if dc == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
@@ -304,7 +304,7 @@ func (dc *dataChannel) GetSeparateOutputPayload() (res bool, err error) {
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
-	if dc == nil {
+	if dc == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
@@ -326,7 +326,7 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
-	if dc == nil || log == nil {
+	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
@@ -348,7 +348,7 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
 func (dc *dataChannel) Close(log logger.T) (err error) {
-	if dc == nil || log == nil {
+	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
