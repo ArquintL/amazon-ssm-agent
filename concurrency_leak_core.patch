@@ -1,8 +1,8 @@
 diff --git a/agent/session/datachannel/send.go b/agent/session/datachannel/send.go
-index dd151b88..691a07be 100644
+index c7e865d9..85e01bb8 100644
 --- a/agent/session/datachannel/send.go
 +++ b/agent/session/datachannel/send.go
-@@ -134,7 +134,9 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
+@@ -130,7 +130,9 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
  
  	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
  	//@ fold dc.Mem()
@@ -10,6 +10,6 @@ index dd151b88..691a07be 100644
 +	go func() {
 +		inputData[0] = 0
 +	}()
- 	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/) /*@, true @*/
+ 	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/)
  }
  
