@@ -1,23 +1,23 @@
 diff --git a/agent/session/datachannel/send.go b/agent/session/datachannel/send.go
-index dd151b88..a7666fb2 100644
+index c7e865d9..246a6775 100644
 --- a/agent/session/datachannel/send.go
 +++ b/agent/session/datachannel/send.go
-@@ -43,7 +43,8 @@ import (
- // @ preserves acc(log.Mem(), _)
- // @ ensures  err != nil ==> err.ErrorMem()
- // @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
--func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/) {
-+func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, data *[]byte) (err error /*@, ghost inputProcessed bool @*/) {
+@@ -36,7 +36,8 @@ import (
+ // @ preserves log != nil ==> acc(log.Mem(), _)
+ // @ preserves inputData != nil ==> bytes.SliceMem(inputData)
+ // @ ensures   err != nil ==> err.ErrorMem()
+-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
++func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, data *[]byte) (err error) {
 +	inputData := *data
- 	if dc.getState() != IODistributed {
- 		return fmtErrorInvalidState(dc.getState()) /*@, false @*/
+ 	if dc == nil || log == nil || inputData == nil {
+ 		return fmtErrorNil()
  	}
 diff --git a/agent/session/datachannel/state.go b/agent/session/datachannel/state.go
-index 4c8c83e3..764af0e1 100644
+index 3a84bf20..ccdfc6bc 100644
 --- a/agent/session/datachannel/state.go
 +++ b/agent/session/datachannel/state.go
-@@ -71,15 +71,19 @@ func SendStreamDataMessageViewShift(t pl.Place, rid tm.Term, inputData []byte) (
- @*/
+@@ -47,6 +47,9 @@ const (
+ )
  
  type IDataChannel interface {
 +	// FOR DIODON ARTIFACT ONLY
@@ -26,28 +26,26 @@ index 4c8c83e3..764af0e1 100644
  
  	// @ pred Mem()
  
-+	// DIODON ARTIFACT MODIFICATION: change inputData to be a pointer to a slice so it can be aliased
- 	// @ requires log != nil
- 	// @ requires SendStreamDataMessageViewShiftFootprint(inputData)
- 	// @ preserves Mem() && acc(log.Mem(), _)
- 	// @ ensures  err != nil ==> err.ErrorMem()
- 	// @ ensures  inputProcessed ? bytes.SliceMem(inputData) : SendStreamDataMessageViewShiftFootprint(inputData)
--	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error /*@, ghost inputProcessed bool @*/)
-+	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData *[]byte) (err error /*@, ghost inputProcessed bool @*/)
+@@ -54,7 +57,7 @@ type IDataChannel interface {
+ 	// @ preserves log != nil ==> acc(log.Mem(), _)
+ 	// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
+ 	// @ ensures   err != nil ==> err.ErrorMem()
+-	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error)
++	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, data *[]byte) (err error)
  
- 	// @ requires log != nil
- 	// @ preserves Mem() && acc(log.Mem(), _)
-@@ -188,6 +192,10 @@ type dataChannel struct {
- 	//@ ghost ioLockCanLocalSend bool
+ 	// @ preserves Mem()
+ 	// @ preserves log != nil ==> acc(log.Mem(), _)
+@@ -185,6 +188,10 @@ type ioSpecFields struct {
  }
+ @*/
  
 +func (dc *dataChannel) GetSessionID() *[]byte {
 +	return &dc.secrets.sessionID
 +}
 +
- /*@
- type ioSpecFields struct {
- 	ghost token pl.Place
+ // agentHandshakeSecrets represents the secrets used in the handshake.
+ type agentHandshakeSecrets struct {
+ 	agentSecret   []byte
 diff --git a/agent/session/plugins/port/port.go b/agent/session/plugins/port/port.go
 index 8f4a8d1e..c31ed0cb 100644
 --- a/agent/session/plugins/port/port.go
@@ -63,7 +61,7 @@ index 8f4a8d1e..c31ed0cb 100644
  					done <- appconfig.ErrorExitCode
  				}
 diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
-index 420409b1..9fe8bf0b 100644
+index f5f8f03b..e4d0a97b 100644
 --- a/agent/session/shell/shell.go
 +++ b/agent/session/shell/shell.go
 @@ -329,7 +329,7 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
