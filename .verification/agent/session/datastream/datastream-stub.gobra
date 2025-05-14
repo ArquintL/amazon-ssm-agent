@@ -61,6 +61,12 @@ ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_OutFact_placeDst(
 ensures  err != nil ==> t1 == t && pl.token(t) && iospec.e_OutFact(t, rid, m) && iospec.get_e_OutFact_placeDst(t, rid, m) == old(iospec.get_e_OutFact_placeDst(t, rid, m))
 func (datastream *DataStream) Send(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte, ghost p perm, ghost t pl.Place, ghost rid tm.Term, ghost inputDataT tm.Term, ghost m tm.Term) (err error, ghost t1 pl.Place)
 
+requires log != nil && noPerm < p
+requires bytes.SliceMem(messageContent)
+preserves acc(datastream.Mem(), p) && acc(log.Mem(), _)
+ensures  err != nil ==> err.ErrorMem()
+func (datastream *DataStream) SendAgentMessage(log logger.T, messageType string, messageContent []byte, ghost p perm) (err error)
+
 // a fractional permission is sufficient as a lock is internally acquired
 requires noPerm < p
 preserves acc(datastream.Mem(), p)

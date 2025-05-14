@@ -35,7 +35,7 @@ import (
 // @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
-	clientVersion, err := dc.GetClientVersion()
+	clientVersion, err := dc.getClientVersion()
 	if err != nil {
 		return
 	}

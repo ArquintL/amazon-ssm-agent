@@ -36,7 +36,7 @@ import (
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ preserves inputData != nil ==> bytes.SliceMem(inputData)
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
+func (dc *newDataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
 	if dc == nil || log == nil || inputData == nil {
 		return fmtErrorNil()
 	}
@@ -49,15 +49,17 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	}
 
 	//@ unfold dc.Mem()
-	//@ unfold acc(dc.MemInternal(IODistributed), 1/2)
-	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
+	idc := dc.idc
+	//@ unfold idc.Mem()
+	//@ unfold acc(idc.MemInternal(IODistributed), 1/2)
+	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := idc.io.getRid(), idc.io.getAgentIdT(), idc.io.getKMSIdT(), idc.io.getClientIdT(), idc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(idc.secrets.agentLTKeyARN)), idc.io.getLogLTPkT(), idc.io.getAgentShareT(), idc.io.getAgentShareSignatureT()
 
 	// ----- start local receive I/O operation -----
-	//@ dc.ioLock.Lock()
-	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
+	//@ idc.ioLock.Lock()
+	//@ unfold IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>()
 
-	//@ t0 := dc.io.getToken()
-	//@ s0 := dc.io.getAbsState()
+	//@ t0 := idc.io.getToken()
+	//@ s0 := idc.io.getAbsState()
 
 	// receive `inputData` from environment:
 	//@ unfold iospec.P_Agent(t0, rid, s0)
@@ -66,27 +68,27 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	/*@ t1, inputDataT := @*/
 	iosanitization.PerformVirtualInputOperation(inputData /*@, t0, rid @*/)
 
-	//@ unfold dc.io.IoSpecMemMain()
-	//@ dc.io.token = t1
-	//@ dc.io.absState = s1
-	//@ dc.io.localInFactT = inputDataT
-	//@ dc.ioLockDidLocalReceive = true
-	//@ fold dc.io.IoSpecMemMain()
+	//@ unfold idc.io.IoSpecMemMain()
+	//@ idc.io.token = t1
+	//@ idc.io.absState = s1
+	//@ idc.io.localInFactT = inputDataT
+	//@ idc.ioLockDidLocalReceive = true
+	//@ fold idc.io.IoSpecMemMain()
 
-	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-	//@ dc.ioLock.Unlock()
+	//@ fold IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>()
+	//@ idc.ioLock.Unlock()
 	// ----- end local receive I/O operation -----
 
 	// ----- start internal I/O operation -----
-	//@ dc.ioLock.Lock()
-	//@ unfold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-	//@ t1 = dc.io.getToken()
-	//@ s1 = dc.io.getAbsState()
-	//@ sharedSecretT := dc.io.getSharedSecretT()
-	//@ clientLtKeyIdT := dc.io.getClientLtKeyIdT()
-	//@ clientSecretT := dc.io.getClientShareT()
-	//@ sigYT := dc.io.getClientShareSignatureT()
-	//@ sigSessionKeysT := dc.io.getSigSessionKeysT()
+	//@ idc.ioLock.Lock()
+	//@ unfold IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>()
+	//@ t1 = idc.io.getToken()
+	//@ s1 = idc.io.getAbsState()
+	//@ sharedSecretT := idc.io.getSharedSecretT()
+	//@ clientLtKeyIdT := idc.io.getClientLtKeyIdT()
+	//@ clientSecretT := idc.io.getClientShareT()
+	//@ sigYT := idc.io.getClientShareSignatureT()
+	//@ sigSessionKeysT := idc.io.getSigSessionKeysT()
 
 	// obtain permission to send the ciphertext containing `inputData`:
 	/*@
@@ -108,19 +110,19 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 	//@ t2 := iospec.internBIO_e_Agent_SendMessages(t1, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, inputDataT, l, a, r)
 	//@ s2 := ft.U(l, r, s1)
 
-	//@ unfold dc.io.IoSpecMemMain()
-	//@ dc.io.token = t2
-	//@ dc.io.absState = s2
-	//@ dc.ioLockDidLocalReceive = false
-	//@ dc.io.remoteOutFactT = tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT)))
-	//@ dc.ioLockCanRemoteSend = true
-	//@ fold dc.io.IoSpecMemMain()
+	//@ unfold idc.io.IoSpecMemMain()
+	//@ idc.io.token = t2
+	//@ idc.io.absState = s2
+	//@ idc.ioLockDidLocalReceive = false
+	//@ idc.io.remoteOutFactT = tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(inputDataT, tm.kdf1(sharedSecretT)))
+	//@ idc.ioLockCanRemoteSend = true
+	//@ fold idc.io.IoSpecMemMain()
 
-	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-	//@ dc.ioLock.Unlock()
+	//@ fold IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>()
+	//@ idc.ioLock.Unlock()
 	// ----- end internal I/O operation -----
 
-	if !dc.encryptionEnabled {
+	if !idc.encryptionEnabled {
 		// since `dataStream.Send` (called within `sendData`) will store `inputData` in a queue to send out possibly later, we duplicate the byte slice
 		// such that callers can reuse the input parameter.
 		// This is necessary since there are clients reusing the same byte slice, which would otherwise result in a data race.
@@ -128,10 +130,12 @@ func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContra
 		inputData = duplicate(inputData /*@, perm(1/2) @*/)
 	}
 
-	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
-	//@ fold dc.Mem()
+	//@ fold acc(idc.MemInternal(IODistributed), 1/2)
+	//@ fold idc.Mem()
 
-	return dc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/)
+	err = idc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/)
+	//@ fold dc.Mem()
+	return
 }
 
 // @ requires log != nil

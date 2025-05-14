@@ -32,7 +32,7 @@ import (
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures   err == nil ==> dc != nil && dc.getState() == HandshakeSkipped
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
+func (dc *newDataChannel) SkipHandshake(log logger.T) (err error) {
 	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
@@ -43,12 +43,15 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 	}
 	logInfo(log, "Skipping handshake.")
 	//@ unfold dc.Mem()
-	//@ unfold dc.MemInternal(Initialized)
-	dc.hs.skipped = true
-	//@ unfold acc(dc.MemChannelState(), 1/2)
-	dc.dataChannelState = HandshakeSkipped
-	//@ fold acc(dc.MemChannelState(), 1/2)
-	//@ fold dc.MemInternal(HandshakeSkipped)
+	idc := dc.idc
+	//@ unfold idc.Mem()
+	//@ unfold idc.MemInternal(Initialized)
+	idc.hs.skipped = true
+	//@ unfold acc(idc.MemChannelState(), 1/2)
+	idc.dataChannelState = HandshakeSkipped
+	//@ fold acc(idc.MemChannelState(), 1/2)
+	//@ fold idc.MemInternal(HandshakeSkipped)
+	//@ fold idc.Mem()
 	//@ fold dc.Mem()
 	return
 }
@@ -65,7 +68,7 @@ func (dc *dataChannel) SkipHandshake(log logger.T) (err error) {
 // @ preserves sessionTypeRequest.Mem()
 // @ ensures   err == nil ==> dc != nil && dc.getState() == IODistributed
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) PerformHandshake(log logger.T,
+func (dc *newDataChannel) PerformHandshake(log logger.T,
 	kmsKeyId string,
 	encryptionEnabled bool,
 	sessionTypeRequest mgsContracts.SessionTypeRequest) (err error) {
@@ -83,38 +86,42 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	logDebug(log, "PerformHandshake")
 
 	//@ unfold dc.Mem()
-	//@ unfold dc.MemInternal(Initialized)
+	idc := dc.idc
+	//@ unfold idc.Mem()
+	//@ unfold idc.MemInternal(Initialized)
 
-	dc.blockCipher = &cryptolib.BlockCipherT{}
-	//@ fold dc.blockCipher.Mem()
+	idc.blockCipher = &cryptolib.BlockCipherT{}
+	//@ fold idc.blockCipher.Mem()
 
-	dc.hs.handshakeStartTime = time.Now()
-	dc.encryptionEnabled = encryptionEnabled
-	//@ unfold acc(dc.MemChannelState(), 1/2)
-	dc.dataChannelState = BlockCipherInitialized
-	//@ fold acc(dc.MemChannelState(), 1/2)
-	//@ fold dc.MemInternal(BlockCipherInitialized)
-	//@ fold dc.Mem()
+	idc.hs.handshakeStartTime = time.Now()
+	idc.encryptionEnabled = encryptionEnabled
+	//@ unfold acc(idc.MemChannelState(), 1/2)
+	idc.dataChannelState = BlockCipherInitialized
+	//@ fold acc(idc.MemChannelState(), 1/2)
+	//@ fold idc.MemInternal(BlockCipherInitialized)
+	//@ fold idc.Mem()
 
 	logInfo(log, "Initiating Handshake")
 	handshakeRequestPayload, err :=
-		dc.buildHandshakeRequestPayload(log, encryptionEnabled, sessionTypeRequest)
+		idc.buildHandshakeRequestPayload(log, encryptionEnabled, sessionTypeRequest)
 	if err != nil { //argot:ignore diodon-agent-io-independence
+		//@ fold dc.Mem()
 		return errHandshake() // safe generic error
 	}
-	err = dc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
+	err = idc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
 	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
 	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
 	if err != nil {
+		//@ fold dc.Mem()
 		return errHandshake()
 	}
 
 	// notify Go routing handling received messages that it can process a message:
-	//@ unfold dc.Mem()
-	//@ unfold dc.MemInternal(HandshakeRequestSent)
-	startReceivingChan := dc.hs.startReceivingChan
-	responseChan := dc.hs.responseChan
-	//@ fold dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
+	//@ unfold idc.Mem()
+	//@ unfold idc.MemInternal(HandshakeRequestSent)
+	startReceivingChan := idc.hs.startReceivingChan
+	responseChan := idc.hs.responseChan
+	//@ fold idc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 	var payload MessageReceptionPayload
 	if encryptionEnabled {
 		payload = MessageReceptionPayload{
@@ -125,16 +132,17 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 			status: ReceiveHandshakeResponeEncryptionDisabled,
 		}
 	}
-	//@ fold StartReceivingChanInv!<dc, _!>(payload)
+	//@ fold StartReceivingChanInv!<idc, _!>(payload)
 	startReceivingChan <- payload
 
 	// Block until handshake response is received or handshake times out
-	res, err := dc.tryReceiveResponse(responseChan, handshakeTimeout)
+	res, err := idc.tryReceiveResponse(responseChan, handshakeTimeout)
 	if err != nil {
-		//@ unfold acc(dc.MemChannelState(), 1/2)
-		dc.dataChannelState = Erroneous
-		//@ fold acc(dc.MemChannelState(), 1/2)
-		//@ fold dc.MemInternal(Erroneous)
+		//@ unfold acc(idc.MemChannelState(), 1/2)
+		idc.dataChannelState = Erroneous
+		//@ fold acc(idc.MemChannelState(), 1/2)
+		//@ fold idc.MemInternal(Erroneous)
+		//@ fold idc.Mem()
 		//@ fold dc.Mem()
 		// If handshake times out here this usually means that the client does not understand handshake or something
 		// failed critically when processing handshake request.
@@ -143,65 +151,70 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 	// we send the flag `encryptionEnabled` back via the channel such that we are able to express the data channel's
 	// state. This flag is expected to be identical to `encryptionEnabled`:
 	if res.encryptionEnabled != encryptionEnabled {
-		//@ unfold acc(dc.MemChannelState(), 1/2)
-		dc.dataChannelState = Erroneous
-		//@ fold acc(dc.MemChannelState(), 1/2)
-		//@ fold dc.MemInternal(Erroneous)
+		//@ unfold acc(idc.MemChannelState(), 1/2)
+		idc.dataChannelState = Erroneous
+		//@ fold acc(idc.MemChannelState(), 1/2)
+		//@ fold idc.MemInternal(Erroneous)
+		//@ fold idc.Mem()
 		//@ fold dc.Mem()
 		return errHandshake()
 	}
-	//@ unfold ResponseChanInv!<dc, _!>(res)
-	//@ unfold dc.MemTransfer(res.state, encryptionEnabled)
-	err = dc.hs.error
+	//@ unfold ResponseChanInv!<idc, _!>(res)
+	//@ unfold idc.MemTransfer(res.state, encryptionEnabled)
+	err = idc.hs.error
 	if err != nil {
-		//@ unfold acc(dc.MemChannelState(), 1/2)
-		dc.dataChannelState = Erroneous
-		//@ fold acc(dc.MemChannelState(), 1/2)
-		//@ fold dc.MemInternal(Erroneous)
+		//@ unfold acc(idc.MemChannelState(), 1/2)
+		idc.dataChannelState = Erroneous
+		//@ fold acc(idc.MemChannelState(), 1/2)
+		//@ fold idc.MemInternal(Erroneous)
+		//@ fold idc.Mem()
 		//@ fold dc.Mem()
 		return err
 	}
 	logDebug(log, "Handshake response received")
 
 	//@ assert res.state == BlockCipherReady
-	//@ unfold acc(dc.MemChannelState(), 1/2)
-	dc.dataChannelState = res.state
-	//@ fold acc(dc.MemChannelState(), 1/2)
-	dc.hs.handshakeEndTime = time.Now()
-	//@ fold dc.MemInternal(res.state)
-	//@ fold dc.Mem()
-	handshakeCompletePayload, err := dc.buildHandshakeCompletePayload(log)
+	//@ unfold acc(idc.MemChannelState(), 1/2)
+	idc.dataChannelState = res.state
+	//@ fold acc(idc.MemChannelState(), 1/2)
+	idc.hs.handshakeEndTime = time.Now()
+	//@ fold idc.MemInternal(res.state)
+	//@ fold idc.Mem()
+	handshakeCompletePayload, err := idc.buildHandshakeCompletePayload(log)
 	if err != nil {
+		//@ fold dc.Mem()
 		return err
 	}
-	if err := dc.sendHandshakeComplete(log, handshakeCompletePayload); err != nil {
+	if err := idc.sendHandshakeComplete(log, handshakeCompletePayload); err != nil {
+		//@ fold dc.Mem()
 		return err
 	}
-	//@ unfold dc.Mem()
-	//@ unfold dc.MemInternal(HandshakeCompleted)
+	//@ unfold idc.Mem()
+	//@ unfold idc.MemInternal(HandshakeCompleted)
 	logInfo(log, "Handshake successfully completed.")
 
-	//@ unfold acc(dc.MemChannelState(), 1/2)
-	dc.dataChannelState = IODistributed
+	//@ unfold acc(idc.MemChannelState(), 1/2)
+	idc.dataChannelState = IODistributed
 	// do not fold `MemChannelState` since we split the permission to `dataChannelState` for
 	// the threads next.
 
-	//@ ghost dc.ioLock = new(sync.GhostMutex)
-	//@ dc.ioLockDidLocalReceive = false
-	//@ dc.ioLockCanRemoteSend = false
-	//@ dc.ioLockDidRemoteReceive = false
-	//@ dc.ioLockCanLocalSend = false
-	//@ fold IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>()
-	//@ dc.ioLock.SetInv(IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>)
+	//@ ghost idc.ioLock = new(sync.GhostMutex)
+	//@ idc.ioLockDidLocalReceive = false
+	//@ idc.ioLockCanRemoteSend = false
+	//@ idc.ioLockDidRemoteReceive = false
+	//@ idc.ioLockCanLocalSend = false
+	//@ fold IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>()
+	//@ idc.ioLock.SetInv(IoLockInv!<idc, idc.instanceId, idc.clientId, idc.secrets.agentLTKeyARN!>)
 
 	payload = MessageReceptionPayload{
 		status: ReceiveOtherResponse,
 	}
-	//@ fold dc.MemRecv()
-	//@ fold StartReceivingChanInv!<dc, _!>(payload)
+	//@ fold idc.MemRecv()
+	//@ fold StartReceivingChanInv!<idc, _!>(payload)
 	startReceivingChan <- payload
 
-	//@ fold acc(dc.MemInternal(IODistributed), 1/2)
+	//@ fold acc(idc.MemInternal(IODistributed), 1/2)
+	//@ fold idc.Mem()
 	//@ fold dc.Mem()
 	return
 }
@@ -225,22 +238,32 @@ func duplicate(s []byte /*@, ghost p perm @*/) (res []byte) {
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
-func (dc *dataChannel) GetClientVersion() (version string, err error) {
+func (dc *newDataChannel) GetClientVersion() (version string, err error) {
 	if dc == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
 	}
-	if dc.getState() == Erroneous {
-		err = fmtErrorInvalidState(dc.getState())
+	//@ unfold dc.Mem()
+	version, err = dc.idc.getClientVersion()
+	//@ fold dc.Mem()
+	return
+}
+
+// @ preserves idc.Mem()
+// @ ensures   err != nil ==> err.ErrorMem()
+// @ ensures   idc.getState() == old(idc.getState())
+func (idc *dataChannel) getClientVersion() (version string, err error) {
+	if idc.getState() == Erroneous {
+		err = fmtErrorInvalidState(idc.getState())
 		return
 	}
-	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.hs.clientVersion, nil
+	return /*@ unfolding idc.Mem() in unfolding acc(idc.MemInternal(idc.dataChannelState), 1/2) in @*/ idc.hs.clientVersion, nil
 }
 
 // GetInstanceId returns id of the target
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetInstanceId() (instanceId string, err error) {
+func (dc *newDataChannel) GetInstanceId() (instanceId string, err error) {
 	if dc == nil {
 		err = fmtErrorNil()
 		return
@@ -249,13 +272,13 @@ func (dc *dataChannel) GetInstanceId() (instanceId string, err error) {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.instanceId, nil
+	return /*@ unfolding dc.Mem() in unfolding dc.idc.Mem() in unfolding acc(dc.idc.MemInternal(dc.idc.dataChannelState), 1/2) in @*/ dc.idc.instanceId, nil
 }
 
 // GetRegion returns aws region of the target
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetRegion() (region string, err error) {
+func (dc *newDataChannel) GetRegion() (region string, err error) {
 	if dc == nil {
 		err = fmtErrorNil()
 		return
@@ -264,14 +287,14 @@ func (dc *dataChannel) GetRegion() (region string, err error) {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.dataStream.GetRegion(), nil
+	return /*@ unfolding dc.Mem() in unfolding dc.idc.Mem() in unfolding acc(dc.idc.MemInternal(dc.idc.dataChannelState), 1/2) in @*/ dc.idc.dataStream.GetRegion(), nil
 }
 
 // IsActive returns a boolean value indicating the datachannel is actively listening
 // and communicating with service
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) IsActive() (isActive bool, err error) {
+func (dc *newDataChannel) IsActive() (isActive bool, err error) {
 	if dc == nil {
 		err = fmtErrorNil()
 		return
@@ -280,14 +303,14 @@ func (dc *dataChannel) IsActive() (isActive bool, err error) {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in @*/ dc.dataStream.IsActive(), nil
+	return /*@ unfolding dc.Mem() in unfolding dc.idc.Mem() in unfolding acc(dc.idc.MemInternal(dc.idc.dataChannelState), 1/2) in @*/ dc.idc.dataStream.IsActive(), nil
 }
 
 // GetSeparateOutputPayload returns boolean value indicating separate
 // stdout/stderr output for non-interactive session or not
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) GetSeparateOutputPayload() (res bool, err error) {
+func (dc *newDataChannel) GetSeparateOutputPayload() (res bool, err error) {
 	if dc == nil {
 		err = fmtErrorNil()
 		return
@@ -296,14 +319,14 @@ func (dc *dataChannel) GetSeparateOutputPayload() (res bool, err error) {
 		err = fmtErrorInvalidState(dc.getState())
 		return
 	}
-	return /*@ unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.separateOutputPayload, nil
+	return /*@ unfolding dc.Mem() in unfolding dc.idc.Mem() in unfolding acc(dc.idc.MemInternal(dc.idc.dataChannelState), _) in @*/ dc.idc.separateOutputPayload, nil
 }
 
 // SetSeparateOutputPayload set separateOutputPayload value
 // @ preserves dc != nil ==> dc.Mem()
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
-func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
+func (dc *newDataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err error) {
 	if dc == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
@@ -313,10 +336,12 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 		return
 	}
 	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold dc.MemInternal(state)
-	dc.separateOutputPayload = separateOutputPayload
-	//@ fold dc.MemInternal(state)
+	//@ unfold dc.idc.Mem()
+	//@ state := dc.idc.dataChannelState
+	//@ unfold dc.idc.MemInternal(state)
+	dc.idc.separateOutputPayload = separateOutputPayload
+	//@ fold dc.idc.MemInternal(state)
+	//@ fold dc.idc.Mem()
 	//@ fold dc.Mem()
 	return
 }
@@ -325,7 +350,7 @@ func (dc *dataChannel) SetSeparateOutputPayload(separateOutputPayload bool) (err
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
-func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
+func (dc *newDataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
@@ -335,10 +360,12 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 		return
 	}
 	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold acc(dc.MemInternal(state), 1/4)
-	dc.dataStream.PrepareToCloseChannel(log /*@, perm(1/8) @*/)
-	//@ fold acc(dc.MemInternal(state), 1/4)
+	//@ unfold dc.idc.Mem()
+	//@ state := dc.idc.dataChannelState
+	//@ unfold acc(dc.idc.MemInternal(state), 1/4)
+	dc.idc.dataStream.PrepareToCloseChannel(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.idc.MemInternal(state), 1/4)
+	//@ fold dc.idc.Mem()
 	//@ fold dc.Mem()
 	return
 }
@@ -347,7 +374,7 @@ func (dc *dataChannel) PrepareToCloseChannel(log logger.T) (err error) {
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures   err != nil ==> err.ErrorMem()
 // @ ensures   dc != nil ==> dc.getState() == old(dc.getState())
-func (dc *dataChannel) Close(log logger.T) (err error) {
+func (dc *newDataChannel) Close(log logger.T) (err error) {
 	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		err = fmtErrorNil()
 		return
@@ -357,10 +384,12 @@ func (dc *dataChannel) Close(log logger.T) (err error) {
 		return
 	}
 	//@ unfold dc.Mem()
-	//@ state := dc.dataChannelState
-	//@ unfold acc(dc.MemInternal(state), 1/4)
-	err = dc.dataStream.Close(log /*@, perm(1/8) @*/)
-	//@ fold acc(dc.MemInternal(state), 1/4)
+	//@ unfold dc.idc.Mem()
+	//@ state := dc.idc.dataChannelState
+	//@ unfold acc(dc.idc.MemInternal(state), 1/4)
+	err = dc.idc.dataStream.Close(log /*@, perm(1/8) @*/)
+	//@ fold acc(dc.idc.MemInternal(state), 1/4)
+	//@ fold dc.idc.Mem()
 	//@ fold dc.Mem()
 	return
 }

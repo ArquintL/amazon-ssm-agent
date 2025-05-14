@@ -33,8 +33,8 @@ import (
 // @ requires context != nil ==> acc(context.Mem(), _)
 // @ requires cancelFlag != nil ==> acc(cancelFlag.Mem(), _)
 // @ requires inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{}
-// @ ensures  res.Mem() && typeOf(res) == *dataChannel
-// @ ensures  err == nil ==> res.(* dataChannel).getState() == Initialized
+// @ ensures  res.Mem() && typeOf(res) == *newDataChannel
+// @ ensures  err == nil ==> res.(*newDataChannel).getState() == Initialized
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
@@ -48,7 +48,7 @@ func NewDataChannel(context contextPkg.T,
 	//@ inhale pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
 
 	tmp /*@ @ @*/ := dataChannel{}
-	dc := &tmp
+	idc := &tmp
 	cl :=
 		// @ requires  msg != nil ==> msg.Mem()
 		// @ preserves tmp.RecvRoutineMem()
@@ -61,47 +61,49 @@ func NewDataChannel(context contextPkg.T,
 			return
 		}
 	/*@
-		proof cl implements datastream.StreamDataHandlerSpec{dc} {
-	        unfold dc.Inv()
+		proof cl implements datastream.StreamDataHandlerSpec{idc} {
+	        unfold idc.Inv()
 	        err = cl(msg) as callHandler
-			fold dc.Inv()
+			fold idc.Inv()
 	    }
 	@*/
 
-	dc.dataChannelState = Uninitialized
-	dc.hs.startReceivingChan = make(chan MessageReceptionPayload)
-	//@ dc.hs.startReceivingChan.Init(StartReceivingChanInv!<dc, _!>, PredTrue!<!>)
-	dc.inputStreamMessageHandler = inputStreamMessageHandler
-	dc.hs.responseChan = make(chan ResponseChanPayload)
-	//@ dc.hs.responseChan.Init(ResponseChanInv!<dc, _!>, PredTrue!<!>)
-	//@ ghost dc.io = new(ioSpecFields)
-	//@ dc.io.token = t0
-	//@ dc.io.rid = rid
-	//@ dc.io.absState = mset[ft.Fact]{}
-	// fold dc.IoSpecMem()
-	//@ fold dc.io.IoSpecMemMain()
-	//@ fold dc.io.IoSpecMemPartial()
+	idc.dataChannelState = Uninitialized
+	idc.hs.startReceivingChan = make(chan MessageReceptionPayload)
+	//@ idc.hs.startReceivingChan.Init(StartReceivingChanInv!<idc, _!>, PredTrue!<!>)
+	idc.inputStreamMessageHandler = inputStreamMessageHandler
+	idc.hs.responseChan = make(chan ResponseChanPayload)
+	//@ idc.hs.responseChan.Init(ResponseChanInv!<idc, _!>, PredTrue!<!>)
+	//@ ghost idc.io = new(ioSpecFields)
+	//@ idc.io.token = t0
+	//@ idc.io.rid = rid
+	//@ idc.io.absState = mset[ft.Fact]{}
+	//@ fold idc.io.IoSpecMemMain()
+	//@ fold idc.io.IoSpecMemPartial()
 
-	//@ fold dc.RecvRoutineMem()
-	//@ fold acc(dc.MemChannelState(), 1/2)
-	//@ fold dc.MemInternal(Uninitialized)
-	//@ fold dc.Mem()
-	//@ fold dc.Inv()
+	//@ fold idc.RecvRoutineMem()
+	//@ fold acc(idc.MemChannelState(), 1/2)
+	//@ fold idc.MemInternal(Uninitialized)
+	//@ fold idc.Mem()
+	//@ fold idc.Inv()
 	dataStream, err := datastream.NewDataStream(context,
 		channelId,
 		clientId,
 		logReaderId,
 		cl,
 		cancelFlag,
-		/*@ dc @*/)
+		/*@ idc @*/)
+	dc := &newDataChannel{idc}
 	if err != nil {
 		// we return a non-nil dc such that we can ensure `dc.Mem()`
 		// independent of `err`. However, clients should check whether
 		// `err` is nil.
+		//@ fold dc.Mem()
 		return dc, fmtErrorf("failed to create data stream with error", err /*@, perm(1/2) @*/)
 	}
 
-	err = dc.initialize(dataStream)
+	err = idc.initialize(dataStream)
+	//@ fold dc.Mem()
 	if err != nil {
 		return dc, err
 	}

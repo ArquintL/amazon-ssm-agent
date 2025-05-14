@@ -407,33 +407,51 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-// we treat this function as being part of the APPLICATION because it does not
-// depend on any secrets negotiated during the handshake. Hence, we mark it as
-// `trusted` such that Gobra does not attempt to verify it.
-// In particular, only the channel id and session status is sent.
-// @ trusted
 // @ preserves dc != nil ==> dc.Mem()
 // @ preserves log != nil ==> acc(log.Mem(), _)
-// @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
+// @ ensures   err != nil ==> err.ErrorMem()
+func (dc *newDataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
+	if dc == nil || log == nil {
+		return fmtErrorNil()
+	}
+	if dc.getState() < Initialized {
+		err = fmtErrorInvalidState(dc.getState())
+		return
+	}
+
+	//@ ghost state := dc.getState()
+	//@ unfold dc.Mem()
+	//@ unfold dc.idc.Mem()
+	//@ unfold acc(dc.idc.MemInternal(state), 1/4)
+
 	agentSessionStateContent := &mgsContracts.AgentSessionStateContent{
 		SchemaVersion: schemaVersion,
 		SessionState:  string(sessionStatus),
-		SessionId:     dc.dataStream.GetChannelId(),
+		SessionId:     dc.idc.dataStream.GetChannelId(),
 	}
+	//@ fold agentSessionStateContent.Mem()
 
 	var agentSessionStateContentBytes []byte
-	if agentSessionStateContentBytes, err = json.Marshal(agentSessionStateContent); err != nil {
+	if agentSessionStateContentBytes, err = json.Marshal(agentSessionStateContent /*@, perm(1/4) @*/); err != nil {
 		logErrorf(log, "Cannot serialize AgentSessionState message err", err /*@, perm(1/1) @*/)
+		//@ fold acc(dc.idc.MemInternal(state), 1/4)
+		//@ fold dc.idc.Mem()
+		//@ fold dc.Mem()
 		return err
 	}
 
 	sessionStatusStr := string(sessionStatus)
-	//@ fold sessionStatusStr.Mem()
 	logDebug(log, "Send AgentSessionState message with session status"+sessionStatusStr)
-	if err := dc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes); err != nil {
+	if err := dc.idc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes /*@, perm(1/4) @*/); err != nil {
+		//@ fold acc(dc.idc.MemInternal(state), 1/4)
+		//@ fold dc.idc.Mem()
+		//@ fold dc.Mem()
 		return err
 	}
+
+	//@ fold acc(dc.idc.MemInternal(state), 1/4)
+	//@ fold dc.idc.Mem()
+	//@ fold dc.Mem()
 	return nil
 }
 

@@ -17,6 +17,7 @@ package datachannel
 import (
 	"crypto/rsa"
 	"time"
+
 	//@ "bytes"
 	//@ "sync"
 
@@ -108,6 +109,8 @@ type IDataChannel interface {
 	Close(log logger.T) (err error)
 }
 
+// (*newDataChannel) implements IDataChannel
+
 type DataChannelState int
 
 const (
@@ -126,6 +129,11 @@ const (
 )
 
 type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
+
+/** wrapper struct for the public interface of this package */
+type newDataChannel struct {
+	idc *dataChannel
+}
 
 // dataChannel used for session communication between the message gateway service and the agent.
 type dataChannel struct {
@@ -232,6 +240,13 @@ type handshake struct {
 // @ decreases
 // @ requires acc(dc.Mem(), _)
 // @ pure
+func (dc *newDataChannel) getState() DataChannelState {
+	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.idc.getState()
+}
+
+// @ decreases
+// @ requires acc(dc.Mem(), _)
+// @ pure
 func (dc *dataChannel) getState() DataChannelState {
 	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.dataChannelState
 }
@@ -258,6 +273,10 @@ func (dc *dataChannel) getLogReaderId() string {
 }
 
 /*@
+pred (dc *newDataChannel) Mem() {
+	acc(dc) && dc.idc.Mem()
+}
+
 pred (dc *dataChannel) Mem() {
 	dc != nil &&
 	acc(&dc.dataChannelState, 1/2) &&
