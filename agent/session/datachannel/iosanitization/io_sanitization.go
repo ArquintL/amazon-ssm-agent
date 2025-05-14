@@ -105,7 +105,7 @@ func DataChannelForwardToMessageHandler(handler InputStreamMessageHandler, agent
 // @ ensures  acc(bytes.SliceMem(data), 1/16) && by.gamma(dataT) == abs.Abs(data)
 // @ ensures  pl.token(t1) && t1 == old(iospec.get_e_InFact_placeDst(t, rid))
 // @ ensures  dataT == old(iospec.get_e_InFact_r1(t, rid))
-func PerformVirtualInputOperation(data []byte /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, dataT tm.Term) @*/ {
+func PerformVirtualInputOperation(data []byte /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, ghost dataT tm.Term) @*/ {
 	return
 }
 
@@ -119,6 +119,6 @@ func PerformVirtualInputOperation(data []byte /*@, ghost t pl.Place, ghost rid t
 // @ ensures  acc(msg.Mem(), 1/16) && by.gamma(dataT) == msg.Abs()
 // @ ensures  pl.token(t1) && t1 == old(iospec.get_e_InFact_placeDst(t, rid))
 // @ ensures  dataT == old(iospec.get_e_InFact_r1(t, rid))
-func PerformVirtualInputOperationAgentMessage(msg *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, dataT tm.Term) @*/ {
+func PerformVirtualInputOperationAgentMessage(msg *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term @*/) /*@ (ghost t1 pl.Place, ghost dataT tm.Term) @*/ {
 	return
 }
