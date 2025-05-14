@@ -28,7 +28,7 @@ import (
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (res MessageReceptionPayload, err error) {
+func (dc *recvDataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (res MessageReceptionPayload, err error) {
 	var ok bool
 	select {
 	case res, ok = <-dc.hs.startReceivingChan:
@@ -78,7 +78,7 @@ decreases _
 preserves dc.RecvRoutineMem()
 ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
 ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Duration) (res MessageReceptionPayload, err error) {
+func (dc *recvDataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Duration) (res MessageReceptionPayload, err error) {
 	if nonDeterministicChoice() {
 		unfold dc.RecvRoutineMem()
 		fold PredTrue!<!>()

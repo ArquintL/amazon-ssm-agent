@@ -33,7 +33,7 @@ import (
 // @ requires  streamDataMessage.Mem()
 // @ preserves dc.RecvRoutineMem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
+func (dc *recvDataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
 	payload, err := dc.tryReceiveMessageReceptionStatus(channelStatusTimeout)
 	if err != nil {

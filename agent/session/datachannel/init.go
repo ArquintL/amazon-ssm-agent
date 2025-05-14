@@ -47,8 +47,9 @@ func NewDataChannel(context contextPkg.T,
 	//@ t0, rid := arb.GetArbPlace(), arb.GetArbTerm()
 	//@ inhale pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
 
-	tmp /*@ @ @*/ := dataChannel{}
-	dc := &tmp
+	dc := &dataChannel{}
+	tmp /*@ @ @*/ := recvDataChannel{}
+	rdc := &tmp
 	cl :=
 		// @ requires  msg != nil ==> msg.Mem()
 		// @ preserves tmp.RecvRoutineMem()
@@ -57,14 +58,14 @@ func NewDataChannel(context contextPkg.T,
 			if msg == nil {
 				return fmtError("received agent message is nil")
 			}
-			err = tmp.processStreamDataMessage(msg)
+			err = rdc.processStreamDataMessage(msg)
 			return
 		}
 	/*@
-		proof cl implements datastream.StreamDataHandlerSpec{dc} {
-	        unfold dc.Inv()
+		proof cl implements datastream.StreamDataHandlerSpec{rdc} {
+	        unfold rdc.Inv()
 	        err = cl(msg) as callHandler
-			fold dc.Inv()
+			fold rdc.Inv()
 	    }
 	@*/
 
@@ -78,22 +79,21 @@ func NewDataChannel(context contextPkg.T,
 	//@ dc.io.token = t0
 	//@ dc.io.rid = rid
 	//@ dc.io.absState = mset[ft.Fact]{}
-	// fold dc.IoSpecMem()
 	//@ fold dc.io.IoSpecMemMain()
 	//@ fold dc.io.IoSpecMemPartial()
 
-	//@ fold dc.RecvRoutineMem()
+	//@ fold rdc.RecvRoutineMem()
 	//@ fold acc(dc.MemChannelState(), 1/2)
 	//@ fold dc.MemInternal(Uninitialized)
 	//@ fold dc.Mem()
-	//@ fold dc.Inv()
+	//@ fold rdc.Inv()
 	dataStream, err := datastream.NewDataStream(context,
 		channelId,
 		clientId,
 		logReaderId,
 		cl,
 		cancelFlag,
-		/*@ dc @*/)
+		/*@ rdc @*/)
 	if err != nil {
 		// we return a non-nil dc such that we can ensure `dc.Mem()`
 		// independent of `err`. However, clients should check whether

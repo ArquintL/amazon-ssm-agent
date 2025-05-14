@@ -17,6 +17,7 @@ package datachannel
 import (
 	"crypto/rsa"
 	"time"
+
 	//@ "bytes"
 	//@ "sync"
 
@@ -129,12 +130,28 @@ type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessa
 
 // dataChannel used for session communication between the message gateway service and the agent.
 type dataChannel struct {
+	rdc *recvDataChannel
 	//dataChannelState keeps track of the data channel's state such that calls violating the implicit state machine transitions can be rejected
 	dataChannelState DataChannelState
-	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
-	dataStream *datastream.DataStream
 	//inputStreamMessageHandler is responsible for handling plugin specific input_stream_data message
 	inputStreamMessageHandler InputStreamMessageHandler
+
+	// ghost lock to synchronize consuming I/O permissions for sending and receiving transport messages
+	//@ ghost ioLock gpointer[sync.GhostMutex]
+	//@ ghost ioLockDidLocalReceive bool
+	//@ ghost ioLockCanRemoteSend bool
+	//@ ghost ioLockDidRemoteReceive bool
+	//@ ghost ioLockCanLocalSend bool
+}
+
+/**
+ * used to pass a subset of the fields of `dataChannel` to the Go routine
+ * processing incoming messages. We avoid passing the entire `dataChannel`
+ * struct as the corresponding pointer would otherwise (by definition) escape.
+ */
+type recvDataChannel struct {
+	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
+	dataStream *datastream.DataStream
 	//hs captures handshake state and error
 	hs handshake
 	//blockCipher stores encrytion keys and provides interface for encryption/decryption functions
@@ -152,12 +169,6 @@ type dataChannel struct {
 	clientId   string
 
 	//@ ghost io gpointer[ioSpecFields]
-	// ghost lock to synchronize consuming I/O permissions for sending and receiving transport messages
-	//@ ghost ioLock gpointer[sync.GhostMutex]
-	//@ ghost ioLockDidLocalReceive bool
-	//@ ghost ioLockCanRemoteSend bool
-	//@ ghost ioLockDidRemoteReceive bool
-	//@ ghost ioLockCanLocalSend bool
 }
 
 /*@
@@ -273,6 +284,20 @@ pred (dc *dataChannel) MemChannelState() {
 
 pred (dc *dataChannel) MemInternal(state DataChannelState) {
 	dc != nil &&
+	dc.rdc.MemInternal(state) &&
+	(state != Erroneous ==>
+		acc(&dc.ioLock)) &&
+	(state != Erroneous && state < IODistributed ==>
+		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
+		acc(&dc.ioLockDidRemoteReceive) && acc(&dc.ioLockCanLocalSend)) &&
+	// relate state to abstract state:
+	(state == IODistributed ==>
+		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
+		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend))
+}
+
+pred (dc *recvDataChannel) MemInternal(state DataChannelState) {
+	dc != nil &&
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
@@ -298,11 +323,8 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		acc(&dc.logLTPk) &&
 		acc(&dc.instanceId) &&
 		acc(&dc.clientId) &&
-		acc(&dc.ioLock) &&
 		acc(&dc.io, 1/2)) &&
 	(state != Erroneous && state < IODistributed ==>
-		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
-		acc(&dc.ioLockDidRemoteReceive) && acc(&dc.ioLockCanLocalSend) &&
 		acc(&dc.io.localInFactT) && acc(&dc.io.remoteInFactT) &&
 		acc(&dc.io.localOutFactT) && acc(&dc.io.remoteOutFactT)) &&
 	(state >= Initialized ==>
@@ -348,14 +370,12 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 		ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState()) &&
 	(state == IODistributed ==>
 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
-		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
-		acc(&dc.io.localInFactT) && acc(&dc.io.remoteOutFactT) &&
-		acc(dc.ioLock.LockP()) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>)
+		acc(&dc.io.localInFactT) && acc(&dc.io.remoteOutFactT))
 }
 
 // `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
 // the handshake.
-pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
+pred (dc *recvDataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
 	dc != nil &&
 	acc(&dc.dataStream) &&
 	acc(&dc.hs.clientVersion) &&
@@ -378,7 +398,7 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 	acc(&dc.clientId) &&
 	dc.dataStream.Mem() &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
-	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc.rdc, _!> &&
 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
 	!dc.hs.skipped &&
 	dc.encryptionEnabled == assumeEncryptionEnabledForVerification() &&
@@ -424,7 +444,7 @@ pred (dc *dataChannel) MemRecv() {
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
 	acc(dc.hs.startReceivingChan.SendChannel(), _) &&
-	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.SendGivenPerm() == StartReceivingChanInv!<dc.rdc, _!> &&
 	dc.hs.startReceivingChan.SendGotPerm() == PredTrue!<!> &&
 	acc(&dc.dataStream, 1/2) &&
 	acc(&dc.hs.clientVersion, 1/2) &&
@@ -458,8 +478,12 @@ pred (dc *dataChannel) MemRecv() {
 	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>
 }
 
-pred (dc *dataChannel) Inv() {
-	dc.RecvRoutineMem()
+pred (rdc *recvDataChannel) Inv() {
+	rdc.RecvRoutineMem()
+}
+
+pred (rdc *recvDataChannel) RecvRoutineMem() {
+	true
 }
 
 pred (dc *dataChannel) RecvRoutineMem() {
@@ -469,30 +493,30 @@ pred (dc *dataChannel) RecvRoutineMem() {
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(dc.hs.startReceivingChan.RecvChannel(), _) &&
 	dc.hs.startReceivingChan.RecvGivenPerm() == PredTrue!<!> &&
-	dc.hs.startReceivingChan.RecvGotPerm() == StartReceivingChanInv!<dc, _!> &&
+	dc.hs.startReceivingChan.RecvGotPerm() == StartReceivingChanInv!<dc.rdc, _!> &&
 	acc(&dc.hs.responseChan, _) &&
 	acc(dc.hs.responseChan.SendChannel(), _) &&
 	dc.hs.responseChan.SendGivenPerm() == ResponseChanInv!<dc, _!> &&
 	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
 }
 
-pred StartReceivingChanInv(dc *dataChannel, payload MessageReceptionPayload) {
+pred StartReceivingChanInv(rdc *recvDataChannel, payload MessageReceptionPayload) {
 	(payload.status == ReceiveHandshakeResponeEncryptionEnabled ||
 		payload.status == ReceiveHandshakeResponeEncryptionDisabled ||
 		payload.status == ReceiveOtherResponse) &&
-	(payload.status == ReceiveHandshakeResponeEncryptionEnabled ==> dc.MemTransfer(HandshakeRequestSent, true)) &&
-	(payload.status == ReceiveHandshakeResponeEncryptionDisabled ==> dc.MemTransfer(HandshakeRequestSent, false) && !assumeEncryptionEnabledForVerification()) &&
+	(payload.status == ReceiveHandshakeResponeEncryptionEnabled ==> rdc.MemTransfer(HandshakeRequestSent, true)) &&
+	(payload.status == ReceiveHandshakeResponeEncryptionDisabled ==> rdc.MemTransfer(HandshakeRequestSent, false) && !assumeEncryptionEnabledForVerification()) &&
 	(payload.status == ReceiveOtherResponse ==>
-		dc.MemRecv() &&
+		rdc.MemRecv() &&
 		// TODO move the following conditions within MemRecv:
-		unfolding dc.MemRecv() in dc.dataChannelState == IODistributed && dc.hs.complete)
+		unfolding rdc.MemRecv() in rdc.dataChannelState == IODistributed && dc.hs.complete)
 }
 
-pred ResponseChanInv(dc *dataChannel, payload ResponseChanPayload) {
-	dc.MemTransfer(payload.state, payload.encryptionEnabled) &&
-	unfolding dc.MemTransfer(payload.state, payload.encryptionEnabled) in
-		(dc.hs.error == nil && payload.encryptionEnabled ==> payload.state == BlockCipherReady) &&
-		(dc.hs.error != nil ==> payload.state == Erroneous)
+pred ResponseChanInv(rdc *recvDataChannel, payload ResponseChanPayload) {
+	rdc.MemTransfer(payload.state, payload.encryptionEnabled) &&
+	unfolding rdc.MemTransfer(payload.state, payload.encryptionEnabled) in
+		(rdc.hs.error == nil && payload.encryptionEnabled ==> payload.state == BlockCipherReady) &&
+		(rdc.hs.error != nil ==> payload.state == Erroneous)
 }
 
 pred IoLockInv(dc *dataChannel, instanceId, clientId, agentLTKeyARN string) {
