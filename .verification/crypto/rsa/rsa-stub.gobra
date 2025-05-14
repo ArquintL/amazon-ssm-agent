@@ -17,6 +17,7 @@ pred (pk *PublicKey) Mem() {
     (pk.N != nil ==> pk.N.Mem())
 }
 
+ghost
 decreases _
 pure func (pk *PublicKey) Abs() by.Bytes
 

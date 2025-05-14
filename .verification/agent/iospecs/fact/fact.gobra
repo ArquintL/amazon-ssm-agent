@@ -7,7 +7,7 @@ import . "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 import . "github.com/aws/amazon-ssm-agent/agent/iospecs/fresh"
 
 
-type Fact domain {
+ghost type Fact domain {
     // tag 0
     func Setup_Agent(t1 Term, t2 Term, t3 Term, t4 Term, t5 Term, t6 Term, t7 Term) Fact
     func getSetup_Agent(f Fact) seq[Term]
