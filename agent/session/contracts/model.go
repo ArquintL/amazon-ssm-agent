@@ -577,7 +577,7 @@ type ProcessedClientAction struct {
 }
 
 /*@
-type ProcessedClientActionAdt adt {
+ghost type ProcessedClientActionAdt adt {
 	Action {
 		ActionType ActionType
 		ActionStatus ActionStatus

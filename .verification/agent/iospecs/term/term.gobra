@@ -6,7 +6,7 @@ import . "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 import . "github.com/aws/amazon-ssm-agent/agent/iospecs/fresh"
 
 
-type Term domain {
+ghost type Term domain {
     func freshTerm(f Fresh) Term
     func getFreshTerm(t Term) Fresh
     axiom  {

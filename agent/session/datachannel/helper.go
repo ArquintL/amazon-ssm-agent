@@ -158,7 +158,7 @@ func getSignAgentSharePayloadBytes(compressedPublic string, clientId string, log
 // @ ensures  handshakeResponse.Mem()
 // @ ensures  err == nil && abs.Abs(payload) == handshakeResponse.Abs()
 // @ ensures  err != nil ==> err.ErrorMem()
-func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeResponse *mgsContracts.HandshakeResponsePayload, err error) {
+func unmarshalHandshakeResponse(payload []byte /*@, ghost p perm @*/) (handshakeResponse *mgsContracts.HandshakeResponsePayload, err error) {
 	handshakeResponse = &mgsContracts.HandshakeResponsePayload{}
 	//@ fold handshakeResponse.Mem()
 	err = json.Unmarshal(payload, handshakeResponse /*@, p/2 @*/)
@@ -171,7 +171,7 @@ func unmarshalHandshakeResponse(payload []byte /*@, p perm @*/) (handshakeRespon
 // @ ensures  secureSessionResponse.Mem()
 // @ ensures  err == nil && abs.Abs(payload) == secureSessionResponse.Abs()
 // @ ensures  err != nil ==> err.ErrorMem()
-func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessionResponse *mgsContracts.SecureSessionResponse, err error) {
+func unmarshalSecureSessionResponse(payload []byte /*@, ghost p perm @*/) (secureSessionResponse *mgsContracts.SecureSessionResponse, err error) {
 	secureSessionResponse = &mgsContracts.SecureSessionResponse{}
 	//@ fold secureSessionResponse.Mem()
 	err = json.Unmarshal(payload, secureSessionResponse /*@, p/2 @*/)
@@ -188,7 +188,7 @@ func unmarshalSecureSessionResponse(payload []byte /*@, p perm @*/) (secureSessi
 // @ ensures err == nil ==> by.msgB(clientShare) == by.expB(by.generatorB(), privB)
 // @ ensures err == nil ==> abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), privB), abs.Abs(agentSecret))
 // @ ensures err != nil ==> err.ErrorMem()
-func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, p perm @*/) (sharedSecret []byte, err error /*@, privB by.Bytes @*/) {
+func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, ghost p perm @*/) (sharedSecret []byte, err error /*@, ghost privB by.Bytes @*/) {
 	var clientShareBytes []byte
 	clientShareBytes, err = base64.StdEncoding.DecodeString(clientShare)
 	if err != nil {

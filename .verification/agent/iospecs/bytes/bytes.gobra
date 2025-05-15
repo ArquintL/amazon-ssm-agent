@@ -7,7 +7,7 @@ import (
     . "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 )
 
-type Bytes domain {
+ghost type Bytes domain {
     // constructors
     func pairB(b1, b2 Bytes) Bytes
     func tuple3B(b1, b2, b3 Bytes) Bytes
@@ -62,7 +62,7 @@ type Bytes domain {
     }
 }
 
-type Gamma domain {
+ghost type Gamma domain {
     func gamma(Term) Bytes
 
     func oneTerm(Bytes) Term

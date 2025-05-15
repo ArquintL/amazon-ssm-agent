@@ -5,7 +5,7 @@ package claim
 import . "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 
 
-type Claim domain {
+ghost type Claim domain {
     func AgentStarted() Claim
     func getAgentStarted(f Claim) seq[Term]
     axiom  {
