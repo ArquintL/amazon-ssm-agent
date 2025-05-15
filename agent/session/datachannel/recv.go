@@ -33,7 +33,7 @@ import (
 // @ requires  streamDataMessage.Mem()
 // @ preserves dc.RecvRoutineMem()
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
+func (dc *internalDataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.AgentMessage) (err error) {
 
 	payload, err := dc.tryReceiveMessageReceptionStatus(channelStatusTimeout)
 	if err != nil {
@@ -188,7 +188,7 @@ func (dc *dataChannel) processStreamDataMessage(streamDataMessage *mgsContracts.
 // @ preserves  streamDataMessage.Mem()
 // @ ensures  by.gamma(dc.io.remoteInFactT) == streamDataMessage.Abs()
 // @ ensures  dc.ioLockDidRemoteReceive
-func (dc *dataChannel) performRemoteReceive(instanceId, clientId, agentLTKeyARN string, streamDataMessage *mgsContracts.AgentMessage) {
+func (dc *internalDataChannel) performRemoteReceive(instanceId, clientId, agentLTKeyARN string, streamDataMessage *mgsContracts.AgentMessage) {
 	// @ unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
 
 	// @ t0 := dc.io.getToken()
@@ -221,7 +221,7 @@ preserves IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
 preserves acc(&dc.io.localOutFactT, 1/2) && acc(&dc.ioLockCanLocalSend, 1/2)
 ensures  acc(&dc.ioLockDidRemoteReceive, 1/2)
 ensures  dc.ioLockCanLocalSend && by.gamma(dc.io.localOutFactT) == by.pairB(by.gamma(tm.pubTerm(pub.const_Message_pub())), plaintextB)
-func (dc *dataChannel) performTransition_10(instanceId, clientId, agentLTKeyARN string, plaintextB by.Bytes) {
+func (dc *internalDataChannel) performTransition_10(instanceId, clientId, agentLTKeyARN string, plaintextB by.Bytes) {
 	unfold IoLockInv!<dc, instanceId, clientId, agentLTKeyARN!>()
 	t0 := dc.io.getToken()
 	s0 := dc.io.getAbsState()
@@ -265,7 +265,7 @@ func (dc *dataChannel) performTransition_10(instanceId, clientId, agentLTKeyARN 
 
 // @ requires dc.MemRecv() && unfolding acc(dc.MemRecv(), _) in dc.dataChannelState == IODistributed && dc.hs.complete
 // @ preserves dc.RecvRoutineMem()
-func (dc *dataChannel) resendReceiveOtherResponse() {
+func (dc *internalDataChannel) resendReceiveOtherResponse() {
 	//@ unfold acc(dc.MemRecv(), 1/2)
 	//@ unfold dc.RecvRoutineMem()
 	//@ fold acc(dc.MemRecv(), 1/2)

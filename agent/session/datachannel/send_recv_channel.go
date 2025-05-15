@@ -28,7 +28,7 @@ import (
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (res MessageReceptionPayload, err error) {
+func (dc *internalDataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (res MessageReceptionPayload, err error) {
 	var ok bool
 	select {
 	case res, ok = <-dc.hs.startReceivingChan:
@@ -50,7 +50,7 @@ func (dc *dataChannel) tryReceiveMessageReceptionStatus(timeout time.Duration) (
 // @ ensures  responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!>
 // @ ensures  err == nil ==> ResponseChanInv!<dc, _!>(payload)
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveResponse(responseChan chan ResponseChanPayload, timeout time.Duration) (payload ResponseChanPayload, err error) {
+func (dc *internalDataChannel) tryReceiveResponse(responseChan chan ResponseChanPayload, timeout time.Duration) (payload ResponseChanPayload, err error) {
 	var ok bool
 	select {
 	case payload, ok = <-responseChan:
@@ -78,7 +78,7 @@ decreases _
 preserves dc.RecvRoutineMem()
 ensures  err == nil ==> StartReceivingChanInv!<dc, _!>(res)
 ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Duration) (res MessageReceptionPayload, err error) {
+func (dc *internalDataChannel) tryReceiveMessageReceptionStatusModel(timeout time.Duration) (res MessageReceptionPayload, err error) {
 	if nonDeterministicChoice() {
 		unfold dc.RecvRoutineMem()
 		fold PredTrue!<!>()
@@ -105,7 +105,7 @@ preserves responseChan.RecvGivenPerm() == PredTrue!<!>
 preserves responseChan.RecvGotPerm() == ResponseChanInv!<dc, _!>
 ensures  err == nil ==> ResponseChanInv!<dc, _!>(payload)
 ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) tryReceiveResponseModelAlt(responseChan chan ResponseChanPayload, timeout time.Duration, ghost p perm) (payload ResponseChanPayload, err error) {
+func (dc *internalDataChannel) tryReceiveResponseModelAlt(responseChan chan ResponseChanPayload, timeout time.Duration, ghost p perm) (payload ResponseChanPayload, err error) {
 	if nonDeterministicChoice() {
 		fold PredTrue!<!>()
 		var ok bool

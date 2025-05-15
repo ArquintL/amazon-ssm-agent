@@ -34,7 +34,7 @@ import (
 // @ ensures err == nil ==> payload.Mem() && payload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
 // @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
+func (dc *internalDataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
 	clientVersion, err := dc.getClientVersion()
 	if err != nil {
 		return
@@ -87,7 +87,7 @@ func (dc *dataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgs
 // @ ensures dc.Mem()
 // @ ensures err == nil ==> dc.getState() == HandshakeCompleted && dc.isHandshakeCompleted()
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
+func (dc *internalDataChannel) sendHandshakeComplete(log logger.T, handshakeCompletePayload *mgsContracts.HandshakeCompletePayload) (err error) {
 	handshakeCompletePayloadBytes, err := marshalHandshakeComplete(handshakeCompletePayload /*@, perm(1/2) @*/)
 	if err != nil {
 		return fmtErrorSerializeHandshakeComplete(handshakeCompletePayload, err /*@, perm(1/1) @*/)

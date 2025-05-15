@@ -49,61 +49,61 @@ const (
 
 type IDataChannel interface {
 
-	// @ pred Mem()
+	// @ pred Inv()
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
 	// @ ensures   err != nil ==> err.ErrorMem()
 	SendStreamDataMessage(log logger.T, dataType mgsContracts.PayloadType, inputData []byte) (err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ ensures   err != nil ==> err.ErrorMem()
 	SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ ensures   err != nil ==> err.ErrorMem()
 	SkipHandshake(log logger.T) (err error)
 
 	// @ requires  encryptionEnabled == assumeEncryptionEnabledForVerification()
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ preserves sessionTypeRequest.Mem()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	PerformHandshake(log logger.T, kmsKeyId string, encryptionEnabled bool, sessionTypeRequest mgsContracts.SessionTypeRequest) (err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	GetClientVersion() (version string, err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	GetInstanceId() (instanceId string, err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	GetRegion() (region string, err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	IsActive() (isActive bool, err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures   err != nil ==> err.ErrorMem()
 	GetSeparateOutputPayload() (res bool, err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ ensures  err != nil ==> err.ErrorMem()
 	SetSeparateOutputPayload(separateOutputPayload bool) (err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ ensures   err != nil ==> err.ErrorMem()
 	PrepareToCloseChannel(log logger.T) (err error)
 
-	// @ preserves Mem()
+	// @ preserves Inv()
 	// @ preserves log != nil ==> acc(log.Mem(), _)
 	// @ ensures   err != nil ==> err.ErrorMem()
 	Close(log logger.T) (err error)
@@ -131,12 +131,12 @@ const (
 type InputStreamMessageHandler = func(streamDataMessage *mgsContracts.AgentMessage /*@, ghost t pl.Place, ghost rid tm.Term, ghost agentMessageT tm.Term @*/) error
 
 /** wrapper struct for the public interface of this package */
-type newDataChannel struct {
-	idc *dataChannel
+type dataChannel struct {
+	idc *internalDataChannel
 }
 
-// dataChannel used for session communication between the message gateway service and the agent.
-type dataChannel struct {
+// internalDataChannel used for session communication between the message gateway service and the agent.
+type internalDataChannel struct {
 	//dataChannelState keeps track of the data channel's state such that calls violating the implicit state machine transitions can be rejected
 	dataChannelState DataChannelState
 	//dataStream handles low-level communication incl. retransmitting and acknowledging messages
@@ -238,46 +238,46 @@ type handshake struct {
 }
 
 // @ decreases
-// @ requires acc(dc.Mem(), _)
+// @ requires acc(dc.Inv(), _)
 // @ pure
-func (dc *newDataChannel) getState() DataChannelState {
-	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.idc.getState()
+func (dc *dataChannel) getState() DataChannelState {
+	return /*@ unfolding acc(dc.Inv(), _) in @*/ dc.idc.getState()
 }
 
 // @ decreases
 // @ requires acc(dc.Mem(), _)
 // @ pure
-func (dc *dataChannel) getState() DataChannelState {
+func (dc *internalDataChannel) getState() DataChannelState {
 	return /*@ unfolding acc(dc.Mem(), _) in @*/ dc.dataChannelState
 }
 
 // @ decreases
 // @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
 // @ pure
-func (dc *dataChannel) isHandshakeCompleted() bool {
+func (dc *internalDataChannel) isHandshakeCompleted() bool {
 	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.hs.complete
 }
 
 // @ decreases
 // @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
 // @ pure
-func (dc *dataChannel) getAgentLTKeyARN() string {
+func (dc *internalDataChannel) getAgentLTKeyARN() string {
 	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.secrets.agentLTKeyARN
 }
 
 // @ decreases
 // @ requires acc(dc.Mem(), _) && dc.getState() != Erroneous
 // @ pure
-func (dc *dataChannel) getLogReaderId() string {
+func (dc *internalDataChannel) getLogReaderId() string {
 	return /*@ unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in @*/ dc.logReaderId
 }
 
 /*@
-pred (dc *newDataChannel) Mem() {
+pred (dc *dataChannel) Inv() {
 	acc(dc) && dc.idc.Mem()
 }
 
-pred (dc *dataChannel) Mem() {
+pred (dc *internalDataChannel) Mem() {
 	dc != nil &&
 	acc(&dc.dataChannelState, 1/2) &&
 	(dc.dataChannelState != IODistributed ==>
@@ -286,11 +286,11 @@ pred (dc *dataChannel) Mem() {
 }
 
 // due to an incompleteness, we need this indirection
-pred (dc *dataChannel) MemChannelState() {
+pred (dc *internalDataChannel) MemChannelState() {
 	acc(&dc.dataChannelState)
 }
 
-pred (dc *dataChannel) MemInternal(state DataChannelState) {
+pred (dc *internalDataChannel) MemInternal(state DataChannelState) {
 	dc != nil &&
 	acc(&dc.hs.startReceivingChan, _) &&
 	acc(&dc.hs.responseChan, _) &&
@@ -374,7 +374,7 @@ pred (dc *dataChannel) MemInternal(state DataChannelState) {
 
 // `MemTransfer` is the predicate that is passed to the go routine handling the incoming message during
 // the handshake.
-pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
+pred (dc *internalDataChannel) MemTransfer(state DataChannelState, encryptionEnabled bool) {
 	dc != nil &&
 	acc(&dc.dataStream) &&
 	acc(&dc.hs.clientVersion) &&
@@ -435,7 +435,7 @@ pred (dc *dataChannel) MemTransfer(state DataChannelState, encryptionEnabled boo
 }
 
 // `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
-pred (dc *dataChannel) MemRecv() {
+pred (dc *internalDataChannel) MemRecv() {
 	dc != nil &&
 	acc(&dc.dataChannelState, 1/2) &&
 	dc.dataChannelState == IODistributed &&
@@ -477,11 +477,11 @@ pred (dc *dataChannel) MemRecv() {
 	acc(dc.ioLock.LockP(), 1/2) && dc.ioLock.LockInv() == IoLockInv!<dc, dc.instanceId, dc.clientId, dc.secrets.agentLTKeyARN!>
 }
 
-pred (dc *dataChannel) Inv() {
+pred (dc *internalDataChannel) Inv() {
 	dc.RecvRoutineMem()
 }
 
-pred (dc *dataChannel) RecvRoutineMem() {
+pred (dc *internalDataChannel) RecvRoutineMem() {
 	dc != nil &&
 	acc(&dc.inputStreamMessageHandler) &&
 	dc.inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{} &&
@@ -495,7 +495,7 @@ pred (dc *dataChannel) RecvRoutineMem() {
 	dc.hs.responseChan.SendGotPerm() == PredTrue!<!>
 }
 
-pred StartReceivingChanInv(dc *dataChannel, payload MessageReceptionPayload) {
+pred StartReceivingChanInv(dc *internalDataChannel, payload MessageReceptionPayload) {
 	(payload.status == ReceiveHandshakeResponeEncryptionEnabled ||
 		payload.status == ReceiveHandshakeResponeEncryptionDisabled ||
 		payload.status == ReceiveOtherResponse) &&
@@ -507,14 +507,14 @@ pred StartReceivingChanInv(dc *dataChannel, payload MessageReceptionPayload) {
 		unfolding dc.MemRecv() in dc.dataChannelState == IODistributed && dc.hs.complete)
 }
 
-pred ResponseChanInv(dc *dataChannel, payload ResponseChanPayload) {
+pred ResponseChanInv(dc *internalDataChannel, payload ResponseChanPayload) {
 	dc.MemTransfer(payload.state, payload.encryptionEnabled) &&
 	unfolding dc.MemTransfer(payload.state, payload.encryptionEnabled) in
 		(dc.hs.error == nil && payload.encryptionEnabled ==> payload.state == BlockCipherReady) &&
 		(dc.hs.error != nil ==> payload.state == Erroneous)
 }
 
-pred IoLockInv(dc *dataChannel, instanceId, clientId, agentLTKeyARN string) {
+pred IoLockInv(dc *internalDataChannel, instanceId, clientId, agentLTKeyARN string) {
 	acc(&dc.io, 1/4) &&
 	acc(dc.io.IoSpecMemPartial(), 1/4) &&
 	acc(&dc.ioLockDidLocalReceive, 1/2) &&
@@ -577,7 +577,7 @@ pure func (io gpointer[ioSpecFields]) getRid() tm.Term {
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
-pure func (dc *dataChannel) GetRid() tm.Term {
+pure func (dc *internalDataChannel) GetRid() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getRid()
 }
 
@@ -591,7 +591,7 @@ pure func (io gpointer[ioSpecFields]) getAbsState() mset[ft.Fact] {
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized && dc.getState() < IODistributed
-pure func (dc *dataChannel) GetAbsState() mset[ft.Fact] {
+pure func (dc *internalDataChannel) GetAbsState() mset[ft.Fact] {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAbsState()
 }
 
@@ -640,7 +640,7 @@ pure func (io gpointer[ioSpecFields]) getAgentShareT() tm.Term {
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
-pure func (dc *dataChannel) GetAgentShareT() tm.Term {
+pure func (dc *internalDataChannel) GetAgentShareT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAgentShareT()
 }
 
@@ -654,7 +654,7 @@ pure func (io gpointer[ioSpecFields]) getAgentShareSignatureT() tm.Term {
 ghost
 decreases _
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
-pure func (dc *dataChannel) GetAgentShareSignatureT() tm.Term {
+pure func (dc *internalDataChannel) GetAgentShareSignatureT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getAgentShareSignatureT()
 }
 
@@ -668,7 +668,7 @@ pure func (io gpointer[ioSpecFields]) getInFactT() tm.Term {
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= Initialized
-pure func (dc *dataChannel) GetInFactT() tm.Term {
+pure func (dc *internalDataChannel) GetInFactT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.getInFactT()
 }
 
@@ -710,21 +710,21 @@ pure func (io gpointer[ioSpecFields]) getSigSessionKeysT() tm.Term {
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() >= BlockCipherInitialized
-pure func (dc *dataChannel) GetEncKeyT() tm.Term {
+pure func (dc *internalDataChannel) GetEncKeyT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.blockCipher.GetEncKeyT()
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() != Erroneous && dc.getState() <= IODistributed
-pure func (dc *dataChannel) GetIoLockCanRemoteSend() bool {
+pure func (dc *internalDataChannel) GetIoLockCanRemoteSend() bool {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.ioLockCanRemoteSend
 }
 
 ghost
 decreases
 requires acc(dc.Mem(), _) && dc.getState() != Erroneous && dc.getState() <= IODistributed
-pure func (dc *dataChannel) GetRemoteOutFactT() tm.Term {
+pure func (dc *internalDataChannel) GetRemoteOutFactT() tm.Term {
 	return unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.io.remoteOutFactT
 }
 

@@ -407,10 +407,10 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 	return
 }
 
-// @ preserves dc != nil ==> dc.Mem()
+// @ preserves dc != nil ==> dc.Inv()
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *newDataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
+func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
 	if dc == nil || log == nil {
 		return fmtErrorNil()
 	}
@@ -420,7 +420,7 @@ func (dc *newDataChannel) SendAgentSessionStateMessage(log logger.T, sessionStat
 	}
 
 	//@ ghost state := dc.getState()
-	//@ unfold dc.Mem()
+	//@ unfold dc.Inv()
 	//@ unfold dc.idc.Mem()
 	//@ unfold acc(dc.idc.MemInternal(state), 1/4)
 
@@ -436,7 +436,7 @@ func (dc *newDataChannel) SendAgentSessionStateMessage(log logger.T, sessionStat
 		logErrorf(log, "Cannot serialize AgentSessionState message err", err /*@, perm(1/1) @*/)
 		//@ fold acc(dc.idc.MemInternal(state), 1/4)
 		//@ fold dc.idc.Mem()
-		//@ fold dc.Mem()
+		//@ fold dc.Inv()
 		return err
 	}
 
@@ -445,13 +445,13 @@ func (dc *newDataChannel) SendAgentSessionStateMessage(log logger.T, sessionStat
 	if err := dc.idc.dataStream.SendAgentMessage(log, mgsContracts.AgentSessionState, agentSessionStateContentBytes /*@, perm(1/4) @*/); err != nil {
 		//@ fold acc(dc.idc.MemInternal(state), 1/4)
 		//@ fold dc.idc.Mem()
-		//@ fold dc.Mem()
+		//@ fold dc.Inv()
 		return err
 	}
 
 	//@ fold acc(dc.idc.MemInternal(state), 1/4)
 	//@ fold dc.idc.Mem()
-	//@ fold dc.Mem()
+	//@ fold dc.Inv()
 	return nil
 }
 

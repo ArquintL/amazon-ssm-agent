@@ -33,8 +33,8 @@ import (
 // @ requires context != nil ==> acc(context.Mem(), _)
 // @ requires cancelFlag != nil ==> acc(cancelFlag.Mem(), _)
 // @ requires inputStreamMessageHandler implements iosanitization.StreamDataHandlerSpec{}
-// @ ensures  res.Mem() && typeOf(res) == *newDataChannel
-// @ ensures  err == nil ==> res.(*newDataChannel).getState() == Initialized
+// @ ensures  res.Inv() && typeOf(res) == *dataChannel
+// @ ensures  err == nil ==> res.(*dataChannel).getState() == Initialized
 func NewDataChannel(context contextPkg.T,
 	channelId string,
 	clientId string,
@@ -47,7 +47,7 @@ func NewDataChannel(context contextPkg.T,
 	//@ t0, rid := arb.GetArbPlace(), arb.GetArbTerm()
 	//@ inhale pl.token(t0) && iospec.P_Agent(t0, rid, mset[ft.Fact]{})
 
-	tmp /*@ @ @*/ := dataChannel{}
+	tmp /*@ @ @*/ := internalDataChannel{}
 	idc := &tmp
 	cl :=
 		// @ requires  msg != nil ==> msg.Mem()
@@ -93,17 +93,17 @@ func NewDataChannel(context contextPkg.T,
 		cl,
 		cancelFlag,
 		/*@ idc @*/)
-	dc := &newDataChannel{idc}
+	dc := &dataChannel{idc}
 	if err != nil {
 		// we return a non-nil dc such that we can ensure `dc.Mem()`
 		// independent of `err`. However, clients should check whether
 		// `err` is nil.
-		//@ fold dc.Mem()
+		//@ fold dc.Inv()
 		return dc, fmtErrorf("failed to create data stream with error", err /*@, perm(1/2) @*/)
 	}
 
 	err = idc.initialize(dataStream)
-	//@ fold dc.Mem()
+	//@ fold dc.Inv()
 	if err != nil {
 		return dc, err
 	}
@@ -116,7 +116,7 @@ func NewDataChannel(context contextPkg.T,
 // @ requires acc(&dc.io, 1/2) && dc.io.IoSpecMemMain() && dc.io.IoSpecMemPartial() && pl.token(dc.io.getToken()) && iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState())
 // @ ensures  dc.Mem()
 // @ ensures  err == nil ==> dc.getState() == Initialized
-func (dc *dataChannel) initialize(dataStream *datastream.DataStream) (err error) {
+func (dc *internalDataChannel) initialize(dataStream *datastream.DataStream) (err error) {
 	// @ unfold dc.Mem()
 	// @ unfold dc.MemInternal(Uninitialized)
 	dc.dataStream = dataStream

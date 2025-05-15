@@ -32,11 +32,11 @@ import (
 
 // SendStreamDataMessage sends a data message in a form of AgentMessage for streaming.
 // Requires that the handshake is either complete or skipped
-// @ preserves dc != nil ==> dc.Mem()
+// @ preserves dc != nil ==> dc.Inv()
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ preserves inputData != nil ==> bytes.SliceMem(inputData)
 // @ ensures   err != nil ==> err.ErrorMem()
-func (dc *newDataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
+func (dc *dataChannel) SendStreamDataMessage(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte) (err error) {
 	if dc == nil || log == nil || inputData == nil {
 		return fmtErrorNil()
 	}
@@ -48,7 +48,7 @@ func (dc *newDataChannel) SendStreamDataMessage(log logger.T, payloadType mgsCon
 		return fmtErrorfPayloadType("Rejecting stream data message as it would otherwise be sent in plaintext, payload type", payloadType)
 	}
 
-	//@ unfold dc.Mem()
+	//@ unfold dc.Inv()
 	idc := dc.idc
 	//@ unfold idc.Mem()
 	//@ unfold acc(idc.MemInternal(IODistributed), 1/2)
@@ -134,7 +134,7 @@ func (dc *newDataChannel) SendStreamDataMessage(log logger.T, payloadType mgsCon
 	//@ fold idc.Mem()
 
 	err = idc.sendData(log, payloadType, inputData /*@, inputDataT, true, true @*/)
-	//@ fold dc.Mem()
+	//@ fold dc.Inv()
 	return
 }
 
@@ -155,7 +155,7 @@ func (dc *newDataChannel) SendStreamDataMessage(log logger.T, payloadType mgsCon
 // @ ensures dc.Mem() && dc.getState() == old(dc.getState())
 // @ ensures old(unfolding dc.Mem() in unfolding acc(dc.MemInternal(dc.dataChannelState), 1/2) in dc.encryptionEnabled) && requiresEncryption ==> bytes.SliceMem(inputData)
 // @ ensures err != nil ==> err.ErrorMem()
-func (dc *dataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
+func (dc *internalDataChannel) sendData(log logger.T, payloadType mgsContracts.PayloadType, inputData []byte /*@, ghost inputDataT tm.Term, ghost requiresEncryption bool, ghost requiresLock bool @*/) (err error) {
 	// @ ghost state := dc.getState()
 	// @ unfold dc.Mem()
 	// @ unfold acc(dc.MemInternal(state), 1/2)

@@ -41,7 +41,7 @@ import (
 // @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
 // @ ensures  err == nil && encryptionRequested ==> payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.GetAgentShareT())), by.gamma(dc.GetAgentShareSignatureT()), by.msgB(dc.getAgentLTKeyARN()), by.msgB(dc.getLogReaderId())))
 // @ ensures  err != nil ==> err.ErrorMem() && request.Mem()
-func (dc *dataChannel) buildHandshakeRequestPayload(log logger.T,
+func (dc *internalDataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
 	request mgsContracts.SessionTypeRequest) (payload *mgsContracts.HandshakeRequestPayload, err error) {
 
@@ -167,7 +167,7 @@ ensures  iospec.e_In_KMS(t2, rid) && t3 == iospec.get_e_In_KMS_placeDst(t2, rid)
 ensures  ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) in s3
 ensures  ft.In_KMS_Agent(rid, iospec.get_e_In_KMS_r1(t2, rid), iospec.get_e_In_KMS_r2(t2, rid), iospec.get_e_In_KMS_r3(t2, rid), iospec.get_e_In_KMS_r4(t2, rid)) in s3
 ensures  m == ut.tuple5(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), dc.io.getReaderIdT(), dc.io.getClientIdT())
-func (dc *dataChannel) performTransitions_0_12_15(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string) (t1, t2, t3 pl.Place, s3 mset[ft.Fact], m tm.Term) {
+func (dc *internalDataChannel) performTransitions_0_12_15(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string) (t1, t2, t3 pl.Place, s3 mset[ft.Fact], m tm.Term) {
 	agentIdT := dc.io.getAgentIdT()
 	kmsIdT := dc.io.getKMSIdT()
 	clientIdT := dc.io.getClientIdT()
@@ -216,7 +216,7 @@ requires ft.In_KMS_Agent(rid, dc.io.getKMSIdT(), dc.io.getAgentIdT(), rid, tm.pa
 ensures  acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
 ensures  pl.token(t1) && iospec.P_Agent(t1, rid, s1)
 ensures  ft.St_Agent_2(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT, signatureT) in s1
-func (dc *dataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string, signatureT tm.Term) (t1 pl.Place, s1 mset[ft.Fact]) {
+func (dc *internalDataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string, signatureT tm.Term) (t1 pl.Place, s1 mset[ft.Fact]) {
 	agentIdT := dc.io.getAgentIdT()
 	kmsIdT := dc.io.getKMSIdT()
 	clientIdT := dc.io.getClientIdT()
@@ -253,7 +253,7 @@ func (dc *dataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.
 // @ ensures  dc.Mem() && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
 // @ ensures  err == nil ==> dc.getState() == HandshakeRequestSent
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost request mgsContracts.SessionTypeRequest @*/) (err error) {
+func (dc *internalDataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost request mgsContracts.SessionTypeRequest @*/) (err error) {
 	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {

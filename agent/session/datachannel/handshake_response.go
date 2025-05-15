@@ -39,7 +39,7 @@ import (
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  streamDataMessage.Mem()
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) (err error) {
+func (dc *internalDataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.AgentMessage, encryptionEnabled bool) (err error) {
 	//@ unfold streamDataMessage.Mem()
 	handshakeResponse, err := unmarshalHandshakeResponse(streamDataMessage.Payload /*@, perm(1/2) @*/)
 	//@ fold streamDataMessage.Mem()
@@ -145,7 +145,7 @@ func (dc *dataChannel) handleHandshakeResponse(streamDataMessage *mgsContracts.A
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
-func (dc *dataChannel) processSecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
+func (dc *internalDataChannel) processSecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
 	state, err = dc.verifySecureSessionResponse(action)
 	if err != nil {
 		state = Erroneous
@@ -166,7 +166,7 @@ func (dc *dataChannel) processSecureSessionResponse(action *mgsContracts.Process
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
 // @ ensures  err == nil ==> state == HandshakeResponseVerified
 // @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
-func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
+func (dc *internalDataChannel) verifySecureSessionResponse(action *mgsContracts.ProcessedClientAction) (state DataChannelState, err error) {
 	state = HandshakeRequestSent
 	//@ unfold acc(action.Mem(), 1/8)
 	resp, err := unmarshalSecureSessionResponse(action.ActionResult /*@, perm(1/16) @*/)
@@ -346,7 +346,7 @@ func (dc *dataChannel) verifySecureSessionResponse(action *mgsContracts.Processe
 // @ ensures  dc.MemTransfer(state, true)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
-func (dc *dataChannel) completeSecureSessionResponseProcessing() (state DataChannelState, err error) {
+func (dc *internalDataChannel) completeSecureSessionResponseProcessing() (state DataChannelState, err error) {
 	state = HandshakeResponseVerified
 	//@ unfold dc.MemTransfer(state, true)
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
