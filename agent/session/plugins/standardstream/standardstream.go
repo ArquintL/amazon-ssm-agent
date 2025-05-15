@@ -38,6 +38,11 @@ func (p *StandardStreamPlugin) GetPluginParameters(parameters interface{}) inter
 	return nil
 }
 
+// StandardStreamPlugin plugin does not require a special data channel constructor
+func (p *StandardStreamPlugin) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	return nil
+}
+
 // StandardStream plugin doesn't require handshake to establish session
 func (p *StandardStreamPlugin) RequireHandshake() bool {
 	return false

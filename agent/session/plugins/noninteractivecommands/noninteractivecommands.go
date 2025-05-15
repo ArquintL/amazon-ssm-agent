@@ -38,6 +38,11 @@ func (p *NonInteractiveCommandsPlugin) GetPluginParameters(parameters interface{
 	return p.sessionPlugin.GetPluginParameters(parameters)
 }
 
+// NonInteractiveCommandsPlugin plugin does not require a special data channel constructor
+func (p *NonInteractiveCommandsPlugin) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	return nil
+}
+
 // Override as NonInteractiveCommandsPlugin plugin requires handshake to establish session
 func (p *NonInteractiveCommandsPlugin) RequireHandshake() bool {
 	return true

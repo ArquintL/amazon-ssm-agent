@@ -67,7 +67,7 @@ type PortTestSuite struct {
 // Testing initializeParameters
 func TestInitializeParametersWhenPortTypeIsNil(t *testing.T) {
 	mockDataChannel := &dataChannelMock.IDataChannel{}
-	mockDataChannel.On("GetClientVersion").Return(clientVersion)
+	mockDataChannel.On("GetClientVersion").Return(clientVersion, nil)
 
 	portPlugin := &PortPlugin{
 		context:     context.NewMockDefault(),
@@ -84,7 +84,7 @@ func TestInitializeParametersWhenPortTypeIsNil(t *testing.T) {
 
 func TestInitializeParametersWhenPortTypeIsLocalPortForwarding(t *testing.T) {
 	mockDataChannel := &dataChannelMock.IDataChannel{}
-	mockDataChannel.On("GetClientVersion").Return(clientVersion)
+	mockDataChannel.On("GetClientVersion").Return(clientVersion, nil)
 
 	portPlugin := &PortPlugin{
 		context:     context.NewMockDefault(),
@@ -101,7 +101,7 @@ func TestInitializeParametersWhenPortTypeIsLocalPortForwarding(t *testing.T) {
 
 func TestInitializeParametersWhenPortTypeIsLocalPortForwardingAndOldClient(t *testing.T) {
 	mockDataChannel := &dataChannelMock.IDataChannel{}
-	mockDataChannel.On("GetClientVersion").Return("1.0.0")
+	mockDataChannel.On("GetClientVersion").Return("1.0.0", nil)
 
 	portPlugin := &PortPlugin{
 		context:     context.NewMockDefault(),
@@ -118,7 +118,7 @@ func TestInitializeParametersWhenPortTypeIsLocalPortForwardingAndOldClient(t *te
 
 func TestInitializeParametersWhenHostIsProvided(t *testing.T) {
 	mockDataChannel := &dataChannelMock.IDataChannel{}
-	mockDataChannel.On("GetClientVersion").Return(clientVersion)
+	mockDataChannel.On("GetClientVersion").Return(clientVersion, nil)
 
 	portPlugin := &PortPlugin{
 		context:     context.NewMockDefault(),
@@ -246,7 +246,7 @@ func (suite *PortTestSuite) TestExecuteWhenInitializeSessionReturnsError() {
 	suite.mockIohandler.On("SetStatus", contracts.ResultStatusFailed).Return(nil)
 	suite.mockIohandler.On("SetExitCode", 1).Return(nil)
 	suite.mockIohandler.On("SetOutput", mock.Anything).Return()
-	suite.mockDataChannel.On("GetClientVersion").Return(clientVersion)
+	suite.mockDataChannel.On("GetClientVersion").Return(clientVersion, nil)
 
 	GetSession = func(context context.T, parameters PortParameters, cancelled chan struct{}, clientVersion string, sessionId string) (IPortSession, error) {
 		return nil, errors.New("failed to initialize session")
@@ -268,7 +268,7 @@ func (suite *PortTestSuite) TestExecute() {
 	suite.mockCancelFlag.On("Wait").Return(task.Completed)
 	suite.mockIohandler.On("SetExitCode", 0).Return(nil)
 	suite.mockIohandler.On("SetStatus", contracts.ResultStatusSuccess).Return()
-	suite.mockDataChannel.On("GetClientVersion").Return(clientVersion)
+	suite.mockDataChannel.On("GetClientVersion").Return(clientVersion, nil)
 	suite.mockPortSession.On("InitializeSession", mock.Anything).Return(nil)
 	suite.mockPortSession.On("WritePump", suite.mockDataChannel).WaitUntil(time.After(time.Second)).Return(0)
 	suite.mockPortSession.On("Stop").Return()

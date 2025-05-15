@@ -38,6 +38,11 @@ func (p *InteractiveCommandsPlugin) GetPluginParameters(parameters interface{}) 
 	return p.sessionPlugin.GetPluginParameters(parameters)
 }
 
+// InteractiveCommands plugin does not require a special data channel constructor
+func (p *InteractiveCommandsPlugin) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	return nil
+}
+
 // InteractiveCommands plugin doesn't require handshake to establish session
 func (p *InteractiveCommandsPlugin) RequireHandshake() bool {
 	return p.sessionPlugin.RequireHandshake()

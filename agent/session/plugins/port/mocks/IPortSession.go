@@ -3,7 +3,7 @@ package mocks
 
 import (
 	contracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	datachannel "github.com/aws/amazon-ssm-agent/agent/session/datachannel"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -61,11 +61,11 @@ func (_m *IPortSession) Stop() {
 }
 
 // WritePump provides a mock function with given fields: _a0, channel
-func (_m *IPortSession) WritePump(channel datachannel.IDataChannel) int {
+func (_m *IPortSession) WritePump(channel chan plgCommon.ChannelMessage) int {
 	ret := _m.Called(channel)
 
 	var r0 int
-	if rf, ok := ret.Get(0).(func(datachannel.IDataChannel) int); ok {
+	if rf, ok := ret.Get(0).(func(chan plgCommon.ChannelMessage) int); ok {
 		r0 = rf(channel)
 	} else {
 		r0 = ret.Get(0).(int)

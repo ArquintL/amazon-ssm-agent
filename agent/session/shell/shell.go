@@ -44,27 +44,35 @@ import (
 	mgsConfig "github.com/aws/amazon-ssm-agent/agent/session/config"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 	"github.com/aws/amazon-ssm-agent/agent/session/shell/constants"
 	"github.com/aws/amazon-ssm-agent/agent/session/shell/execcmd"
 	"github.com/aws/amazon-ssm-agent/agent/task"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 )
 
+type GetCommandExecutorFn = func(log log.T,
+	shellProps mgsContracts.ShellProperties,
+	isSessionLogger bool,
+	config agentContracts.Configuration,
+	plugin *ShellPlugin) (err error)
+
 // Plugin is the type for the plugin.
 type ShellPlugin struct {
-	context        context.T
-	name           string
-	stdin          *os.File
-	stdout         *os.File
-	stdoutPipe     io.Reader
-	stderrPipe     io.Reader
-	execCmd        execcmd.IExecCmd
-	runAsUser      string
-	dataChannel    datachannel.IDataChannel
-	logger         logger
-	separateOutput bool
-	stdoutPrefix   string
-	stderrPrefix   string
+	context              context.T
+	name                 string
+	stdin                *os.File
+	stdout               *os.File
+	stdoutPipe           io.Reader
+	stderrPipe           io.Reader
+	execCmd              execcmd.IExecCmd
+	runAsUser            string
+	dataChannel          datachannel.IDataChannel
+	logger               logger
+	separateOutput       bool
+	stdoutPrefix         string
+	stderrPrefix         string
+	getCommandExecutorFn GetCommandExecutorFn // nilable
 }
 
 // logger is used for storing the information related to logging of session data to S3/CW
@@ -250,7 +258,12 @@ func (p *ShellPlugin) execute(config agentContracts.Configuration,
 	}()
 
 	// Get the command executor, which is either pseudo terminal or exec.Cmd depending on the plugin type
-	if err := StartCommandExecutor(log, shellProps, false, config, p); err != nil {
+	executorFn := p.getCommandExecutorFn
+	if executorFn == nil {
+		// get default executor function:
+		executorFn = StartCommandExecutor
+	}
+	if err := executorFn(log, shellProps, false, config, p); err != nil {
 		errorString := fmt.Errorf("Unable to start command: %s\n", err)
 		log.Error(errorString)
 		time.Sleep(2 * time.Second)
@@ -293,11 +306,6 @@ func (p *ShellPlugin) execute(config agentContracts.Configuration,
 	log.Debug("Shell session execution complete")
 }
 
-type channelMessage struct {
-	payloadType mgsContracts.PayloadType
-	payload     []byte
-}
-
 // Executes command in pseudo terminal with pty
 func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration,
 	cancelled chan bool,
@@ -307,7 +315,7 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
 
 	log := p.context.Log()
 
-	outChannel := make(chan channelMessage, 1)
+	outChannel := make(chan plgCommon.ChannelMessage, 1)
 	writePumpDone := p.setupRoutineToWriteCommandOutput(log, ipcFile, 1, outChannel)
 
 	log.Infof("Plugin %s started", p.name)
@@ -329,7 +337,7 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
 	for {
 		select {
 		case m := <-outChannel:
-			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
+			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
 				log.Errorf("Unable to send stream data message: %v", err)
 			}
 		case <-cancelled:
@@ -419,7 +427,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 
 	log := p.context.Log()
 
-	outChannel := make(chan channelMessage, 1)
+	outChannel := make(chan plgCommon.ChannelMessage, 1)
 	writeStdOutDone := p.setupRoutineToWriteCmdPipelineOutput(log, ipcFile, false, outChannel)
 	writeStdErrDone := p.setupRoutineToWriteCmdPipelineOutput(log, ipcFile, true, outChannel)
 
@@ -470,7 +478,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 		for {
 			select {
 			case m := <-outChannel:
-				if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
+				if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
 					log.Errorf("Unable to send stream data message: %v", err)
 				}
 			case <-cancelled:
@@ -566,13 +574,13 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 			log.Errorf("the cancellation failed to stop the session.")
 		}
 	}
-	outChannel := make(chan channelMessage, 1)
+	outChannel := make(chan plgCommon.ChannelMessage, 1)
 	writePumpDone := p.setupRoutineToWriteCommandOutput(log, ipcFile, 0, outChannel)
 
 	for {
 		select {
 		case m := <-outChannel:
-			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
+			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
 				log.Errorf("Unable to send stream data message: %v", err)
 			}
 		case <-cancelled:
@@ -648,7 +656,7 @@ func (p *ShellPlugin) uploadShellSessionLogsToS3(log log.T, s3UploaderUtil s3uti
 }
 
 // Set up go routine to write command output to data channel
-func (p *ShellPlugin) setupRoutineToWriteCommandOutput(log log.T, ipcFile *os.File, initialWaitSecond int, outChannel chan channelMessage) chan int {
+func (p *ShellPlugin) setupRoutineToWriteCommandOutput(log log.T, ipcFile *os.File, initialWaitSecond int, outChannel chan plgCommon.ChannelMessage) chan int {
 	log.Debugf("Start separate go routine to read from command output and write to data channel")
 
 	done := make(chan int, 1)
@@ -661,7 +669,7 @@ func (p *ShellPlugin) setupRoutineToWriteCommandOutput(log log.T, ipcFile *os.Fi
 }
 
 // Set up go routine to write command output to data channel
-func (p *ShellPlugin) setupRoutineToWriteCmdPipelineOutput(log log.T, ipcFile *os.File, isStderr bool, outChannel chan channelMessage) chan int {
+func (p *ShellPlugin) setupRoutineToWriteCmdPipelineOutput(log log.T, ipcFile *os.File, isStderr bool, outChannel chan plgCommon.ChannelMessage) chan int {
 	done := make(chan int, 1)
 
 	var pipe io.Reader
@@ -751,12 +759,12 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
 		return fmt.Errorf("Retrieving Data Channel's active state failed, %v", err)
 	}
 	if isActive {
-		outChannel := make(chan channelMessage, 1)
+		outChannel := make(chan plgCommon.ChannelMessage, 1)
 		if unprocessedBuf, err = processStdoutData(log, outputBytes, outputBytesLen, unprocessedBuf, ipcFile, mgsContracts.ExitCode, outChannel); err != nil {
 			log.Errorf("Error processing command pipeline output data, %v", err)
 		}
 		m := <-outChannel
-		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.payloadType, m.payload)
+		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.PayloadType, m.Payload)
 	} else {
 		return fmt.Errorf("failed to send exit code as data channel closed")
 	}
@@ -765,7 +773,7 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
 }
 
 // writePump reads from pty stdout and writes to data channel.
-func writePump(stream io.Reader, log log.T, ipcFile *os.File, initialWaitSecond int, outChannel chan channelMessage) (errorCode int) {
+func writePump(stream io.Reader, log log.T, ipcFile *os.File, initialWaitSecond int, outChannel chan plgCommon.ChannelMessage) (errorCode int) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("WritePump thread crashed with message: %v\n", err)
@@ -806,7 +814,7 @@ func processStdoutData(
 	unprocessedBuf bytes.Buffer,
 	file *os.File,
 	payloadType mgsContracts.PayloadType,
-	outChannel chan channelMessage) (bytes.Buffer, error) {
+	outChannel chan plgCommon.ChannelMessage) (bytes.Buffer, error) {
 
 	// append stdoutBytes to unprocessedBytes and then read rune from appended bytes to send it over websocket channel
 	unprocessedBytes := unprocessedBuf.Bytes()
@@ -842,7 +850,7 @@ func processStdoutData(
 		i += stdoutRuneLen
 	}
 
-	outChannel <- channelMessage{payloadType, processedBuf.Bytes()}
+	outChannel <- plgCommon.ChannelMessage{payloadType, processedBuf.Bytes()}
 
 	if _, err := file.Write(processedBuf.Bytes()); err != nil {
 		return processedBuf, fmt.Errorf("encountered an error while writing to file: %s", err)

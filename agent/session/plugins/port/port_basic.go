@@ -27,6 +27,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/context"
 	mgsConfig "github.com/aws/amazon-ssm-agent/agent/session/config"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 )
 
 var DialCall = func(network string, address string) (net.Conn, error) {
@@ -114,7 +115,7 @@ func (p *BasicPortSession) Stop() {
 }
 
 // WritePump reads from the instance's port and writes to datachannel
-func (p *BasicPortSession) WritePump(outChannel chan channelMessage) (errorCode int) {
+func (p *BasicPortSession) WritePump(outChannel chan plgCommon.ChannelMessage) (errorCode int) {
 	log := p.context.Log()
 	defer func() {
 		if err := recover(); err != nil {
@@ -137,7 +138,7 @@ func (p *BasicPortSession) WritePump(outChannel chan channelMessage) (errorCode 
 
 		contents := make([]byte, numBytes)
 		copy(contents, packet[:numBytes])
-		outChannel <- channelMessage{mgsContracts.Output, contents}
+		outChannel <- plgCommon.ChannelMessage{mgsContracts.Output, contents}
 		// Wait for TCP to process more data
 		time.Sleep(time.Millisecond)
 	}

@@ -32,6 +32,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/fileutil"
 	mgsConfig "github.com/aws/amazon-ssm-agent/agent/session/config"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 	"github.com/aws/amazon-ssm-agent/agent/session/utility"
 	"github.com/aws/amazon-ssm-agent/agent/versionutil"
 	"github.com/xtaci/smux"
@@ -126,7 +127,7 @@ func (p *MuxPortSession) Stop() {
 }
 
 // WritePump handles communication between <smux server, datachannel> and <smux server, destination server>
-func (p *MuxPortSession) WritePump(outChannel chan channelMessage) (errorCode int) {
+func (p *MuxPortSession) WritePump(outChannel chan plgCommon.ChannelMessage) (errorCode int) {
 	log := p.context.Log()
 	defer func() {
 		if err := recover(); err != nil {
@@ -217,7 +218,7 @@ func (p *MuxPortSession) cleanUp() {
 }
 
 // transferDataToMgs reads data from smux server and sends on data channel.
-func (p *MuxPortSession) transferDataToMgs(ctx context.Context, outChannel chan channelMessage) error {
+func (p *MuxPortSession) transferDataToMgs(ctx context.Context, outChannel chan plgCommon.ChannelMessage) error {
 	log := p.context.Log()
 	defer func() {
 		if r := recover(); r != nil {
@@ -238,14 +239,14 @@ func (p *MuxPortSession) transferDataToMgs(ctx context.Context, outChannel chan 
 
 			contents := make([]byte, numBytes)
 			copy(contents, packet[:numBytes])
-			outChannel <- channelMessage{mgsContracts.Output, contents}
+			outChannel <- plgCommon.ChannelMessage{mgsContracts.Output, contents}
 		}
 		time.Sleep(time.Millisecond)
 	}
 }
 
 // handleServerConnections sets up smux stream and handles communication between smux stream and destination server.
-func (p *MuxPortSession) handleServerConnections(ctx context.Context, outChannel chan channelMessage) error {
+func (p *MuxPortSession) handleServerConnections(ctx context.Context, outChannel chan plgCommon.ChannelMessage) error {
 	log := p.context.Log()
 	defer func() {
 		if r := recover(); r != nil {
@@ -280,7 +281,7 @@ func (p *MuxPortSession) handleServerConnections(ctx context.Context, outChannel
 				log.Errorf("Unable to dial connection to server: %v", err)
 				flagBuf := new(bytes.Buffer)
 				binary.Write(flagBuf, binary.BigEndian, mgsContracts.ConnectToPortError)
-				outChannel <- channelMessage{mgsContracts.Flag, flagBuf.Bytes()}
+				outChannel <- plgCommon.ChannelMessage{mgsContracts.Flag, flagBuf.Bytes()}
 				stream.Close()
 			}
 		}

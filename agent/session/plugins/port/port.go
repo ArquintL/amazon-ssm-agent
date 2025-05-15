@@ -30,6 +30,7 @@ import (
 	mgsConfig "github.com/aws/amazon-ssm-agent/agent/session/config"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/session/datachannel"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 	"github.com/aws/amazon-ssm-agent/agent/session/plugins/sessionplugin"
 	"github.com/aws/amazon-ssm-agent/agent/task"
 	"github.com/aws/amazon-ssm-agent/agent/versionutil"
@@ -56,16 +57,11 @@ type PortPlugin struct {
 	session     IPortSession
 }
 
-type channelMessage struct {
-	payloadType mgsContracts.PayloadType
-	payload     []byte
-}
-
 // IPortSession interface represents functions that need to be implemented by all port sessions
 type IPortSession interface {
 	InitializeSession() (err error)
 	HandleStreamMessage(streamDataMessage mgsContracts.AgentMessage) (err error)
-	WritePump(channel chan channelMessage) (errorCode int)
+	WritePump(channel chan plgCommon.ChannelMessage) (errorCode int)
 	IsConnectionAvailable() (isAvailable bool)
 	Stop()
 }
@@ -115,6 +111,11 @@ var GetSession = func(context context.T, portParameters PortParameters, cancelle
 // Returns parameters required for CLI to start session
 func (p *PortPlugin) GetPluginParameters(parameters interface{}) interface{} {
 	return parameters
+}
+
+// Port plugin does not require a special data channel constructor
+func (p *PortPlugin) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	return nil
 }
 
 // Port plugin requires handshake to establish session
@@ -215,7 +216,7 @@ func (p *PortPlugin) execute(
 
 	log.Debugf("Start separate go routine to read from port connection and write to data channel")
 	done := make(chan int, 1)
-	outChannel := make(chan channelMessage, 1)
+	outChannel := make(chan plgCommon.ChannelMessage, 1)
 	session := p.session
 	go func() {
 		defer func() {
@@ -232,7 +233,7 @@ func (p *PortPlugin) execute(
 		for {
 			select {
 			case msg := <-outChannel:
-				if err = p.dataChannel.SendStreamDataMessage(log, msg.payloadType, msg.payload); err != nil {
+				if err = p.dataChannel.SendStreamDataMessage(log, msg.PayloadType, msg.Payload); err != nil {
 					log.Errorf("Unable to send stream data message: %v", err)
 					done <- appconfig.ErrorExitCode
 				}

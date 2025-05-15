@@ -37,6 +37,7 @@ type NewPluginFunc func(context.T) (ISessionPlugin, error)
 // ISessionPlugin interface represents functions that need to be implemented by all session manager plugins
 type ISessionPlugin interface {
 	GetPluginParameters(parameters interface{}) interface{}
+	GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) // nilable
 	RequireHandshake() bool
 	Execute(config contracts.Configuration, cancelFlag task.CancelFlag, output iohandler.IOHandler, dataChannel datachannel.IDataChannel)
 	InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error
@@ -67,7 +68,13 @@ func (p *SessionPlugin) Execute(
 
 	kmsKeyId := config.KmsKeyId
 
-	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
+	dataChannelFactoryFn := p.sessionPlugin.GetDataChannelFn()
+	var dataChannel datachannel.IDataChannel
+	if dataChannelFactoryFn == nil {
+		// pick default factory if none is provided:
+		dataChannelFactoryFn = getDataChannelForSessionPlugin
+	}
+	dataChannel, err := dataChannelFactoryFn(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
 	if err != nil {
 		errorString := fmt.Errorf("Setting up data channel with id %s failed: %s", config.SessionId, err)
 		output.MarkAsFailed(errorString)

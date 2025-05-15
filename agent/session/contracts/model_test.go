@@ -51,7 +51,7 @@ func TestSerializeAndDeserializeAgentMessageWithAcknowledgeContent(t *testing.T)
 	deserializedAgentMsg := &AgentMessage{}
 	deserializedAgentMsg.Deserialize(log.NewMockLog(), serializedAgentMsg)
 	deserializedAcknowledgeContent := &AcknowledgeContent{}
-	err = deserializedAcknowledgeContent.Deserialize(log.NewMockLog(), *deserializedAgentMsg)
+	err = deserializedAcknowledgeContent.Deserialize(log.NewMockLog(), deserializedAgentMsg)
 
 	assert.Nil(t, err)
 	assert.Equal(t, messageType, deserializedAcknowledgeContent.MessageType)
@@ -83,7 +83,7 @@ func TestDeserializeAgentMessageWithChannelClosed(t *testing.T) {
 	}
 
 	deserializedChannelClosed := &ChannelClosed{}
-	deserializedChannelClosed.Deserialize(log.NewMockLog(), agentMessage)
+	deserializedChannelClosed.Deserialize(log.NewMockLog(), &agentMessage)
 
 	assert.Nil(t, err)
 	assert.Equal(t, ChannelClosedMessage, deserializedChannelClosed.MessageType)

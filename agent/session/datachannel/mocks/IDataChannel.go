@@ -15,14 +15,8 @@
 package mocks
 
 import (
-	"container/list"
-
-	"github.com/aws/amazon-ssm-agent/agent/context"
 	"github.com/aws/amazon-ssm-agent/agent/log"
 	"github.com/aws/amazon-ssm-agent/agent/session/contracts"
-	"github.com/aws/amazon-ssm-agent/agent/session/datachannel"
-	"github.com/aws/amazon-ssm-agent/agent/session/service"
-	"github.com/aws/amazon-ssm-agent/agent/task"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -32,14 +26,14 @@ type IDataChannel struct {
 }
 
 // AddDataToIncomingMessageBuffer provides a mock function with given fields: streamMessage
-func (_m *IDataChannel) AddDataToIncomingMessageBuffer(streamMessage datachannel.StreamingMessage) {
-	_m.Called(streamMessage)
-}
+// func (_m *IDataChannel) AddDataToIncomingMessageBuffer(streamMessage datastream.StreamingMessage) {
+// 	_m.Called(streamMessage)
+// }
 
-// AddDataToOutgoingMessageBuffer provides a mock function with given fields: streamMessage
-func (_m *IDataChannel) AddDataToOutgoingMessageBuffer(streamMessage datachannel.StreamingMessage) {
-	_m.Called(streamMessage)
-}
+// // AddDataToOutgoingMessageBuffer provides a mock function with given fields: streamMessage
+// func (_m *IDataChannel) AddDataToOutgoingMessageBuffer(streamMessage datastream.StreamingMessage) {
+// 	_m.Called(streamMessage)
+// }
 
 // Close provides a mock function with given fields: _a0
 func (_m *IDataChannel) Close(_a0 log.T) error {
@@ -56,93 +50,103 @@ func (_m *IDataChannel) Close(_a0 log.T) error {
 }
 
 // GetClientVersion provides a mock function with given fields:
-func (_m *IDataChannel) GetClientVersion() string {
+func (_m *IDataChannel) GetClientVersion() (string, error) {
 	ret := _m.Called()
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
-		r0 = rf()
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (string, error)); ok {
+		r0, r1 = rf()
 	} else {
 		r0 = ret.Get(0).(string)
+		r1 = ret.Error(1)
 	}
 
-	return r0
+	return r0, r1
 }
 
 // GetInstanceId provides a mock function with given fields:
-func (_m *IDataChannel) GetInstanceId() string {
+func (_m *IDataChannel) GetInstanceId() (string, error) {
 	ret := _m.Called()
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
-		r0 = rf()
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (string, error)); ok {
+		r0, r1 = rf()
 	} else {
 		r0 = ret.Get(0).(string)
+		r1 = ret.Error(1)
 	}
 
-	return r0
+	return r0, r1
 }
 
 // GetRegion provides a mock function with given fields:
-func (_m *IDataChannel) GetRegion() string {
+func (_m *IDataChannel) GetRegion() (string, error) {
 	ret := _m.Called()
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func() string); ok {
-		r0 = rf()
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (string, error)); ok {
+		r0, r1 = rf()
 	} else {
 		r0 = ret.Get(0).(string)
+		r1 = ret.Error(1)
 	}
 
-	return r0
+	return r0, r1
 }
 
 // GetSeparateOutputPayload provides a mock function with given fields:
-func (_m *IDataChannel) GetSeparateOutputPayload() bool {
+func (_m *IDataChannel) GetSeparateOutputPayload() (bool, error) {
 	ret := _m.Called()
 
 	var r0 bool
-	if rf, ok := ret.Get(0).(func() bool); ok {
-		r0 = rf()
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (bool, error)); ok {
+		r0, r1 = rf()
 	} else {
 		r0 = ret.Get(0).(bool)
+		r1 = ret.Error(1)
 	}
 
-	return r0
+	return r0, r1
 }
 
 // Initialize provides a mock function with given fields: _a0, mgsService, sessionId, clientId, instanceId, role, cancelFlag, inputStreamMessageHandler
-func (_m *IDataChannel) Initialize(_a0 context.T, mgsService service.Service, sessionId string, clientId string, instanceId string, role string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) {
-	_m.Called(_a0, mgsService, sessionId, clientId, instanceId, role, cancelFlag, inputStreamMessageHandler)
-}
+// func (_m *IDataChannel) Initialize(_a0 context.T, mgsService service.Service, sessionId string, clientId string, instanceId string, role string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) {
+// 	_m.Called(_a0, mgsService, sessionId, clientId, instanceId, role, cancelFlag, inputStreamMessageHandler)
+// }
 
 // IsActive provides a mock function with given fields:
-func (_m *IDataChannel) IsActive() bool {
+func (_m *IDataChannel) IsActive() (bool, error) {
 	ret := _m.Called()
 
 	var r0 bool
-	if rf, ok := ret.Get(0).(func() bool); ok {
-		r0 = rf()
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (bool, error)); ok {
+		r0, r1 = rf()
 	} else {
 		r0 = ret.Get(0).(bool)
+		r1 = ret.Error(1)
 	}
 
-	return r0
+	return r0, r1
 }
 
 // Open provides a mock function with given fields: _a0
-func (_m *IDataChannel) Open(_a0 log.T) error {
-	ret := _m.Called(_a0)
+// func (_m *IDataChannel) Open(_a0 log.T) error {
+// 	ret := _m.Called(_a0)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(log.T) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(log.T) error); ok {
+// 		r0 = rf(_a0)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
 
-	return r0
-}
+// 	return r0
+// }
 
 // PerformHandshake provides a mock function with given fields: _a0, kmsKeyId, encryptionEnabled, sessionTypeRequest
 func (_m *IDataChannel) PerformHandshake(_a0 log.T, kmsKeyId string, encryptionEnabled bool, sessionTypeRequest contracts.SessionTypeRequest) error {
@@ -159,66 +163,75 @@ func (_m *IDataChannel) PerformHandshake(_a0 log.T, kmsKeyId string, encryptionE
 }
 
 // PrepareToCloseChannel provides a mock function with given fields: _a0
-func (_m *IDataChannel) PrepareToCloseChannel(_a0 log.T) {
-	_m.Called(_a0)
+func (_m *IDataChannel) PrepareToCloseChannel(_a0 log.T) error {
+	ret := _m.Called(_a0)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(log.T) error); ok {
+		r0 = rf(_a0)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // ProcessAcknowledgedMessage provides a mock function with given fields: _a0, acknowledgeMessageContent
-func (_m *IDataChannel) ProcessAcknowledgedMessage(_a0 log.T, acknowledgeMessageContent contracts.AcknowledgeContent) {
-	_m.Called(_a0, acknowledgeMessageContent)
-}
+// func (_m *IDataChannel) ProcessAcknowledgedMessage(_a0 log.T, acknowledgeMessageContent contracts.AcknowledgeContent) {
+// 	_m.Called(_a0, acknowledgeMessageContent)
+// }
 
 // Reconnect provides a mock function with given fields: _a0
-func (_m *IDataChannel) Reconnect(_a0 log.T) error {
-	ret := _m.Called(_a0)
+// func (_m *IDataChannel) Reconnect(_a0 log.T) error {
+// 	ret := _m.Called(_a0)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(log.T) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(log.T) error); ok {
+// 		r0 = rf(_a0)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
 
-	return r0
-}
+// 	return r0
+// }
 
 // RemoveDataFromIncomingMessageBuffer provides a mock function with given fields: sequenceNumber
-func (_m *IDataChannel) RemoveDataFromIncomingMessageBuffer(sequenceNumber int64) {
-	_m.Called(sequenceNumber)
-}
+// func (_m *IDataChannel) RemoveDataFromIncomingMessageBuffer(sequenceNumber int64) {
+// 	_m.Called(sequenceNumber)
+// }
 
-// RemoveDataFromOutgoingMessageBuffer provides a mock function with given fields: streamMessageElement
-func (_m *IDataChannel) RemoveDataFromOutgoingMessageBuffer(streamMessageElement *list.Element) {
-	_m.Called(streamMessageElement)
-}
+// // RemoveDataFromOutgoingMessageBuffer provides a mock function with given fields: streamMessageElement
+// func (_m *IDataChannel) RemoveDataFromOutgoingMessageBuffer(streamMessageElement *list.Element) {
+// 	_m.Called(streamMessageElement)
+// }
 
 // ResendStreamDataMessageScheduler provides a mock function with given fields: _a0
-func (_m *IDataChannel) ResendStreamDataMessageScheduler(_a0 log.T) error {
-	ret := _m.Called(_a0)
+// func (_m *IDataChannel) ResendStreamDataMessageScheduler(_a0 log.T) error {
+// 	ret := _m.Called(_a0)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(log.T) error); ok {
-		r0 = rf(_a0)
-	} else {
-		r0 = ret.Error(0)
-	}
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(log.T) error); ok {
+// 		r0 = rf(_a0)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
 
-	return r0
-}
+// 	return r0
+// }
 
 // SendAcknowledgeMessage provides a mock function with given fields: _a0, agentMessage
-func (_m *IDataChannel) SendAcknowledgeMessage(_a0 log.T, agentMessage contracts.AgentMessage) error {
-	ret := _m.Called(_a0, agentMessage)
+// func (_m *IDataChannel) SendAcknowledgeMessage(_a0 log.T, agentMessage contracts.AgentMessage) error {
+// 	ret := _m.Called(_a0, agentMessage)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(log.T, contracts.AgentMessage) error); ok {
-		r0 = rf(_a0, agentMessage)
-	} else {
-		r0 = ret.Error(0)
-	}
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(log.T, contracts.AgentMessage) error); ok {
+// 		r0 = rf(_a0, agentMessage)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
 
-	return r0
-}
+// 	return r0
+// }
 
 // SendAgentSessionStateMessage provides a mock function with given fields: _a0, sessionStatus
 func (_m *IDataChannel) SendAgentSessionStateMessage(_a0 log.T, sessionStatus contracts.SessionStatus) error {
@@ -235,18 +248,18 @@ func (_m *IDataChannel) SendAgentSessionStateMessage(_a0 log.T, sessionStatus co
 }
 
 // SendMessage provides a mock function with given fields: _a0, input, inputType
-func (_m *IDataChannel) SendMessage(_a0 log.T, input []byte, inputType int) error {
-	ret := _m.Called(_a0, input, inputType)
+// func (_m *IDataChannel) SendMessage(_a0 log.T, input []byte, inputType int) error {
+// 	ret := _m.Called(_a0, input, inputType)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(log.T, []byte, int) error); ok {
-		r0 = rf(_a0, input, inputType)
-	} else {
-		r0 = ret.Error(0)
-	}
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(log.T, []byte, int) error); ok {
+// 		r0 = rf(_a0, input, inputType)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
 
-	return r0
-}
+// 	return r0
+// }
 
 // SendStreamDataMessage provides a mock function with given fields: _a0, dataType, inputData
 func (_m *IDataChannel) SendStreamDataMessage(_a0 log.T, dataType contracts.PayloadType, inputData []byte) error {
@@ -263,17 +276,12 @@ func (_m *IDataChannel) SendStreamDataMessage(_a0 log.T, dataType contracts.Payl
 }
 
 // SetSeparateOutputPayload provides a mock function with given fields: separateOutputPayload
-func (_m *IDataChannel) SetSeparateOutputPayload(separateOutputPayload bool) {
-	_m.Called(separateOutputPayload)
-}
-
-// SetWebSocket provides a mock function with given fields: _a0, mgsService, sessionId, clientId, onMessageHandler
-func (_m *IDataChannel) SetWebSocket(_a0 context.T, mgsService service.Service, sessionId string, clientId string, onMessageHandler func([]byte)) error {
-	ret := _m.Called(_a0, mgsService, sessionId, clientId, onMessageHandler)
+func (_m *IDataChannel) SetSeparateOutputPayload(separateOutputPayload bool) error {
+	ret := _m.Called(separateOutputPayload)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.T, service.Service, string, string, func([]byte)) error); ok {
-		r0 = rf(_a0, mgsService, sessionId, clientId, onMessageHandler)
+	if rf, ok := ret.Get(0).(func(bool) error); ok {
+		r0 = rf(separateOutputPayload)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -281,7 +289,30 @@ func (_m *IDataChannel) SetWebSocket(_a0 context.T, mgsService service.Service, 
 	return r0
 }
 
+// SetWebSocket provides a mock function with given fields: _a0, mgsService, sessionId, clientId, onMessageHandler
+// func (_m *IDataChannel) SetWebSocket(_a0 context.T, mgsService service.Service, sessionId string, clientId string, onMessageHandler func([]byte)) error {
+// 	ret := _m.Called(_a0, mgsService, sessionId, clientId, onMessageHandler)
+
+// 	var r0 error
+// 	if rf, ok := ret.Get(0).(func(context.T, service.Service, string, string, func([]byte)) error); ok {
+// 		r0 = rf(_a0, mgsService, sessionId, clientId, onMessageHandler)
+// 	} else {
+// 		r0 = ret.Error(0)
+// 	}
+
+// 	return r0
+// }
+
 // SkipHandshake provides a mock function with given fields: _a0
-func (_m *IDataChannel) SkipHandshake(_a0 log.T) {
-	_m.Called(_a0)
+func (_m *IDataChannel) SkipHandshake(_a0 log.T) error {
+	ret := _m.Called(_a0)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(log.T) error); ok {
+		r0 = rf(_a0)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }

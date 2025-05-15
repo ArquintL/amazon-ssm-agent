@@ -42,6 +42,11 @@ func (p *SingleCommand) GetPluginParameters(parameters interface{}) interface{} 
 	return nil
 }
 
+// SingleCommand plugin does not require a special data channel constructor
+func (p *SingleCommand) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	return nil
+}
+
 // SingleCommand by default does not require handshake to establish session
 // TODO: change to default to require handshake once InteractiveCommands plugin enforces handshake.
 func (p *SingleCommand) RequireHandshake() bool {

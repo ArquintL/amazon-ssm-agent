@@ -29,6 +29,7 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/s3util"
 	mgsContracts "github.com/aws/amazon-ssm-agent/agent/session/contracts"
 	dataChannelMock "github.com/aws/amazon-ssm-agent/agent/session/datachannel/mocks"
+	plgCommon "github.com/aws/amazon-ssm-agent/agent/session/plugins/common"
 	execcmdMock "github.com/aws/amazon-ssm-agent/agent/session/shell/execcmd/mocks"
 	"github.com/aws/amazon-ssm-agent/agent/task"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
@@ -267,7 +268,7 @@ func (suite *ShellTestSuite) TestExecuteForNonInteractiveCommandsWithSeparateOut
 		"ls", false, "true", "STD_OUT:\n", "STD_ERR:\n"}
 	shellProperties := mgsContracts.ShellProperties{shellConfig, shellConfig, shellConfig}
 
-	getCommandExecutor = func(log log.T, shellProps mgsContracts.ShellProperties, isSessionLogger bool, config contracts.Configuration, plugin *ShellPlugin) (err error) {
+	getCommandExecutor := func(log log.T, shellProps mgsContracts.ShellProperties, isSessionLogger bool, config contracts.Configuration, plugin *ShellPlugin) (err error) {
 		plugin.execCmd = suite.mockCmd
 		plugin.stdoutPipe = stdoutPipe
 		plugin.stderrPipe = stderrPipe
@@ -275,10 +276,11 @@ func (suite *ShellTestSuite) TestExecuteForNonInteractiveCommandsWithSeparateOut
 	}
 
 	plugin := &ShellPlugin{
-		name:        appconfig.PluginNameNonInteractiveCommands,
-		context:     suite.mockContext,
-		dataChannel: suite.mockDataChannel,
-		execCmd:     suite.mockCmd,
+		name:                 appconfig.PluginNameNonInteractiveCommands,
+		context:              suite.mockContext,
+		dataChannel:          suite.mockDataChannel,
+		execCmd:              suite.mockCmd,
+		getCommandExecutorFn: getCommandExecutor,
 	}
 
 	go func() {
@@ -353,10 +355,24 @@ func (suite *ShellTestSuite) TestSetupRoutineToWriteCmdPipelineOutput() {
 		os.Remove(ipcFileName)
 	}()
 
+	channelToDataChannel := make(chan plgCommon.ChannelMessage)
+	defer close(channelToDataChannel)
+	go func() {
+		for {
+			msg, ok := <-channelToDataChannel
+			if ok {
+				suite.mockDataChannel.SendStreamDataMessage(suite.mockContext.Log(), msg.PayloadType, msg.Payload)
+			} else {
+				return
+			}
+		}
+	}()
+
 	result := plugin.setupRoutineToWriteCmdPipelineOutput(
 		suite.mockLog,
 		ipcFile,
-		false)
+		false,
+		channelToDataChannel)
 
 	suite.Equal(0, <-result)
 	suite.Equal(mgsContracts.Output, payloadType)
@@ -411,10 +427,24 @@ func (suite *ShellTestSuite) TestSetupRoutineToWriteCmdPipelineOutputWithReadPip
 		os.Remove(ipcFileName)
 	}()
 
+	channelToDataChannel := make(chan plgCommon.ChannelMessage)
+	defer close(channelToDataChannel)
+	go func() {
+		for {
+			msg, ok := <-channelToDataChannel
+			if ok {
+				suite.mockDataChannel.SendStreamDataMessage(suite.mockContext.Log(), msg.PayloadType, msg.Payload)
+			} else {
+				return
+			}
+		}
+	}()
+
 	result := plugin.setupRoutineToWriteCmdPipelineOutput(
 		suite.mockLog,
 		ipcFile,
-		false)
+		false,
+		channelToDataChannel)
 
 	suite.Equal(1, <-result)
 	suite.Equal(mgsContracts.Output, payloadType)
@@ -468,10 +498,24 @@ func (suite *ShellTestSuite) TestSetupRoutineToWriteCmdPipelineOutputForStdErr()
 		os.Remove(ipcFileName)
 	}()
 
+	channelToDataChannel := make(chan plgCommon.ChannelMessage)
+	defer close(channelToDataChannel)
+	go func() {
+		for {
+			msg, ok := <-channelToDataChannel
+			if ok {
+				suite.mockDataChannel.SendStreamDataMessage(suite.mockContext.Log(), msg.PayloadType, msg.Payload)
+			} else {
+				return
+			}
+		}
+	}()
+
 	result := plugin.setupRoutineToWriteCmdPipelineOutput(
 		suite.mockLog,
 		ipcFile,
-		true)
+		true,
+		channelToDataChannel)
 
 	suite.Equal(0, <-result)
 	suite.Equal(mgsContracts.StdErr, payloadType)
@@ -516,10 +560,24 @@ func (suite *ShellTestSuite) TestSetupRoutineToWriteCmdPipelineOutputWhenDataCha
 		os.Remove(ipcFileName)
 	}()
 
+	channelToDataChannel := make(chan plgCommon.ChannelMessage)
+	defer close(channelToDataChannel)
+	go func() {
+		for {
+			msg, ok := <-channelToDataChannel
+			if ok {
+				suite.mockDataChannel.SendStreamDataMessage(suite.mockContext.Log(), msg.PayloadType, msg.Payload)
+			} else {
+				return
+			}
+		}
+	}()
+
 	result := plugin.setupRoutineToWriteCmdPipelineOutput(
 		suite.mockLog,
 		ipcFile,
-		true)
+		true,
+		channelToDataChannel)
 
 	suite.Equal(<-result, 1)
 	suite.mockDataChannel.AssertExpectations(suite.T())

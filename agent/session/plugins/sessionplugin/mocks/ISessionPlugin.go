@@ -15,6 +15,7 @@
 package mocks
 
 import (
+	"github.com/aws/amazon-ssm-agent/agent/context"
 	"github.com/aws/amazon-ssm-agent/agent/contracts"
 	"github.com/aws/amazon-ssm-agent/agent/framework/processor/executer/iohandler"
 	"github.com/aws/amazon-ssm-agent/agent/log"
@@ -45,6 +46,20 @@ func (_m *ISessionPlugin) GetPluginParameters(parameters interface{}) interface{
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(interface{})
 		}
+	}
+
+	return r0
+}
+
+// GetDataChannelFn provides a mock function with given fields:
+func (_m *ISessionPlugin) GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
+	ret := _m.Called()
+
+	var r0 func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error)
+	if rf, ok := ret.Get(0).(func() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error)); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error))
 	}
 
 	return r0

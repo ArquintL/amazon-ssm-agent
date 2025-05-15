@@ -65,10 +65,12 @@ func TestShellTestSuite(t *testing.T) {
 // Testing Execute
 func (suite *SessionPluginTestSuite) TestExecute() {
 	config := contracts.Configuration{}
-	getDataChannelForSessionPlugin =
+
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
@@ -90,10 +92,11 @@ func (suite *SessionPluginTestSuite) TestExecuteHandshakeEncryptionDisabled() {
 	sessionProperties := map[string]interface{}{"portNumber": "22"}
 	config := contracts.Configuration{PluginName: appconfig.PluginNamePort, Properties: sessionProperties}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -117,10 +120,11 @@ func (suite *SessionPluginTestSuite) TestExecuteHandshakeEncryptionEnabledPortPl
 	sessionProperties := map[string]interface{}{"portNumber": "22"}
 	config := contracts.Configuration{PluginName: appconfig.PluginNamePort, Properties: sessionProperties, KmsKeyId: kmsKey}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -143,10 +147,11 @@ func (suite *SessionPluginTestSuite) TestExecuteEncryptionHandshakeSuccess() {
 	kmsKey := "some-key"
 	config := contracts.Configuration{KmsKeyId: kmsKey, PluginName: appconfig.PluginNameStandardStream}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -169,10 +174,11 @@ func (suite *SessionPluginTestSuite) TestExecuteEncryptionHandshakeFailed() {
 	kmsKey := "some-key"
 	config := contracts.Configuration{KmsKeyId: kmsKey, PluginName: appconfig.PluginNameStandardStream}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -205,10 +211,11 @@ func (suite *SessionPluginTestSuite) TestExecuteForNonInteractiveCommandsSession
 	sessionProperties["MacOs"] = properties
 	config := contracts.Configuration{PluginName: appconfig.PluginNameNonInteractiveCommands, Properties: sessionProperties}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -241,10 +248,11 @@ func (suite *SessionPluginTestSuite) TestExecuteForNonInteractiveCommandsSession
 	sessionProperties["MacOs"] = properties
 	config := contracts.Configuration{PluginName: appconfig.PluginNameNonInteractiveCommands, Properties: sessionProperties}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
@@ -280,10 +288,11 @@ func (suite *SessionPluginTestSuite) TestExecuteForNonInteractiveCommandsSession
 	sessionProperties["MacOs"] = properties
 	config := contracts.Configuration{PluginName: appconfig.PluginNameNonInteractiveCommands, Properties: sessionProperties}
 
-	getDataChannelForSessionPlugin =
+	getDataChannelForSessionPlugin :=
 		func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) {
 			return suite.mockDataChannel, nil
 		}
+	suite.mockSessionPlugin.On("GetDataChannelFn").Return(getDataChannelForSessionPlugin)
 	suite.mockDataChannel.On("SendAgentSessionStateMessage", suite.mockContext.Log(), mgsContracts.Connected).Return(nil)
 	suite.mockDataChannel.On("PrepareToCloseChannel", suite.mockContext.Log()).Return()
 	suite.mockDataChannel.On("Close", suite.mockContext.Log()).Return(nil)
