@@ -4,7 +4,7 @@ index 3a84bf20..65f91f00 100644
 +++ b/agent/session/datachannel/state.go
 @@ -50,6 +50,13 @@ type IDataChannel interface {
  
- 	// @ pred Mem()
+ 	// @ pred Inv()
  
 +	// FOR DIODON ARTIFACT ONLY:
 +	// This method does not establish the Core invariant as a postcondition,
@@ -13,7 +13,7 @@ index 3a84bf20..65f91f00 100644
 +	// the Core state outside of the Core.
 +	GetStatePtr() *DataChannelState
 +
- 	// @ preserves Mem()
+ 	// @ preserves Inv()
  	// @ preserves log != nil ==> acc(log.Mem(), _)
  	// @ preserves inputData != nil ==> bytes.SliceMem(inputData)
 @@ -160,6 +167,10 @@ type dataChannel struct {
@@ -21,7 +21,7 @@ index 3a84bf20..65f91f00 100644
  }
  
 +func (dc *dataChannel) GetStatePtr() *DataChannelState {
-+	return &dc.dataChannelState
++	return &dc.idc.dataChannelState
 +}
 +
  /*@
