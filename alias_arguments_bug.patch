@@ -50,13 +50,13 @@ diff --git a/agent/session/plugins/port/port.go b/agent/session/plugins/port/por
 index 8f4a8d1e..c31ed0cb 100644
 --- a/agent/session/plugins/port/port.go
 +++ b/agent/session/plugins/port/port.go
-@@ -232,7 +232,8 @@ func (p *PortPlugin) execute(
+@@ -233,7 +233,8 @@ func (p *PortPlugin) execute(
  		for {
  			select {
  			case msg := <-outChannel:
--				if err = p.dataChannel.SendStreamDataMessage(log, msg.payloadType, msg.payload); err != nil {
+-				if err = p.dataChannel.SendStreamDataMessage(log, msg.PayloadType, msg.Payload); err != nil {
 +				sid := p.dataChannel.GetSessionID()
-+				if err = p.dataChannel.SendStreamDataMessage(log, msg.payloadType, sid); err != nil {
++				if err = p.dataChannel.SendStreamDataMessage(log, msg.PayloadType, sid); err != nil {
  					log.Errorf("Unable to send stream data message: %v", err)
  					done <- appconfig.ErrorExitCode
  				}
@@ -64,39 +64,39 @@ diff --git a/agent/session/shell/shell.go b/agent/session/shell/shell.go
 index f5f8f03b..e4d0a97b 100644
 --- a/agent/session/shell/shell.go
 +++ b/agent/session/shell/shell.go
-@@ -329,7 +329,7 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
+@@ -337,7 +337,7 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
  	for {
  		select {
  		case m := <-outChannel:
--			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
-+			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, &m.payload); err != nil {
+-			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
++			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, &m.Payload); err != nil {
  				log.Errorf("Unable to send stream data message: %v", err)
  			}
  		case <-cancelled:
-@@ -470,7 +470,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
+@@ -478,7 +478,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
  		for {
  			select {
  			case m := <-outChannel:
--				if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
-+				if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, &m.payload); err != nil {
+-				if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
++				if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, &m.Payload); err != nil {
  					log.Errorf("Unable to send stream data message: %v", err)
  				}
  			case <-cancelled:
-@@ -572,7 +572,7 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
+@@ -580,7 +580,7 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
  	for {
  		select {
  		case m := <-outChannel:
--			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, m.payload); err != nil {
-+			if err := p.dataChannel.SendStreamDataMessage(log, m.payloadType, &m.payload); err != nil {
+-			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, m.Payload); err != nil {
++			if err := p.dataChannel.SendStreamDataMessage(log, m.PayloadType, &m.Payload); err != nil {
  				log.Errorf("Unable to send stream data message: %v", err)
  			}
  		case <-cancelled:
-@@ -756,7 +756,7 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
+@@ -764,7 +764,7 @@ func (p *ShellPlugin) sendExitCode(log log.T, ipcFile *os.File, exitCode int) er
  			log.Errorf("Error processing command pipeline output data, %v", err)
  		}
  		m := <-outChannel
--		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.payloadType, m.payload)
-+		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.payloadType, &m.payload)
+-		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.PayloadType, m.Payload)
++		p.dataChannel.SendStreamDataMessage(p.context.Log(), m.PayloadType, &m.Payload)
  	} else {
  		return fmt.Errorf("failed to send exit code as data channel closed")
  	}
