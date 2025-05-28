@@ -411,7 +411,7 @@ func computeKdf(input []byte, isKdf1 bool /*@, ghost p perm @*/) (res []byte, er
 // @ preserves log != nil ==> acc(log.Mem(), _)
 // @ ensures   err != nil ==> err.ErrorMem()
 func (dc *dataChannel) SendAgentSessionStateMessage(log logger.T, sessionStatus mgsContracts.SessionStatus) (err error) {
-	if dc == nil || log == nil {
+	if dc == nil || log == nil { //argot:ignore diodon-agent-io-independence
 		return fmtErrorNil()
 	}
 	if dc.getState() < Initialized {

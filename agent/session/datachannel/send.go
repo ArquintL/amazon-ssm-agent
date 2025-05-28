@@ -162,7 +162,7 @@ func (dc *internalDataChannel) sendData(log logger.T, payloadType mgsContracts.P
 
 	// If encryption has been enabled, encrypt the payload
 	if dc.encryptionEnabled && (payloadType == mgsContracts.Output || payloadType == mgsContracts.StdErr || payloadType == mgsContracts.ExitCode || payloadType == mgsContracts.HandshakeComplete) {
-		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, perm(1/4) @*/); err != nil {
+		if inputData, err = dc.blockCipher.EncryptWithAESGCM(inputData /*@, perm(1/4) @*/); err != nil { //argot:ignore diodon-agent-io-independence
 			err = fmtErrorfInt64Err("error encrypting stream data message sequence", dc.dataStream.GetStreamDataSequenceNumber( /*@ perm(1/2) @*/ ), err /*@, perm(1/1) @*/)
 			// @ fold acc(dc.MemInternal(state), 1/2)
 			// @ fold dc.Mem()

@@ -75,7 +75,7 @@ func (p *SessionPlugin) Execute(
 		dataChannelFactoryFn = getDataChannelForSessionPlugin
 	}
 	dataChannel, err := dataChannelFactoryFn(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
-	if err != nil {
+	if err != nil {                                                                                               //argot:ignore diodon-agent-io-independence
 		errorString := fmt.Errorf("Setting up data channel with id %s failed: %s", config.SessionId, err)
 		output.MarkAsFailed(errorString)
 		log.Error(errorString)

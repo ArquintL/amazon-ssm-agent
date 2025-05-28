@@ -255,7 +255,7 @@ func (mgs *MGSInteractor) listenReply() {
 	log.Info("listen reply thread in MGS interactor started")
 	defer func() {
 		log.Info("listen reply thread in MGS interactor ended")
-		if r := recover(); r != nil { //argot:ignro
+		if r := recover(); r != nil {
 			log.Errorf("listen reply in mgsinteractor panicked: \n%v", r)
 			// log.Errorf("Stacktrace:\n%s", debug.Stack())
 			time.Sleep(2 * time.Second)
