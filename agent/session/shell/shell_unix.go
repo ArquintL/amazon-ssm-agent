@@ -424,15 +424,11 @@ func (p *ShellPlugin) cleanupLogFile(log log.T, ipcFile *os.File) {
 
 // InputStreamMessageHandler passes payload byte stream to shell stdin
 func (p *ShellPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	data := &handlerData{
-		stdin:   p.handlerData.stdin,
-		stdout:  p.handlerData.stdout,
-		execCmd: p.handlerData.execCmd,
-	}
+	handler := p.handlerData
 	isPluginNonInteractive := appconfig.PluginNameNonInteractiveCommands == p.name
 
 	return func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-		if !isPluginNonInteractive && (data.stdin == nil || data.stdout == nil) {
+		if !isPluginNonInteractive && (handler.stdin == nil || handler.stdout == nil) {
 			// This is to handle scenario when cli/console starts sending size data but pty has not been started yet
 			// Since packets are rejected, cli/console will resend these packets until pty starts successfully in separate thread
 			log.Tracef("Pty unavailable. Reject incoming message packet")
@@ -454,18 +450,18 @@ func (p *ShellPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDat
 				}
 				if signal != nil {
 					defer func() {
-						if err := data.execCmd.Wait(); err != nil {
+						if err := handler.execCmd.Wait(); err != nil {
 							log.Errorf("Error received after processing control signal: %s", err)
 						}
 					}()
-					if err := data.execCmd.Signal(signal); err != nil {
-						log.Errorf("Sending signal %v to command process %v failed with error %v", signal, data.execCmd.Pid(), err)
+					if err := handler.execCmd.Signal(signal); err != nil {
+						log.Errorf("Sending signal %v to command process %v failed with error %v", signal, handler.execCmd.Pid(), err)
 						return err
 					}
 				}
 				return nil
 			}
-			if _, err := data.stdin.Write(streamDataMessage.Payload); err != nil {
+			if _, err := handler.stdin.Write(streamDataMessage.Payload); err != nil {
 				log.Errorf("Unable to write to stdin, err: %v.", err)
 				return err
 			}

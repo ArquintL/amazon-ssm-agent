@@ -61,7 +61,7 @@ type GetCommandExecutorFn = func(log log.T,
 type ShellPlugin struct {
 	context              context.T
 	name                 string
-	handlerData          handlerData
+	handlerData          *handlerData
 	stdoutPipe           io.Reader
 	stderrPipe           io.Reader
 	runAsUser            string
@@ -109,7 +109,7 @@ func NewPlugin(context context.T, name string) (*ShellPlugin, error) {
 			ptyTerminated:               make(chan bool),
 			cloudWatchStreamingFinished: make(chan bool),
 		},
-		handlerData: handlerData{},
+		handlerData: &handlerData{},
 	}
 	return &plugin, nil
 }
