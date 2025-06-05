@@ -429,7 +429,10 @@ func (dataStream *DataStream) Send(log log.T, payloadType mgsContracts.PayloadTy
 // ResendStreamDataMessageScheduler spawns a separate go thread which keeps checking OutgoingMessageBuffer at fixed interval
 // and resends first message if time elapsed since lastSentTime of the message is more than acknowledge wait time
 func (dataStream *DataStream) ResendStreamDataMessageScheduler(log log.T) error {
-	go func() {
+	// DIODON FIX: change this from go to directly invoked, because this shows up as the leak of datastream
+	// and we want it to be in the websocket. This is only to make the error message nicer because it only displays
+	// at most one place where something leaks.
+	func() {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Errorf("Resend stream data message scheduler panic: %v", r)

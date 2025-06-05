@@ -78,6 +78,6 @@ func (p *NonInteractiveCommandsPlugin) Execute(config agentContracts.Configurati
 }
 
 // InputStreamMessageHandler passes payload byte stream to command execution process
-func (p *NonInteractiveCommandsPlugin) InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	return p.sessionPlugin.InputStreamMessageHandler(log, streamDataMessage)
+func (p *NonInteractiveCommandsPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+	return p.sessionPlugin.GetInputStreamMessageHandlerFn()
 }

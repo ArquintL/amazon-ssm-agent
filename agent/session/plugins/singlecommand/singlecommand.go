@@ -111,6 +111,6 @@ func (p *SingleCommand) Execute(config agentContracts.Configuration,
 }
 
 // InputStreamMessageHandler passes payload byte stream to command execution process.
-func (p *SingleCommand) InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	return p.shell.InputStreamMessageHandler(log, streamDataMessage)
+func (p *SingleCommand) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+	return p.shell.GetInputStreamMessageHandlerFn()
 }

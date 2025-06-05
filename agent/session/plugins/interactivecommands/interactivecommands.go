@@ -78,6 +78,6 @@ func (p *InteractiveCommandsPlugin) Execute(config agentContracts.Configuration,
 }
 
 // InputStreamMessageHandler passes payload byte stream to shell stdin
-func (p *InteractiveCommandsPlugin) InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	return p.sessionPlugin.InputStreamMessageHandler(log, streamDataMessage)
+func (p *InteractiveCommandsPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+	return p.sessionPlugin.GetInputStreamMessageHandlerFn()
 }

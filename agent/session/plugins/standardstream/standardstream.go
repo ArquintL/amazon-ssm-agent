@@ -80,7 +80,6 @@ func (p *StandardStreamPlugin) Execute(
 	p.shell.Execute(config, cancelFlag, output, dataChannel, mgsContracts.ShellProperties{})
 }
 
-// InputStreamMessageHandler passes payload byte stream to shell stdin
-func (p *StandardStreamPlugin) InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	return p.shell.InputStreamMessageHandler(log, streamDataMessage)
+func (p *StandardStreamPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+	return p.shell.GetInputStreamMessageHandlerFn()
 }

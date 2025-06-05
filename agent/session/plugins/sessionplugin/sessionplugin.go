@@ -40,7 +40,7 @@ type ISessionPlugin interface {
 	GetDataChannelFn() func(context context.T, sessionId string, clientId string, cancelFlag task.CancelFlag, inputStreamMessageHandler datachannel.InputStreamMessageHandler) (datachannel.IDataChannel, error) // nilable
 	RequireHandshake() bool
 	Execute(config contracts.Configuration, cancelFlag task.CancelFlag, output iohandler.IOHandler, dataChannel datachannel.IDataChannel)
-	InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error
+	GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error
 }
 
 // SessionPlugin is the wrapper for all session manager plugins and implements all functions of Runpluginutil.T interface
@@ -62,8 +62,12 @@ func (p *SessionPlugin) Execute(
 	output iohandler.IOHandler) {
 
 	log := p.context.Log()
+	// wrapperFn := func(streamDataMessage *mgsContracts.AgentMessage) error {
+	// 	return p.sessionPlugin.InputStreamMessageHandler(log, *streamDataMessage)
+	// }
+	f := p.sessionPlugin.GetInputStreamMessageHandlerFn()
 	wrapperFn := func(streamDataMessage *mgsContracts.AgentMessage) error {
-		return p.sessionPlugin.InputStreamMessageHandler(log, *streamDataMessage)
+		return f(log, *streamDataMessage)
 	}
 
 	kmsKeyId := config.KmsKeyId
@@ -74,8 +78,9 @@ func (p *SessionPlugin) Execute(
 		// pick default factory if none is provided:
 		dataChannelFactoryFn = getDataChannelForSessionPlugin
 	}
-	dataChannel, err := dataChannelFactoryFn(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
-	if err != nil {                                                                                               //argot:ignore diodon-agent-io-independence
+	// DIODON FIX: inline getDataChannelForSessionPlugin because otherwise escape analysis doesn't see the return value
+	dataChannel, err := getDataChannelForSessionPlugin(p.context, config.SessionId, config.ClientId, cancelFlag, wrapperFn) //argot:ignore diodon-agent-core-invariant // expected allocation of dataChannel
+	if err != nil {                                                                                                         //argot:ignore diodon-agent-io-independence
 		errorString := fmt.Errorf("Setting up data channel with id %s failed: %s", config.SessionId, err)
 		output.MarkAsFailed(errorString)
 		log.Error(errorString)

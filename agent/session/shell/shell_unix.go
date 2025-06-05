@@ -174,8 +174,8 @@ func StartCommandExecutor(
 			if err != nil {
 				return fmt.Errorf("Failed to create command err pipe, error: %s\n", err)
 			}
-			plugin.stdin = nil
-			plugin.stdout = nil
+			plugin.handlerData.stdin = nil
+			plugin.handlerData.stdout = nil
 			plugin.stderrPipe = errorPipe
 			plugin.stdoutPipe = stdoutPipe
 		} else {
@@ -190,8 +190,8 @@ func StartCommandExecutor(
 			}
 			cmd.Stdout = outputWriter
 			cmd.Stderr = outputWriter
-			plugin.stdin = nil
-			plugin.stdout = outputReader
+			plugin.handlerData.stdin = nil
+			plugin.handlerData.stdout = outputReader
 		}
 	} else {
 		ptyFile, err = pty.Start(cmd)
@@ -199,11 +199,11 @@ func StartCommandExecutor(
 			log.Errorf("Failed to start pty: %s\n", err)
 			return fmt.Errorf("Failed to start pty: %s\n", err)
 		}
-		plugin.stdin = ptyFile
-		plugin.stdout = ptyFile
+		plugin.handlerData.stdin = ptyFile
+		plugin.handlerData.stdout = ptyFile
 	}
 	plugin.runAsUser = sessionUser
-	plugin.execCmd = execcmd.NewExecCmd(cmd)
+	plugin.handlerData.execCmd = execcmd.NewExecCmd(cmd)
 
 	return nil
 }
@@ -324,10 +324,10 @@ func (p *ShellPlugin) runShellProfile(log log.T, config agentContracts.Configura
 	if strings.TrimSpace(config.ShellProfile.Linux) == "" {
 		return nil
 	}
-	if p.stdin == nil {
+	if p.handlerData.stdin == nil {
 		return nil
 	}
-	if _, err := p.stdin.Write([]byte(config.ShellProfile.Linux + newLineCharacter)); err != nil {
+	if _, err := p.handlerData.stdin.Write([]byte(config.ShellProfile.Linux + newLineCharacter)); err != nil {
 		log.Errorf("Unable to write to stdin, err: %v.", err)
 		return err
 	}
@@ -423,60 +423,71 @@ func (p *ShellPlugin) cleanupLogFile(log log.T, ipcFile *os.File) {
 }
 
 // InputStreamMessageHandler passes payload byte stream to shell stdin
-func (p *ShellPlugin) InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
-	var isPluginNonInteractive = appconfig.PluginNameNonInteractiveCommands == p.name
-	if !isPluginNonInteractive && (p.stdin == nil || p.stdout == nil) {
-		// This is to handle scenario when cli/console starts sending size data but pty has not been started yet
-		// Since packets are rejected, cli/console will resend these packets until pty starts successfully in separate thread
-		log.Tracef("Pty unavailable. Reject incoming message packet")
-		return mgsContracts.ErrHandlerNotReady
+func (p *ShellPlugin) GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+	data := &handlerData{
+		stdin:   p.handlerData.stdin,
+		stdout:  p.handlerData.stdout,
+		execCmd: p.handlerData.execCmd,
 	}
+	isPluginNonInteractive := appconfig.PluginNameNonInteractiveCommands == p.name
 
-	switch mgsContracts.PayloadType(streamDataMessage.PayloadType) {
-	case mgsContracts.Output:
-		log.Tracef("Output message received: %d", streamDataMessage.SequenceNumber)
-		if isPluginNonInteractive {
-			var signal os.Signal = nil
-			for _, message := range streamDataMessage.Payload {
-				if sig, exists := appconfig.ByteControlSignalsLinux[message]; exists {
-					log.Debugf("Received control signal. message: %v, signal: %v", string(message), sig)
-					signal = sig
-					break
-				}
-			}
-			if signal != nil {
-				defer func() {
-					if err := p.execCmd.Wait(); err != nil {
-						log.Errorf("Error received after processing control signal: %s", err)
+	return func(log log.T, streamDataMessage mgsContracts.AgentMessage) error {
+		if !isPluginNonInteractive && (data.stdin == nil || data.stdout == nil) {
+			// This is to handle scenario when cli/console starts sending size data but pty has not been started yet
+			// Since packets are rejected, cli/console will resend these packets until pty starts successfully in separate thread
+			log.Tracef("Pty unavailable. Reject incoming message packet")
+			return mgsContracts.ErrHandlerNotReady
+		}
+
+		switch mgsContracts.PayloadType(streamDataMessage.PayloadType) {
+
+		case mgsContracts.Output:
+			log.Tracef("Output message received: %d", streamDataMessage.SequenceNumber)
+			if isPluginNonInteractive {
+				var signal os.Signal = nil
+				for _, message := range streamDataMessage.Payload {
+					if sig, exists := appconfig.ByteControlSignalsLinux[message]; exists {
+						log.Debugf("Received control signal. message: %v, signal: %v", string(message), sig)
+						signal = sig
+						break
 					}
-				}()
-				if err := p.execCmd.Signal(signal); err != nil {
-					log.Errorf("Sending signal %v to command process %v failed with error %v", signal, p.execCmd.Pid(), err)
-					return err
 				}
+				if signal != nil {
+					defer func() {
+						if err := data.execCmd.Wait(); err != nil {
+							log.Errorf("Error received after processing control signal: %s", err)
+						}
+					}()
+					if err := data.execCmd.Signal(signal); err != nil {
+						log.Errorf("Sending signal %v to command process %v failed with error %v", signal, data.execCmd.Pid(), err)
+						return err
+					}
+				}
+				return nil
 			}
-			return nil
+			if _, err := data.stdin.Write(streamDataMessage.Payload); err != nil {
+				log.Errorf("Unable to write to stdin, err: %v.", err)
+				return err
+			}
+
+		case mgsContracts.Size:
+			// Do not handle terminal resize for non-interactive plugin as there is no pty
+			if isPluginNonInteractive {
+				log.Debug("Terminal resize message is ignored in NonInteractiveCommands plugin")
+				return nil
+			}
+			var size mgsContracts.SizeData
+			if err := json.Unmarshal(streamDataMessage.Payload, &size); err != nil {
+				log.Errorf("Invalid size message: %s", err)
+				return err
+			}
+			log.Tracef("Resize data received: cols: %d, rows: %d", size.Cols, size.Rows)
+			if err := SetSize(log, size.Cols, size.Rows); err != nil {
+				log.Errorf("Unable to set pty size: %s", err)
+				return err
+			}
 		}
-		if _, err := p.stdin.Write(streamDataMessage.Payload); err != nil {
-			log.Errorf("Unable to write to stdin, err: %v.", err)
-			return err
-		}
-	case mgsContracts.Size:
-		// Do not handle terminal resize for non-interactive plugin as there is no pty
-		if isPluginNonInteractive {
-			log.Debug("Terminal resize message is ignored in NonInteractiveCommands plugin")
-			return nil
-		}
-		var size mgsContracts.SizeData
-		if err := json.Unmarshal(streamDataMessage.Payload, &size); err != nil {
-			log.Errorf("Invalid size message: %s", err)
-			return err
-		}
-		log.Tracef("Resize data received: cols: %d, rows: %d", size.Cols, size.Rows)
-		if err := SetSize(log, size.Cols, size.Rows); err != nil {
-			log.Errorf("Unable to set pty size: %s", err)
-			return err
-		}
+
+		return nil
 	}
-	return nil
 }

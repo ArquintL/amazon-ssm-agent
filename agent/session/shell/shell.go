@@ -61,11 +61,9 @@ type GetCommandExecutorFn = func(log log.T,
 type ShellPlugin struct {
 	context              context.T
 	name                 string
-	stdin                *os.File
-	stdout               *os.File
+	handlerData          handlerData
 	stdoutPipe           io.Reader
 	stderrPipe           io.Reader
-	execCmd              execcmd.IExecCmd
 	runAsUser            string
 	dataChannel          datachannel.IDataChannel
 	logger               logger
@@ -73,6 +71,12 @@ type ShellPlugin struct {
 	stdoutPrefix         string
 	stderrPrefix         string
 	getCommandExecutorFn GetCommandExecutorFn // nilable
+}
+
+type handlerData struct {
+	stdin   *os.File
+	stdout  *os.File
+	execCmd *execcmd.ExecCmd
 }
 
 // logger is used for storing the information related to logging of session data to S3/CW
@@ -90,7 +94,7 @@ type logger struct {
 
 type IShellPlugin interface {
 	Execute(config agentContracts.Configuration, cancelFlag task.CancelFlag, output iohandler.IOHandler, dataChannel datachannel.IDataChannel, shellProps mgsContracts.ShellProperties)
-	InputStreamMessageHandler(log log.T, streamDataMessage mgsContracts.AgentMessage) error
+	GetInputStreamMessageHandlerFn() func(log log.T, streamDataMessage mgsContracts.AgentMessage) error
 }
 
 const separateOutputStreamPrefixRegex = "^[0-9a-zA-Z\r\n_:-]{0,30}$"
@@ -105,6 +109,7 @@ func NewPlugin(context context.T, name string) (*ShellPlugin, error) {
 			ptyTerminated:               make(chan bool),
 			cloudWatchStreamingFinished: make(chan bool),
 		},
+		handlerData: handlerData{},
 	}
 	return &plugin, nil
 }
@@ -344,14 +349,14 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
 			log.Debug("Session cancelled. Attempting to stop pty.")
 
 			defer func() {
-				if p.execCmd != nil {
-					if err := p.execCmd.Wait(); err != nil {
+				if p.handlerData.execCmd != nil {
+					if err := p.handlerData.execCmd.Wait(); err != nil {
 						log.Errorf("unable to wait pty: %s", err)
 					}
 				}
 			}()
-			if p.execCmd != nil {
-				if err := p.execCmd.Kill(); err != nil {
+			if p.handlerData.execCmd != nil {
+				if err := p.handlerData.execCmd.Kill(); err != nil {
 					log.Errorf("unable to terminate pty: %s", err)
 				}
 			}
@@ -366,11 +371,11 @@ func (p *ShellPlugin) executeCommandsWithPty(config agentContracts.Configuration
 			return
 		case exitCode := <-writePumpDone:
 			defer func() {
-				if p.execCmd != nil {
-					if err := p.execCmd.Wait(); err != nil {
-						log.Errorf("pty process: %v exited unsuccessfully, error message: %v", p.execCmd.Pid(), err)
+				if p.handlerData.execCmd != nil {
+					if err := p.handlerData.execCmd.Wait(); err != nil {
+						log.Errorf("pty process: %v exited unsuccessfully, error message: %v", p.handlerData.execCmd.Pid(), err)
 					} else {
-						log.Debugf("pty process: %v exited successfully", p.execCmd.Pid())
+						log.Debugf("pty process: %v exited successfully", p.handlerData.execCmd.Pid())
 					}
 				}
 			}()
@@ -431,7 +436,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 	writeStdOutDone := p.setupRoutineToWriteCmdPipelineOutput(log, ipcFile, false, outChannel)
 	writeStdErrDone := p.setupRoutineToWriteCmdPipelineOutput(log, ipcFile, true, outChannel)
 
-	if err := p.execCmd.Start(); err != nil {
+	if err := p.handlerData.execCmd.Start(); err != nil {
 		errorString := fmt.Errorf("Error occurred starting the command: %s\n", err)
 		log.Error(errorString)
 		output.MarkAsFailed(errorString)
@@ -443,7 +448,7 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 	cmdExitCode := make(chan int, 1)
 	writeStdOutResult, writeStdErrResult := appconfig.ErrorExitCode, appconfig.ErrorExitCode
 
-	execCmd := p.execCmd
+	execCmd := p.handlerData.execCmd
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -483,8 +488,8 @@ func (p *ShellPlugin) processCommandsWithOutputStreamSeparate(cancelled chan boo
 				}
 			case <-cancelled:
 				log.Debug("Session cancelled. Attempting to stop the command execution.")
-				if err := p.execCmd.Kill(); err != nil {
-					log.Errorf("unable to terminate command execution process %s: %v", p.execCmd.Pid(), err)
+				if err := p.handlerData.execCmd.Kill(); err != nil {
+					log.Errorf("unable to terminate command execution process %s: %v", p.handlerData.execCmd.Pid(), err)
 				}
 				output.SetExitCode(appconfig.SuccessExitCode)
 				output.SetStatus(agentContracts.ResultStatusSuccess)
@@ -533,7 +538,7 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 
 	log := p.context.Log()
 
-	if err := p.execCmd.Start(); err != nil {
+	if err := p.handlerData.execCmd.Start(); err != nil {
 		errorString := fmt.Errorf("Error occurred starting the command: %s\n", err)
 		log.Error(errorString)
 		output.MarkAsFailed(errorString)
@@ -542,7 +547,7 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 
 	// Wait for session to be completed/cancelled/interrupted
 	cmdWaitDone := make(chan error, 1)
-	execCmd := p.execCmd
+	execCmd := p.handlerData.execCmd
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -558,8 +563,8 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 	select {
 	case <-cancelled:
 		log.Debug("Session cancelled. Attempting to stop the command execution.")
-		if err := p.execCmd.Kill(); err != nil {
-			log.Errorf("unable to terminate command execution process %s: %v", p.execCmd.Pid(), err)
+		if err := p.handlerData.execCmd.Kill(); err != nil {
+			log.Errorf("unable to terminate command execution process %s: %v", p.handlerData.execCmd.Pid(), err)
 		}
 		errorCode := 0
 		output.SetExitCode(errorCode)
@@ -585,8 +590,8 @@ func (p *ShellPlugin) processCommandsWithExec(cancelled chan bool,
 			}
 		case <-cancelled:
 			log.Debug("Session cancelled. Attempting to stop the command execution.")
-			if err := p.execCmd.Kill(); err != nil {
-				log.Errorf("unable to terminate command execution process %s: %v", p.execCmd.Pid(), err)
+			if err := p.handlerData.execCmd.Kill(); err != nil {
+				log.Errorf("unable to terminate command execution process %s: %v", p.handlerData.execCmd.Pid(), err)
 			}
 			errorCode := 0
 			output.SetExitCode(errorCode)
@@ -660,7 +665,7 @@ func (p *ShellPlugin) setupRoutineToWriteCommandOutput(log log.T, ipcFile *os.Fi
 	log.Debugf("Start separate go routine to read from command output and write to data channel")
 
 	done := make(chan int, 1)
-	stream := p.stdout
+	stream := p.handlerData.stdout
 	go func() {
 		done <- writePump(stream, log, ipcFile, initialWaitSecond, outChannel)
 	}()

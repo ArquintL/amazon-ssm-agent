@@ -30,6 +30,8 @@ import (
 	"github.com/aws/amazon-ssm-agent/agent/log"
 	"github.com/aws/amazon-ssm-agent/agent/platform"
 	"github.com/aws/amazon-ssm-agent/agent/plugins/pluginutil"
+	"github.com/aws/amazon-ssm-agent/agent/session/plugins/interactivecommands"
+	"github.com/aws/amazon-ssm-agent/agent/session/plugins/sessionplugin"
 	"github.com/aws/amazon-ssm-agent/agent/ssm/ssmparameterresolver"
 	"github.com/aws/amazon-ssm-agent/agent/task"
 )
@@ -303,6 +305,14 @@ func orchestrationDirCleanup(context context.T, pluginsCount int, pluginOutputs 
 	}
 }
 
+type SessionPluginFactoryLocal struct {
+	newPluginFunc sessionplugin.NewPluginFunc
+}
+
+func (f SessionPluginFactoryLocal) Create(context context.T) (T, error) {
+	return sessionplugin.NewPlugin(context, f.newPluginFunc)
+}
+
 var runPlugin = func(
 	context context.T,
 	factory PluginFactory,
@@ -327,7 +337,9 @@ var runPlugin = func(
 			log.Errorf("Stacktrace:\n%s", debug.Stack())
 		}
 	}()
-
+	// DIDODON FIX: make factory not nil by explicitly creating it
+	// could probably also add an if-else chain with the other possible plugins for completeness
+	factory = SessionPluginFactoryLocal{interactivecommands.NewPlugin}
 	var err error
 	plugin, err := factory.Create(context)
 
