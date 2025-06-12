@@ -108,7 +108,6 @@ func (dc *dataChannel) PerformHandshake(log logger.T,
 		//@ fold dc.Inv()
 		return errHandshake() // safe generic error
 	}
-	dc.idc = idc
 	err = idc.sendHandshakeRequest(log, handshakeRequestPayload /*@, sessionTypeRequest @*/)
 	// we no longer need `handshakeRequestPayload` and, thus, we can restore permissions to `sessionTypeRequest`:
 	//@ apply (handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(sessionTypeRequest)) --* sessionTypeRequest.Mem()
