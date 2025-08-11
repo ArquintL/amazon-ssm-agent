@@ -356,15 +356,15 @@ pred (dc *internalDataChannel) MemInternal(state DataChannelState) {
 		dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT())) &&
 	// relate state to abstract state:
 	(state == Initialized || state == BlockCipherInitialized ==>
-		ft.Setup_Agent(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT()) in dc.io.getAbsState()) &&
+		ft.Setup_Agent(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT()) elem dc.io.getAbsState()) &&
 	(state == AgentSecretCreatedAndSigned ==>
-		ft.St_Agent_2(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_2(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) elem dc.io.getAbsState()) &&
 	(state == HandshakeRequestSent ==>
-		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) elem dc.io.getAbsState()) &&
 	(state == BlockCipherReady ==>
-		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) elem dc.io.getAbsState()) &&
 	(state == HandshakeCompleted ==>
-		ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) elem dc.io.getAbsState()) &&
 	(state == IODistributed ==>
 		// the idea is that the receiving thread does not get permission to Mem() but a reduced invariant:
 		acc(&dc.ioLockDidLocalReceive) && acc(&dc.ioLockCanRemoteSend) &&
@@ -418,20 +418,20 @@ pred (dc *internalDataChannel) MemTransfer(state DataChannelState, encryptionEna
 		bytes.SliceMem(dc.secrets.agentSecret) &&
 		by.gamma(dc.io.getAgentShareT()) == abs.Abs(dc.secrets.agentSecret)) &&
 	(state == HandshakeRequestSent ==>
-		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_3(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()) elem dc.io.getAbsState()) &&
 	(state >= HandshakeResponseReceived ==>
 		bytes.SliceMem(dc.secrets.sharedSecret) &&
 		// TODO: we could technically remove `getSharedSecretT` as it only acts as an abbreviation:
 		dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
 		by.gamma(dc.io.getSharedSecretT()) == abs.Abs(dc.secrets.sharedSecret)) &&
 	(state == HandshakeResponseVerified ==>
-		ft.St_Agent_6(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT()) in dc.io.getAbsState()) &&
+		ft.St_Agent_6(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT()) elem dc.io.getAbsState()) &&
 	(state == BlockCipherReady ==>
 		(encryptionEnabled ==>
 			dc.blockCipher.IsReady() &&
 			dc.blockCipher.GetEncKeyT() == tm.kdf1(dc.io.getSharedSecretT()) &&
 			dc.blockCipher.GetDecKeyT() == tm.kdf2(dc.io.getSharedSecretT())) &&
-		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState())
+		ft.St_Agent_9(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) elem dc.io.getAbsState())
 }
 
 // `MemRecv` is the predicate on which the goroutine receiving transport messages operates on.
@@ -530,7 +530,7 @@ pred IoLockInv(dc *internalDataChannel, instanceId, clientId, agentLTKeyARN stri
 	iospec.P_Agent(dc.io.getToken(), dc.io.getRid(), dc.io.getAbsState()) &&
 	tm.pubTerm(pub.pub_msg(instanceId)) == dc.io.getAgentIdT() &&
 	tm.pubTerm(pub.pub_msg(clientId)) == dc.io.getClientIdT() &&
-	ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) in dc.io.getAbsState() &&
+	ft.St_Agent_10(dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT(), dc.io.getClientLtKeyIdT(), tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getClientShareSignatureT(), dc.io.getSigSessionKeysT()) elem dc.io.getAbsState() &&
 	dc.io.getSharedSecretT() == tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), dc.io.getClientShareT()), dc.io.getAgentShareT()) &&
 	(((dc.ioLockDidLocalReceive ? mset[ft.Fact]{ ft.InFact_Agent(dc.io.getRid(), dc.io.localInFactT) } : mset[ft.Fact]{ }) union
 		(dc.ioLockCanRemoteSend ? mset[ft.Fact]{ ft.OutFact_Agent(dc.io.getRid(), dc.io.remoteOutFactT) } : mset[ft.Fact]{ } ) union

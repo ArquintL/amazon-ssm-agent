@@ -158,14 +158,14 @@ ghost
 decreases
 requires acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
 requires pl.token(t0) && iospec.P_Agent(t0, rid, s0)
-requires ft.Setup_Agent(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT()) in s0
-requires ft.FrFact_Agent(rid, agentSecretT) in s0
+requires ft.Setup_Agent(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT()) elem s0
+requires ft.FrFact_Agent(rid, agentSecretT) elem s0
 ensures  acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
 ensures  pl.token(t1) && iospec.P_Agent(t3, rid, s3)
 ensures  iospec.e_Out_KMS(t1, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), rid, m) && t2 == iospec.get_e_Out_KMS_placeDst(t1, rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), rid, m)
 ensures  iospec.e_In_KMS(t2, rid) && t3 == iospec.get_e_In_KMS_placeDst(t2, rid)
-ensures  ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) in s3
-ensures  ft.In_KMS_Agent(rid, iospec.get_e_In_KMS_r1(t2, rid), iospec.get_e_In_KMS_r2(t2, rid), iospec.get_e_In_KMS_r3(t2, rid), iospec.get_e_In_KMS_r4(t2, rid)) in s3
+ensures  ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) elem s3
+ensures  ft.In_KMS_Agent(rid, iospec.get_e_In_KMS_r1(t2, rid), iospec.get_e_In_KMS_r2(t2, rid), iospec.get_e_In_KMS_r3(t2, rid), iospec.get_e_In_KMS_r4(t2, rid)) elem s3
 ensures  m == ut.tuple5(tm.pubTerm(pub.const_SignRequest_pub()), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), tm.exp(tm.pubTerm(pub.const_g_pub()), agentSecretT), dc.io.getReaderIdT(), dc.io.getClientIdT())
 func (dc *internalDataChannel) performTransitions_0_12_15(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string) (t1, t2, t3 pl.Place, s3 mset[ft.Fact], m tm.Term) {
 	agentIdT := dc.io.getAgentIdT()
@@ -211,11 +211,11 @@ ghost
 decreases
 requires acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
 requires pl.token(t0) && iospec.P_Agent(t0, rid, s0)
-requires ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) in s0
-requires ft.In_KMS_Agent(rid, dc.io.getKMSIdT(), dc.io.getAgentIdT(), rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) in s0
+requires ft.St_Agent_1(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT) elem s0
+requires ft.In_KMS_Agent(rid, dc.io.getKMSIdT(), dc.io.getAgentIdT(), rid, tm.pair(tm.pubTerm(pub.const_SignResponse_pub()), signatureT)) elem s0
 ensures  acc(&dc.io, 1/2) && acc(dc.io.IoSpecMemPartial(), 1/2)
 ensures  pl.token(t1) && iospec.P_Agent(t1, rid, s1)
-ensures  ft.St_Agent_2(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT, signatureT) in s1
+ensures  ft.St_Agent_2(rid, dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(agentLTKeyARN)), dc.io.getLogLTPkT(), agentSecretT, signatureT) elem s1
 func (dc *internalDataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 mset[ft.Fact], agentSecretT tm.Term, agentLTKeyARN string, signatureT tm.Term) (t1 pl.Place, s1 mset[ft.Fact]) {
 	agentIdT := dc.io.getAgentIdT()
 	kmsIdT := dc.io.getKMSIdT()

@@ -35,7 +35,7 @@ import (
 // @ requires dc.MemTransfer(HandshakeRequestSent, encryptionEnabled)
 // @ requires streamDataMessage.Mem()
 // @ requires unfolding streamDataMessage.Mem() in mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) elem dc.io.getAbsState()
 // @ preserves dc.RecvRoutineMem()
 // @ ensures  streamDataMessage.Mem()
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -66,7 +66,7 @@ func (dc *internalDataChannel) handleHandshakeResponse(streamDataMessage *mgsCon
 	//@		mgsContracts.PayloadType(streamDataMessage.PayloadType) == mgsContracts.HandshakeResponse &&
 	//@ 	abs.Abs(streamDataMessage.Payload) == handshakeResponse.Abs()
 	//@ invariant i <= 1 ==> !containsSecureSessionAction
-	//@ invariant !containsSecureSessionAction ==> unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
+	//@ invariant !containsSecureSessionAction ==> unfolding dc.MemTransfer(state, encryptionEnabled) in by.gamma(dc.io.getInFactT()) == streamDataMessage.Abs() && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) elem dc.io.getAbsState()
 	for i := 0; i < len(actions); i++ {
 		//@ unfold acc(handshakeResponse.Mem(), 1/2)
 		//@ unfold acc(actions[i].Mem(), 1/2)
@@ -141,7 +141,7 @@ func (dc *internalDataChannel) handleHandshakeResponse(streamDataMessage *mgsCon
 }
 
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/4) && action.IsSuccessfulSecureSession()
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) elem dc.io.getAbsState()
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/4)
 // @ ensures  err == nil ==> state == BlockCipherReady
 // @ ensures  err != nil ==> err.ErrorMem()
@@ -162,7 +162,7 @@ func (dc *internalDataChannel) processSecureSessionResponse(action *mgsContracts
 }
 
 // @ requires dc.MemTransfer(HandshakeRequestSent, true) && acc(action.Mem(), 1/8) && action.IsSuccessfulSecureSession()
-// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) in dc.io.getAbsState()
+// @ requires unfolding dc.MemTransfer(HandshakeRequestSent, true) in by.gamma(dc.io.getInFactT()) == by.pairB(by.gamma(mgsContracts.payloadTypeTerm(mgsContracts.HandshakeResponse)), action.Abs()) && ft.InFact_Agent(dc.io.getRid(), dc.io.getInFactT()) elem dc.io.getAbsState()
 // @ ensures  dc.MemTransfer(state, true) && acc(action.Mem(), 1/8)
 // @ ensures  err == nil ==> state == HandshakeResponseVerified
 // @ ensures  err != nil ==> err.ErrorMem() && state == Erroneous
@@ -487,7 +487,7 @@ func (dc *internalDataChannel) completeSecureSessionResponseProcessing() (state 
 
 	// TODO: actually send `encodedEncryptedSessionKeysPayloadBytes` to the log server!
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission
-	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) in s5
+	//@ assert ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_EncryptedSessionKey_pub()), encryptedSessionKeysPayloadT)) elem s5
 
 	if err := dc.blockCipher.UpdateEncryptionKeys(dc.secrets.agentReadKey, dc.secrets.agentWriteKey /*@, perm(1/2), tm.kdf2(sharedSecretT), tm.kdf1(sharedSecretT) @*/); err != nil {
 		state = Erroneous

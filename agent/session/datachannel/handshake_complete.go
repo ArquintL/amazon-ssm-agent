@@ -32,7 +32,7 @@ import (
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem() && dc.getState() == old(dc.getState())
 // @ ensures err == nil ==> payload.Mem() && payload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
-// @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
+// @ ensures err == nil ==> ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) elem dc.GetAbsState()
 // @ ensures err != nil ==> err.ErrorMem()
 func (dc *internalDataChannel) buildHandshakeCompletePayload(log logger.T) (payload *mgsContracts.HandshakeCompletePayload, err error) {
 	clientVersion, err := dc.getClientVersion()
@@ -82,7 +82,7 @@ func (dc *internalDataChannel) buildHandshakeCompletePayload(log logger.T) (payl
 // @ requires log != nil && handshakeCompletePayload.Mem()
 // @ requires dc.Mem() && dc.getState() == BlockCipherReady
 // @ requires handshakeCompletePayload.Abs() == by.gamma(tm.pair(tm.pubTerm(pub.const_HandshakeCompletePayload_pub()), dc.GetInFactT()))
-// @ requires ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) in dc.GetAbsState()
+// @ requires ft.InFact_Agent(dc.GetRid(), dc.GetInFactT()) elem dc.GetAbsState()
 // @ preserves acc(log.Mem(), _)
 // @ ensures dc.Mem()
 // @ ensures err == nil ==> dc.getState() == HandshakeCompleted && dc.isHandshakeCompleted()
