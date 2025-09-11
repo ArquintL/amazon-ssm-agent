@@ -40,7 +40,7 @@ index 3a84bf20..ccdfc6bc 100644
  @*/
  
 +func (dc *dataChannel) GetSessionID() *[]byte {
-+	return &dc.secrets.sessionID
++	return &dc.idc.secrets.sessionID
 +}
 +
  // agentHandshakeSecrets represents the secrets used in the handshake.
