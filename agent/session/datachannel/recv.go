@@ -232,23 +232,27 @@ func (dc *internalDataChannel) performTransition_10(instanceId, clientId, agentL
 	sigYT := dc.io.getClientShareSignatureT()
 	sigSessionKeysT := dc.io.getSigSessionKeysT()
 	receivedMsgT := dc.io.remoteInFactT
-	payloadT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t0, s0)
-	outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)
+	plaintextT := pattern.patternRequirementTransportMessage(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, by.oneTerm(plaintextB), receivedMsgT, t0, s0)
+	outMsgT := tm.pair(tm.pubTerm(pub.const_Message_pub()), plaintextT)
+	// the following 2 assert stmts are needed for triggering purposes:
+	assert by.gamma(tm.snd(receivedMsgT)) == by.gamma(tm.senc(by.oneTerm(plaintextB), tm.kdf2(dc.io.getSharedSecretT())))
+	assert by.gamma(tm.sdec(tm.senc(plaintextT, tm.kdf2(sharedSecretT)), tm.kdf2(sharedSecretT))) == plaintextB
 	// obtain permission to send the ciphertext containing `inputData`:
 	l := mset[ft.Fact] {
 		ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-		ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(payloadT, tm.kdf2(sharedSecretT)))),
+		ft.InFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), tm.senc(plaintextT, tm.kdf2(sharedSecretT)))),
 	}
 	a := mset[cl.Claim] {
 		cl.AgentRecvLoop(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)),
+		cl.AgentRecvTransMsg(plaintextT, tm.kdf2(sharedSecretT)),
 	}
 	r := mset[ft.Fact] {
 		ft.St_Agent_10(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT),
-		ft.OutFact_Agent(rid, tm.pair(tm.pubTerm(pub.const_Message_pub()), payloadT)),
+		ft.OutFact_Agent(rid, outMsgT),
 	}
 	unfold iospec.P_Agent(t0, rid, s0)
 	unfold iospec.phiR_Agent_10(t0, rid, s0)
-	t1 := iospec.internBIO_e_Agent_ReceiveMessages(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, payloadT, l, a, r)
+	t1 := iospec.internBIO_e_Agent_ReceiveMessages(t0, rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, clientLtKeyIdT, tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), sigYT, sigSessionKeysT, plaintextT, l, a, r)
 	s1 := ft.U(l, r, s0)
 
 	unfold dc.io.IoSpecMemMain()

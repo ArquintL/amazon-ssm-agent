@@ -40,6 +40,7 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+	//@ ay "github.com/aws/amazon-ssm-agent/agent/iospecs/utilbytes"
 )
 
 // we assume that this function returns the initial values used by this agent session
@@ -119,7 +120,7 @@ func marshalHandshakeRequest(handshakeRequestPayload *mgsContracts.HandshakeRequ
 // @ ensures  err == nil ==> bytes.SliceMem(priv)
 // @ ensures  err == nil ==> pl.token(t1) && t1 == old(iospec.get_e_FrFact_placeDst(t0, rid))
 // @ ensures  err == nil ==> abs.Abs(priv) == by.gamma(old(iospec.get_e_FrFact_r1(t0, rid)))
-// @ ensures  err == nil ==> by.msgB(encodedPk) == by.expB(by.generatorB(), abs.Abs(priv))
+// @ ensures  err == nil ==> ay.msgB(encodedPk) == by.expB(ay.generatorB(), abs.Abs(priv))
 // @ ensures  err != nil ==> err.ErrorMem()
 // @ ensures  err != nil ==> t1 == t0 && pl.token(t0) && iospec.e_FrFact(t0, rid) &&
 // @ 	iospec.get_e_FrFact_placeDst(t0, rid) == old(iospec.get_e_FrFact_placeDst(t0, rid)) &&
@@ -139,7 +140,7 @@ func generateAndEncodeEllipticKey( /*@ ghost t0 pl.Place, ghost rid tm.Term @*/ 
 
 // @ trusted
 // @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
-// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.tuple3B(by.msgB(compressedPublic), by.msgB(logReaderId), by.msgB(clientId))
+// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == ay.tuple3B(ay.msgB(compressedPublic), ay.msgB(logReaderId), ay.msgB(clientId))
 // @ ensures err != nil ==> err.ErrorMem()
 func getSignAgentSharePayloadBytes(compressedPublic string, clientId string, logReaderId string) (signPayloadBytes []byte, err error) {
 	signPayload := &mgsContracts.SignAgentSharePayload{
@@ -185,8 +186,8 @@ func unmarshalSecureSessionResponse(payload []byte /*@, ghost p perm @*/) (secur
 // the following postcondition expresses that `IsOnCurve` guarantees that `clientShare` is a valid
 // DH pubic key. Instead of existentially quantifying over the corresponding private key, we assume
 // `privB` is the corresponding witness
-// @ ensures err == nil ==> by.msgB(clientShare) == by.expB(by.generatorB(), privB)
-// @ ensures err == nil ==> abs.Abs(sharedSecret) == by.expB(by.expB(by.generatorB(), privB), abs.Abs(agentSecret))
+// @ ensures err == nil ==> ay.msgB(clientShare) == by.expB(ay.generatorB(), privB)
+// @ ensures err == nil ==> abs.Abs(sharedSecret) == by.expB(by.expB(ay.generatorB(), privB), abs.Abs(agentSecret))
 // @ ensures err != nil ==> err.ErrorMem()
 func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, ghost p perm @*/) (sharedSecret []byte, err error /*@, ghost privB by.Bytes @*/) {
 	var clientShareBytes []byte
@@ -211,7 +212,7 @@ func unmarshalAndCheckClientShare(clientShare string, agentSecret []byte /*@, gh
 
 // @ trusted
 // @ ensures err == nil ==> bytes.SliceMem(clientSignPayload)
-// @ ensures err == nil ==> abs.Abs(clientSignPayload) == by.pairB(by.msgB(clientShare), by.msgB(agentId))
+// @ ensures err == nil ==> abs.Abs(clientSignPayload) == by.pairB(ay.msgB(clientShare), ay.msgB(agentId))
 // @ ensures err != nil ==> err.ErrorMem()
 func getVerifyPayloadBytes(clientShare string, agentId string) (clientSignPayload []byte, err error) {
 	payload := &mgsContracts.SignClientSharePayload{
@@ -243,7 +244,7 @@ func getSessionKeysPayload(agentWriteKey, agentReadKey []byte /*@, ghost p perm 
 // @ trusted
 // @ requires noPerm < p
 // @ preserves acc(bytes.SliceMem(payload), p) && acc(pk.Mem(), p)
-// @ ensures  err == nil ==> by.msgB(encodedCiphertext) == by.aencB(abs.Abs(payload), pk.Abs())
+// @ ensures  err == nil ==> ay.msgB(encodedCiphertext) == by.aencB(abs.Abs(payload), pk.Abs())
 // @ ensures  err != nil ==> err.ErrorMem()
 func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (encodedCiphertext string, err error) {
 	//@ cryptoRand.GetReaderMem()
@@ -258,7 +259,7 @@ func encryptAndEncode(payload []byte, pk *rsa.PublicKey /*@, ghost p perm @*/) (
 
 // @ trusted
 // @ ensures err == nil ==> bytes.SliceMem(signPayloadBytes)
-// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.pairB(by.msgB(encryptedSessionKeys), by.msgB(clientId))
+// @ ensures err == nil ==> abs.Abs(signPayloadBytes) == by.pairB(ay.msgB(encryptedSessionKeys), ay.msgB(clientId))
 // @ ensures err != nil ==> err.ErrorMem()
 func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string) (signPayloadBytes []byte, err error) {
 	signPayload := &mgsContracts.SignSessionKeysPayload{
@@ -278,7 +279,7 @@ func getSignSessionKeysPayloadBytes(encryptedSessionKeys string, clientId string
 // @ requires let t1 := iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) in (
 // @     iospec.e_In_KMS(t1, rid))
 // @ ensures  kmsService.Mem() && acc(bytes.SliceMem(message), p)
-// @ ensures  err == nil ==> by.gamma(signatureT) == by.msgB(signature)
+// @ ensures  err == nil ==> by.gamma(signatureT) == ay.msgB(signature)
 // @ ensures  err != nil ==> err.ErrorMem()
 // @ ensures  err == nil ==> let t1 := old(iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m)) in (
 // @     pl.token(old(iospec.get_e_In_KMS_placeDst(t1, rid))) &&
@@ -298,7 +299,7 @@ func signAndEncode(kmsService *crypto.KMSService, keyId string, message []byte /
 }
 
 // @ trusted
-// @ ensures  err == nil ==> by.msgB(encryptedSessionKeysPayload) == by.tuple5B(by.msgB(encodedEncryptedSessionKeys), by.msgB(encodedSigSessionKeys), by.msgB(agentId), by.msgB(agentLTKeyARN), by.msgB(clientId))
+// @ ensures  err == nil ==> ay.msgB(encryptedSessionKeysPayload) == ay.tuple5B(ay.msgB(encodedEncryptedSessionKeys), ay.msgB(encodedSigSessionKeys), ay.msgB(agentId), ay.msgB(agentLTKeyARN), ay.msgB(clientId))
 // @ ensures  err != nil ==> err.ErrorMem()
 func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessionKeys, agentId, agentLTKeyARN, clientId string) (encryptedSessionKeysPayload string, err error) {
 	payload := &mgsContracts.EncryptedSessionKeysPayload{
@@ -327,7 +328,7 @@ func getEncryptedSessionKeysPayload(encodedEncryptedSessionKeys, encodedSigSessi
 // @ requires pl.token(t) && iospec.e_InFact(t, rid)
 // @ ensures  err == nil ==> pl.token(old(iospec.get_e_InFact_placeDst(t, rid))) &&
 // @	payloadT == old(iospec.get_e_InFact_r1(t, rid))
-// @ ensures err == nil ==> by.gamma(payloadT) == by.pairB(by.durationB(handshakeDuration), by.msgB(customerMessage))
+// @ ensures err == nil ==> by.gamma(payloadT) == by.pairB(ay.durationB(handshakeDuration), ay.msgB(customerMessage))
 // @ ensures err != nil ==> err.ErrorMem()
 // @ ensures err != nil ==> pl.token(t) && iospec.e_InFact(t, rid) &&
 // @ 	iospec.get_e_InFact_placeDst(t, rid) == old(iospec.get_e_InFact_placeDst(t, rid)) &&

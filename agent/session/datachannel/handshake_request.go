@@ -29,6 +29,7 @@ import (
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
+	//@ ay "github.com/aws/amazon-ssm-agent/agent/iospecs/utilbytes"
 )
 
 // buildHandshakeRequestPayload builds payload for HandshakeRequest
@@ -39,7 +40,7 @@ import (
 // @ ensures  err == nil ==> ((payload.Mem() && payload.ContainsSessionTypeAction(request)) --* request.Mem())
 // @ ensures  err == nil && !encryptionRequested ==> dc.getState() == BlockCipherInitialized
 // @ ensures  err == nil && encryptionRequested ==> dc.getState() == AgentSecretCreatedAndSigned
-// @ ensures  err == nil && encryptionRequested ==> payload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.GetAgentShareT())), by.gamma(dc.GetAgentShareSignatureT()), by.msgB(dc.getAgentLTKeyARN()), by.msgB(dc.getLogReaderId())))
+// @ ensures  err == nil && encryptionRequested ==> payload.ContainsSecureSessionAction(ay.tuple4B(by.expB(ay.generatorB(), by.gamma(dc.GetAgentShareT())), by.gamma(dc.GetAgentShareSignatureT()), ay.msgB(dc.getAgentLTKeyARN()), ay.msgB(dc.getLogReaderId())))
 // @ ensures  err != nil ==> err.ErrorMem() && request.Mem()
 func (dc *internalDataChannel) buildHandshakeRequestPayload(log logger.T,
 	encryptionRequested bool,
@@ -248,13 +249,13 @@ func (dc *internalDataChannel) performTransition_1(t0 pl.Place, rid tm.Term, s0 
 // @ requires dc.Mem() && dc.getState() >= BlockCipherInitialized
 // @ requires unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in dc.encryptionEnabled ==>
 // @	dc.dataChannelState == AgentSecretCreatedAndSigned &&
-// @	handshakeRequestPayload.ContainsSecureSessionAction(by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId)))
+// @	handshakeRequestPayload.ContainsSecureSessionAction(ay.tuple4B(by.expB(ay.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), ay.msgB(dc.secrets.agentLTKeyARN), ay.msgB(dc.logReaderId)))
 // @ preserves acc(log.Mem(), _)
 // @ ensures  dc.Mem() && handshakeRequestPayload.Mem() && handshakeRequestPayload.ContainsSessionTypeAction(request)
 // @ ensures  err == nil ==> dc.getState() == HandshakeRequestSent
 // @ ensures  err != nil ==> err.ErrorMem()
 func (dc *internalDataChannel) sendHandshakeRequest(log logger.T, handshakeRequestPayload *mgsContracts.HandshakeRequestPayload /*@, ghost request mgsContracts.SessionTypeRequest @*/) (err error) {
-	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in by.tuple4B(by.expB(by.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), by.msgB(dc.secrets.agentLTKeyARN), by.msgB(dc.logReaderId))
+	//@ secActionB := unfolding acc(dc.Mem(), _) in unfolding acc(dc.MemInternal(dc.dataChannelState), _) in ay.tuple4B(by.expB(ay.generatorB(), by.gamma(dc.io.getAgentShareT())), by.gamma(dc.io.getAgentShareSignatureT()), ay.msgB(dc.secrets.agentLTKeyARN), ay.msgB(dc.logReaderId))
 	var handshakeRequestPayloadBytes []byte
 	if handshakeRequestPayloadBytes, err = marshalHandshakeRequest(handshakeRequestPayload /*@, perm(1/2), secActionB @*/); err != nil {
 		return fmtErrorf("Could not serialize HandshakeRequest message", err /*@, perm(1/1) @*/)

@@ -29,6 +29,7 @@ import (
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 	//@ ut "github.com/aws/amazon-ssm-agent/agent/iospecs/util"
+	//@ ay "github.com/aws/amazon-ssm-agent/agent/iospecs/utilbytes"
 )
 
 // handleHandshakeResponse is the handler for payload type HandshakeResponse
@@ -209,8 +210,8 @@ func (dc *internalDataChannel) verifySecureSessionResponse(action *mgsContracts.
 
 	//@ receivedMsgT := dc.io.getInFactT()
 	//@ xT := dc.io.getAgentShareT()
-	//@ sigYB := by.msgB(resp.Signature)
-	//@ clientLtKeyIdB := by.msgB(resp.ClientLTKeyARN)
+	//@ sigYB := ay.msgB(resp.Signature)
+	//@ clientLtKeyIdB := ay.msgB(resp.ClientLTKeyARN)
 	//@ t0 := dc.io.getToken()
 	//@ rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX := dc.io.getRid(), dc.io.getAgentIdT(), dc.io.getKMSIdT(), dc.io.getClientIdT(), dc.io.getReaderIdT(), tm.pubTerm(pub.pub_msg(dc.secrets.agentLTKeyARN)), dc.io.getLogLTPkT(), dc.io.getAgentShareT(), dc.io.getAgentShareSignatureT()
 	//@ s0 := dc.io.getAbsState()
@@ -218,6 +219,14 @@ func (dc *internalDataChannel) verifySecureSessionResponse(action *mgsContracts.
 	// retrieve the term representation of `clientSecretT`, `sigYT`, and `clientLtKeyIdT` by applying our term-uniqueness assumption of the received message:
 	//@ clientSecretT, sigYT, clientLtKeyIdT := pattern.patternRequirementSecSessResp(rid, AgentId, KMSId, ClientId, ReaderId, AgentLtKeyId, logPk, xT, SigX, by.oneTerm(clientSecretB), by.oneTerm(sigYB), by.oneTerm(clientLtKeyIdB), receivedMsgT, t0, s0)
 	//@ sharedSecretT := tm.exp(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT), xT)
+	// the following 4 assert stmts is necessary for triggering:
+	//@ assert tm.fst(tm.snd(receivedMsgT)) == tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT)
+	//@ assert tm.fst(tm.snd(tm.snd(receivedMsgT))) == sigYT
+	//@ assert tm.fst(tm.snd(tm.snd(tm.snd(receivedMsgT)))) == clientLtKeyIdT
+	//@ assert tm.snd(tm.snd(tm.snd(tm.snd(receivedMsgT)))) == tm.hash(sharedSecretT)
+	//@ assert ay.msgB(resp.ClientShare) == by.gamma(tm.exp(tm.pubTerm(pub.const_g_pub()), clientSecretT))
+	//@ assert sigYB == by.gamma(sigYT)
+	//@ assert ay.msgB(resp.ClientLTKeyARN) == by.gamma(clientLtKeyIdT)
 	//@ assert abs.Abs(sharedSecret) == by.gamma(sharedSecretT)
 
 	/*@
@@ -391,7 +400,7 @@ func (dc *internalDataChannel) completeSecureSessionResponseProcessing() (state 
 		return state, errHandshake()
 	}
 	//@ encodedEncryptedSessionKeysT := tm.aenc(sessionKeysBytesT, dc.io.getLogLTPkT())
-	//@ assert by.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
+	//@ assert ay.msgB(encodedEncryptedSessionKeys) == by.gamma(encodedEncryptedSessionKeysT)
 
 	// sign ciphertext containing session keys using KMS:
 	signSessionKeysPayloadBytes, err := getSignSessionKeysPayloadBytes(encodedEncryptedSessionKeys, dc.clientId)
@@ -483,7 +492,7 @@ func (dc *internalDataChannel) completeSecureSessionResponseProcessing() (state 
 	_ = encodedEncryptedSessionKeysPayloadBytes // TODO send to log server
 
 	//@ encryptedSessionKeysPayloadT := ut.tuple5(encodedEncryptedSessionKeysT, sigSessionKeysT, AgentId, AgentLtKeyId, ClientId)
-	//@ assert by.msgB(encodedEncryptedSessionKeysPayloadBytes) == by.gamma(encryptedSessionKeysPayloadT)
+	//@ assert ay.msgB(encodedEncryptedSessionKeysPayloadBytes) == by.gamma(encryptedSessionKeysPayloadT)
 
 	// TODO: actually send `encodedEncryptedSessionKeysPayloadBytes` to the log server!
 	// use `phiRG_Agent_13` and the `OutFact_Agent` fact in s5 to obtain the corresponding send permission

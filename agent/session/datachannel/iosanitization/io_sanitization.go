@@ -20,6 +20,7 @@ import (
 	//@ pl "github.com/aws/amazon-ssm-agent/agent/iospecs/place"
 	//@ pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+	//@ ay "github.com/aws/amazon-ssm-agent/agent/iospecs/utilbytes"
 )
 
 // ----- KMS -----
@@ -46,7 +47,7 @@ func KMSSign(kmsService *crypto.KMSService, keyID string, message []byte /*@, gh
 // @ requires noPerm < p
 // @ requires m == tm.pair(tm.pubTerm(pub.const_VerifyRequest_pub()), tm.pair(clientId, tm.pair(kmsKeyIdT, tm.pair(messageT, signatureT))))
 // @ requires kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)
-// @ requires pl.token(t) && iospec.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(kmsKeyIdT) == by.msgB(kmsKeyId) && by.gamma(messageT) == abs.Abs(message) && by.gamma(signatureT) == abs.Abs(signature)
+// @ requires pl.token(t) && iospec.e_Out_KMS(t, rid, agentId, kmsId, rid, m) && by.gamma(kmsKeyIdT) == ay.msgB(kmsKeyId) && by.gamma(messageT) == abs.Abs(message) && by.gamma(signatureT) == abs.Abs(signature)
 // @ requires let t1 := iospec.get_e_Out_KMS_placeDst(t, rid, agentId, kmsId, rid, m) in (
 // @     iospec.e_In_KMS(t1, rid))
 // @ ensures  kmsService.Mem() && acc(bytes.SliceMem(message), p) && acc(bytes.SliceMem(signature), p)

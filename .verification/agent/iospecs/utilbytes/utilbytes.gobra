@@ -1,0 +1,48 @@
+package utilbytes
+
+import "time"
+import by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+import fr "github.com/aws/amazon-ssm-agent/agent/iospecs/fresh"
+import tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
+import pub "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
+import fresh "github.com/aws/amazon-ssm-agent/agent/iospecs/fresh"
+
+ghost type Bytes = by.Bytes
+
+ghost type BytesUtil domain {
+    func tuple3B(b1, b2, b3 Bytes) Bytes
+    func tuple4B(b1, b2, b3, b4 Bytes) Bytes
+    func tuple5B(b1, b2, b3, b4, b5 Bytes) Bytes
+    func generatorB() Bytes
+    func msgB(string) Bytes
+    func durationB(time.Duration) Bytes
+    
+    // destructors
+    func getFirst(b Bytes) Bytes
+    func getSecond(b Bytes) Bytes
+    func getSkB(pk Bytes) Bytes
+
+    axiom {
+        forall b1, b2, b3 Bytes :: { tuple3B(b1, b2, b3) } tuple3B(b1, b2, b3) == by.pairB(b1, by.pairB(b2, b3))
+    }
+
+    axiom {
+        forall b1, b2, b3, b4 Bytes :: { tuple4B(b1, b2, b3, b4) } tuple4B(b1, b2, b3, b4) == by.pairB(b1, by.pairB(b2, by.pairB(b3, b4)))
+    }
+
+    axiom {
+        forall b1, b2, b3, b4, b5 Bytes :: { tuple5B(b1, b2, b3, b4, b5) } tuple5B(b1, b2, b3, b4, b5) == by.pairB(b1, by.pairB(b2, by.pairB(b3, by.pairB(b4, b5))))
+    }
+
+    axiom {
+        generatorB() == by.const_gB()
+    }
+
+    axiom {
+        forall s string :: { msgB(s) } msgB(s) == by.gamma(tm.pubTerm(pub.pub_msg(s)))
+    }
+
+    axiom {
+        forall i time.Duration :: { durationB(i) } durationB(i) == by.gamma(tm.freshTerm(fr.fr_duration(i)))
+    }
+}

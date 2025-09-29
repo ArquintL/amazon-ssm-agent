@@ -25,6 +25,7 @@ import (
 	//@ "bytes"
 	//@ "github.com/aws/amazon-ssm-agent/agent/iospecs/abs"
 	//@ by "github.com/aws/amazon-ssm-agent/agent/iospecs/bytes"
+	//@ ay "github.com/aws/amazon-ssm-agent/agent/iospecs/utilbytes"
 	//@ tm "github.com/aws/amazon-ssm-agent/agent/iospecs/term"
 	//@ "github.com/aws/amazon-ssm-agent/agent/iospecs/pub"
 )
@@ -489,11 +490,11 @@ ghost
 decreases
 requires acc(secureSessionResponse.Mem(), _)
 pure func (secureSessionResponse *SecureSessionResponse) Abs() by.Bytes {
-	return unfolding acc(secureSessionResponse.Mem(), _) in by.tuple4B(
-		by.msgB(secureSessionResponse.ClientShare),
-		by.msgB(secureSessionResponse.Signature),
-		by.msgB(secureSessionResponse.ClientLTKeyARN),
-		by.msgB(secureSessionResponse.SessionID))
+	return unfolding acc(secureSessionResponse.Mem(), _) in ay.tuple4B(
+		ay.msgB(secureSessionResponse.ClientShare),
+		ay.msgB(secureSessionResponse.Signature),
+		ay.msgB(secureSessionResponse.ClientLTKeyARN),
+		ay.msgB(secureSessionResponse.SessionID))
 }
 @*/
 
@@ -560,11 +561,11 @@ decreases
 requires acc(action.Mem(), _)
 requires unfolding acc(action.Mem(), _) in action.ActionType == SecureSession
 pure func (action *RequestedClientAction) Abs() by.Bytes {
-	return unfolding acc(action.Mem(), _) in by.tuple4B(
-		by.msgB(action.ActionParameters.(SecureSessionRequest).AgentShare),
-		by.msgB(action.ActionParameters.(SecureSessionRequest).Signature),
-		by.msgB(action.ActionParameters.(SecureSessionRequest).AgentLTKeyARN),
-		by.msgB(action.ActionParameters.(SecureSessionRequest).LogReaderId))
+	return unfolding acc(action.Mem(), _) in ay.tuple4B(
+		ay.msgB(action.ActionParameters.(SecureSessionRequest).AgentShare),
+		ay.msgB(action.ActionParameters.(SecureSessionRequest).Signature),
+		ay.msgB(action.ActionParameters.(SecureSessionRequest).AgentLTKeyARN),
+		ay.msgB(action.ActionParameters.(SecureSessionRequest).LogReaderId))
 }
 @*/
 
@@ -729,7 +730,7 @@ decreases
 requires acc(handshakeCompletePayload.Mem(), _)
 pure func (handshakeCompletePayload *HandshakeCompletePayload) Abs() by.Bytes {
 	return unfolding acc(handshakeCompletePayload.Mem(), _) in
-		by.tuple3B(by.gamma(tm.pubTerm(pub.const_HandshakeCompletePayload_pub())), by.durationB(handshakeCompletePayload.HandshakeTimeToComplete), by.msgB(handshakeCompletePayload.CustomerMessage))
+		ay.tuple3B(by.gamma(tm.pubTerm(pub.const_HandshakeCompletePayload_pub())), ay.durationB(handshakeCompletePayload.HandshakeTimeToComplete), ay.msgB(handshakeCompletePayload.CustomerMessage))
 }
 @*/
 
