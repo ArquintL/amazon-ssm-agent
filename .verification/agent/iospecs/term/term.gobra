@@ -27,7 +27,6 @@ ghost type Term domain {
     func exp(t1 Term, t2 Term) Term
     func fst(t1 Term) Term
     func hash(t1 Term) Term
-    func hashDeconstructor(t1 Term) Term // added to specify that `hash` is injective
     func inv(t1 Term) Term
     func kdf1(t1 Term) Term
     func kdf2(t1 Term) Term
@@ -71,12 +70,6 @@ ghost type Term domain {
         forall x_1, x_2, x_3 Term :: 
             { exp(exp(x_1, x_2), x_3) } (
                 exp(exp(x_1, x_2), x_3) == exp(x_1, Mult(x_2, x_3)))
-    }
-
-    axiom { // added to specify that `hash` is injective
-        forall x_1 Term ::
-            { hash(x_1) } (
-                hashDeconstructor(hash(x_1)) == x_1)
     }
 
     axiom  {

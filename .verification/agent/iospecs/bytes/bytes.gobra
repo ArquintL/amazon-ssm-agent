@@ -33,7 +33,6 @@ ghost type Bytes domain {
     func expB(t1 Bytes, t2 Bytes) Bytes
     func fstB(t1 Bytes) Bytes
     func hashB(t1 Bytes) Bytes
-    func hashDeconstructorB(t1 Bytes) Bytes // added to specify that `hashB` is injective
     func invB(t1 Bytes) Bytes
     func kdf1B(t1 Bytes) Bytes
     func kdf2B(t1 Bytes) Bytes
@@ -200,7 +199,6 @@ ghost type Gamma domain {
         (forall t1, t2 Term :: { gamma(exp(t1, t2)) } (gamma(exp(t1, t2)) == expB(gamma(t1), gamma(t2)))) &&
         (forall t1 Term :: { gamma(fst(t1)) } (gamma(fst(t1)) == fstB(gamma(t1)))) &&
         (forall t1 Term :: { gamma(hash(t1)) } (gamma(hash(t1)) == hashB(gamma(t1)))) &&
-        (forall t1 Term :: { gamma(hashDeconstructor(t1)) } (gamma(hashDeconstructor(t1)) == hashDeconstructorB(gamma(t1)))) && // added to specify that `hashB` is injective
         (forall t1 Term :: { gamma(inv(t1)) } (gamma(inv(t1)) == invB(gamma(t1)))) &&
         (forall t1 Term :: { gamma(kdf1(t1)) } (gamma(kdf1(t1)) == kdf1B(gamma(t1)))) &&
         (forall t1 Term :: { gamma(kdf2(t1)) } (gamma(kdf2(t1)) == kdf2B(gamma(t1)))) &&
