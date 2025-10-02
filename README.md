@@ -11,6 +11,15 @@ The SSM Agent runs on EC2 instances and enables you to quickly and easily execut
 Currently, the agent and Run Command enable you to quickly run Shell scripts on an instance using the AWS-RunShellScript SSM document. 
 SSM Agent also enables the Session Manager capability that lets you manage your Amazon EC2 instance through an interactive one-click browser-based shell or through the AWS CLI. The first time a Session Manager session is started on an instance, the agent will create a user called "ssm-user" with sudo or administrator privilege. Session Manager sessions will be launched in context of this user.
 
+### Secure Sessions Overview
+The protocol for establishing encrypted interactive shell sessions is implemented in the package `agent/session/datachannel`.
+The main functionality of this package is exposed by the `PerformHandshake` and `SendStreamDataMessage` API methods that establish symmetric session keys and send a transport message, respectively.
+Incoming transport messages are delivered by invoking the `inputStreamMessageHandler` closure that is passed to `NewDataChannel` constructor function.
+
+This package represents the Core that is verified using Gobra.
+We prove that this package refines the "Agent" role in the Tamarin protocol model.
+
+
 ### Verify Requirements
 
 * [SSM Run Command Prerequisites](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/remote-commands-prereq.html)
